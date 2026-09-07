@@ -351,7 +351,7 @@ return [
         ],
         'layouts' => [
             'powered-by' => [
-                'description' => 'Capture It CRM — Worth It, With Capture It.',
+                'description' => 'Varbel Corps - Capture it Photobooth - Vartech - Varbel Creative Works.',
             ],
             'header' => [
                 'mega-search' => [

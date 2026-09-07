@@ -58,7 +58,7 @@ class InternalChatAttachmentController extends Controller
         );
 
         abort_unless(
-            Storage::disk('local')
+            Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
                 ->exists(
                     $attachment
                         ->storage_path
@@ -66,7 +66,7 @@ class InternalChatAttachmentController extends Controller
             404
         );
 
-        return Storage::disk('local')
+        return Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
             ->download(
                 $attachment->storage_path,
                 $attachment->original_name,

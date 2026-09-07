@@ -302,4 +302,32 @@
         </div>
     @endif
 
+
+    {{-- MISSING_ASSET_RECOVERY_V1_UI --}}
+        {{-- INVENTORY_MISSING_RECOVERY_SCAN_V1 --}}
+    @if (
+        $asset->status === 'missing'
+        && bouncer()->hasPermission('inventory.assets.edit')
+    )
+        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-5 dark:border-red-900 dark:bg-red-950/30">
+            <div class="flex items-center justify-between gap-4 max-sm:flex-wrap">
+                <div>
+                    <p class="text-lg font-bold text-red-800 dark:text-red-200">
+                        Missing Asset Recovery
+                    </p>
+
+                    <p class="mt-1 text-sm text-red-700 dark:text-red-300">
+                        Recovery manual dinonaktifkan. Barang fisik wajib dipindai, lalu kondisi dan lokasi penemuan dikonfirmasi.
+                    </p>
+                </div>
+
+                <a
+                    href="{{ route('admin.inventory.assets.missing-recovery.scan', $asset->id) }}"
+                    class="primary-button"
+                >
+                    Scan Barang Ditemukan
+                </a>
+            </div>
+        </div>
+    @endif
 </x-admin::layouts>

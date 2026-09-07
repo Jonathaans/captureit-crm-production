@@ -29,7 +29,7 @@
                 <div>
                     <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Financial Report</h1>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Revenue, payment, expense, estimated profit, and cash position per invoice.
+                        Invoice value, cash received, receivable, unbilled remainder, expense, and cash margin.
                     </p>
                 </div>
 
@@ -65,13 +65,18 @@
                         href="{{ route('admin.invoices.financial-report.export', ['year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
                         class="secondary-button rounded-lg px-4 py-2.5 text-sm"
                     >
-                        Export CSV
+                        Export Financial Report
                     </a>
+                @endif
 
-            {{-- FINANCIAL REPORT EXPORT ALL EXPENSES V1 --}}
-            <a href="{{ route('admin.invoices.financial-report.expenses.export') }}" class="primary-button">
-                Export All Expenses
-            </a>
+                {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3 --}}
+                @if (bouncer()->hasPermission('invoices.expense.export-all'))
+                    <a
+                        href="{{ route('admin.invoices.expenses.export-all') }}"
+                        class="primary-button rounded-lg px-4 py-2.5 text-sm"
+                    >
+                        Export All Expenses
+                    </a>
                 @endif
             </div>
 
@@ -177,48 +182,46 @@
         </div>
 
         {{-- Summary cards --}}
+        {{-- CRM_INVOICE_FLEXIBLE_BILLING_V1 --}}
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Revenue</div>
-                <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ $rupiah($financialSummary['revenue']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Confirm invoice cohort</div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Invoiced</div>
+                <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ $rupiah($financialSummary['invoiced']) }}</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">DP + Pelunasan, atau Full Payment; Cancel dikecualikan</div>
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payment Received</div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Revenue / Cash Received</div>
                 <div class="mt-2 text-3xl font-bold text-green-600 dark:text-green-400">{{ $rupiah($financialSummary['received']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash in during period</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pembayaran aktual yang diterima pada periode</div>
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Outstanding</div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Receivable</div>
                 <div class="mt-2 text-3xl font-bold text-red-600 dark:text-red-400">{{ $rupiah($financialSummary['outstanding']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Current confirm balance</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Invoice aktif dikurangi seluruh payment</div>
+            </div>
+
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Unbilled Remainder</div>
+                <div class="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">{{ $rupiah($financialSummary['unbilled']) }}</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Grand Total Quote dikurangi Invoice aktif</div>
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</div>
                 <div class="mt-2 text-3xl font-bold text-orange-600 dark:text-orange-400">{{ $rupiah($financialSummary['expense']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash out during period</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash out aktual pada periode</div>
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Est. Project Profit</div>
-                <div class="mt-2 text-3xl font-bold {{ (float) $financialSummary['estimated_profit'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
-                    {{ $rupiah($financialSummary['estimated_profit']) }}
-                </div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cohort less all project expense</div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Surplus</div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Margin</div>
                 <div class="mt-2 text-3xl font-bold {{ (float) $financialSummary['cash_surplus'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
                     {{ $rupiah($financialSummary['cash_surplus']) }}
                 </div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash in minus cash out</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash Received dikurangi Expense</div>
             </div>
         </div>
-
         {{-- Invoice cohort --}}
         <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -270,6 +273,11 @@
                                     <a href="{{ route('admin.invoices.show', $invoice['id']) }}" class="text-base font-semibold text-blue-600 hover:underline dark:text-blue-400">
                                         {{ $invoice['invoice_number'] }}
                                     </a>
+                                    <div class="mt-2">
+                                        <span class="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                            {{ str_replace('_', ' ', $invoice['billing_type']) }}
+                                        </span>
+                                    </div>
                                     <div class="mt-2 space-y-1 text-sm text-gray-500 dark:text-gray-400">
                                         <div>{{ $invoice['project_code'] }}</div>
                                         <div>{{ optional($invoice['issued_at'])->format('d M Y') }}</div>
@@ -361,7 +369,7 @@
                         <thead>
                             <tr class="bg-gray-50 dark:bg-gray-950">
                                 <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Month</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Revenue</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Invoiced</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Received</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Est. Profit</th>
@@ -411,7 +419,7 @@
 
             <div class="grid gap-4 border-t border-gray-200 p-5 sm:grid-cols-2 dark:border-gray-800">
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Revenue</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Total Invoiced</div>
                     <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Invoice value from confirmed invoice cohort.</div>
                 </div>
                 <div>

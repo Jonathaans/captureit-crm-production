@@ -63,7 +63,7 @@ final class PurchaseOrderPaymentProofService
                 bin2hex(random_bytes(16))
             );
 
-            if (! Storage::disk('local')->put($relativePath, $handle)) {
+            if (! Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->put($relativePath, $handle)) {
                 throw new RuntimeException('Gagal menyimpan PDF bukti transfer.');
             }
         } finally {
@@ -80,16 +80,16 @@ final class PurchaseOrderPaymentProofService
         $path = trim((string) ($path ?? ''));
 
         if ($path !== '') {
-            Storage::disk('local')->delete($path);
+            Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->delete($path);
         }
     }
 
     public function absolutePath(string $path): string
     {
-        if (! Storage::disk('local')->exists($path)) {
+        if (! Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->exists($path)) {
             throw new RuntimeException('File bukti transfer tidak ditemukan.');
         }
 
-        return Storage::disk('local')->path($path);
+        return Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->path($path);
     }
 }

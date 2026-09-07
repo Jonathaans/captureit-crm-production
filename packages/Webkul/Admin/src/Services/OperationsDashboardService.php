@@ -107,8 +107,12 @@ class OperationsDashboardService
         $qa = app(CrmFlowQualityAssuranceService::class)->run(request()->boolean('refresh_qa'));
         $backup = app(CrmBackupStatusService::class)->summary();
 
+        /* CRM_PRODUCTION_OPERATIONS_V2 */
+        $operationsHealth = app(\Webkul\Admin\Services\CrmOperationalHealthService::class)->summary();
+
         return [
             'role' => $role,
+            'operationsHealth' => $operationsHealth,
             'qa' => $qa,
             'backup' => $backup,
             'cards' => array_values(

@@ -51,8 +51,8 @@ class VendorNpwpImageService
 
         $name = 'npwp-vendor-'.(int) $vendor->id.'.'.pathinfo($path, PATHINFO_EXTENSION);
 
-        if (Storage::disk('local')->exists($path)) {
-            return Storage::disk('local')->response($path, $name, [], 'inline');
+        if (Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->exists($path)) {
+            return Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->response($path, $name, [], 'inline');
         }
 
         // Backward-compatible viewer for files created by older public-storage patches.
@@ -70,7 +70,7 @@ class VendorNpwpImageService
         }
 
         if (str_starts_with($path, 'vendor-npwp/')) {
-            Storage::disk('local')->delete($path);
+            Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))->delete($path);
         }
 
         if (str_starts_with($path, 'vendors/')) {

@@ -200,18 +200,23 @@ class FinancialReportController extends Controller
                 ]);
 
                 $writeRow($handle, [
-                    'Revenue - Confirmed Invoice Value in Period',
-                    $financialSummary['revenue'],
+                    'Total Invoiced - Active Confirmed Invoice Value',
+                    $financialSummary['invoiced'],
                 ]);
 
                 $writeRow($handle, [
-                    'Payment Received - Cash In During Period',
+                    'Revenue / Cash Received - Actual Payment in Period',
                     $financialSummary['received'],
                 ]);
 
                 $writeRow($handle, [
-                    'Outstanding - Current Balance of Confirmed Invoice Cohort',
+                    'Receivable - Current Confirmed Invoice Balance',
                     $financialSummary['outstanding'],
+                ]);
+
+                $writeRow($handle, [
+                    'Unbilled - Quote Value Not Yet Invoiced',
+                    $financialSummary['unbilled'],
                 ]);
 
                 $writeRow($handle, [
@@ -220,12 +225,7 @@ class FinancialReportController extends Controller
                 ]);
 
                 $writeRow($handle, [
-                    'Estimated Project Profit - Invoice Cohort minus All Project Expenses',
-                    $financialSummary['estimated_profit'],
-                ]);
-
-                $writeRow($handle, [
-                    'Cash Surplus - Cash In minus Cash Out During Period',
+                    'Cash Margin - Actual Cash In minus Expense',
                     $financialSummary['cash_surplus'],
                 ]);
 
@@ -242,6 +242,7 @@ class FinancialReportController extends Controller
                     'Project Code',
                     'Business Unit',
                     'Invoice',
+                    'Billing Type',
                     'Invoice Date',
                     'Customer',
                     'Project / Subject',
@@ -263,6 +264,7 @@ class FinancialReportController extends Controller
                         $invoice['project_code'],
                         $invoice['business_unit_label'],
                         $invoice['invoice_number'],
+                        strtoupper(str_replace('_', ' ', $invoice['billing_type'])),
                         $invoice['issued_at']
                             ?->format('Y-m-d'),
                         $invoice['customer'],
@@ -532,12 +534,35 @@ class FinancialReportController extends Controller
                 });
         }
 
+        /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
+        $invoiced = $revenue;
+
+        $cohortQuoteIds = (
+            ! $filters['event_status']
+            || $filters['event_status'] === 'confirm'
+        )
+            ? (clone $revenueQuery)
+                ->whereNotNull('quote_id')
+                ->pluck('quote_id')
+                ->unique()
+            : collect();
+
+        $unbilled = app(
+            \Webkul\Admin\Services\FlexibleQuoteBillingService::class
+        )->sumUnbilledForQuoteIds($cohortQuoteIds);
+
         return [
-            'revenue' => $revenue,
+            /*
+             * Revenue/Cash In is recognized from actual Payment rows.
+             * Quote itself is never counted as revenue.
+             */
+            'revenue' => $received,
+            'invoiced' => $invoiced,
             'received' => $received,
             'outstanding' => $outstanding,
+            'unbilled' => $unbilled,
             'expense' => $expense,
-            'estimated_profit' => $estimatedProfit,
+            'estimated_profit' => $received - $expense,
             'cash_surplus' => $received - $expense,
         ];
     }
@@ -634,6 +659,7 @@ class FinancialReportController extends Controller
                         $invoice->business_unit
                     ),
                     'invoice_number' => $invoice->invoice_number,
+                    'billing_type' => $invoice->billing_type ?: 'full_payment',
                     'customer' => $invoice->person?->name ?? '-',
                     'subject' => $invoice->subject ?? '-',
                     'products' => $productNames->implode('; '),

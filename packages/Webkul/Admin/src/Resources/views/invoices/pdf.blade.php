@@ -115,6 +115,46 @@
             'partial' => 'PARTIAL',
             default => 'UNPAID',
         };
+
+        /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
+        $billingType = $invoice->billing_type ?: 'full_payment';
+
+        $billingLabel = match ($billingType) {
+            'down_payment' => 'DOWN PAYMENT',
+            'settlement' => 'PELUNASAN',
+            default => 'FULL PAYMENT',
+        };
+
+        $dpInvoiceNumber = $invoice->dp_invoice_id
+            ? \Illuminate\Support\Facades\DB::table('invoices')
+                ->where('id', $invoice->dp_invoice_id)
+                ->value('invoice_number')
+            : null;
+
+        $quoteTotalSnapshot = (float) (
+            $invoice->quote_total_snapshot
+            ?: $invoice->grand_total
+        );
+
+        $remainingAmountSnapshot = (float) (
+            $invoice->remaining_amount_snapshot
+            ?? 0
+        );
+
+        $billingPercentageLabel = $invoice->billing_percentage !== null
+            ? rtrim(
+                rtrim(
+                    number_format(
+                        (float) $invoice->billing_percentage,
+                        4,
+                        '.',
+                        ''
+                    ),
+                    '0'
+                ),
+                '.'
+            ).'%'
+            : null;
     @endphp
 
     <style>
@@ -124,7 +164,8 @@
              * DOMPDF will flow the next row/block to the next page
              * before it reaches this bottom margin.
              */
-            margin: 22px 28px 72px 28px;
+            /* CRM_DOCUMENT_PDF_SAFE_TOP_BOUNDARY_V1: 20 mm text-safe top boundary on every A4 page. */
+            margin: 76px 28px 72px 28px;
         }
 
         * {
@@ -545,6 +586,14 @@
         <div class="document-number">
             {{ $invoice->invoice_number }}
         </div>
+        @if ($invoice->billing_locked_at)
+            <div style="margin-top:5px; font-size:10px; font-weight:700; color:#1d4ed8;">
+                {{ $billingLabel }}
+                @if ($billingPercentageLabel)
+                    &middot; {{ $billingPercentageLabel }}
+                @endif
+            </div>
+        @endif
     </div>
 
     <!-- Customer + Project Details -->
@@ -602,6 +651,19 @@
                     <span class="project-value">: {{ $invoice->location ?? '-' }}</span>
                 </div>
 
+                @if ($invoice->billing_locked_at)
+                    <div class="project-row">
+                        <span class="project-label">Billing Type</span>
+                        <span class="project-value">: {{ $billingLabel }}</span>
+                    </div>
+
+                    @if ($dpInvoiceNumber)
+                        <div class="project-row">
+                            <span class="project-label">DP Reference</span>
+                            <span class="project-value">: {{ $dpInvoiceNumber }}</span>
+                        </div>
+                    @endif
+                @endif
                 <div class="project-row">
                     <span class="project-label">Payment Term</span>
                     <span class="project-value">: {{ $invoice->payment_term ?? '-' }}</span>
@@ -688,6 +750,25 @@
     <!-- Invoice Summary -->
     <div class="summary-wrap">
         <table class="summary-table">
+            @if ($invoice->billing_locked_at && $billingType !== 'full_payment')
+                <tr>
+                    <td class="summary-label">
+                        Quote Contract Total
+                    </td>
+                    <td class="summary-value">
+                        Rp {{ number_format($quoteTotalSnapshot, 0, ',', '.') }}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="summary-label">
+                        Remaining After Invoice
+                    </td>
+                    <td class="summary-value">
+                        Rp {{ number_format($remainingAmountSnapshot, 0, ',', '.') }}
+                    </td>
+                </tr>
+            @endif
+
             <tr>
                 <td class="summary-label">
                     Sub Total

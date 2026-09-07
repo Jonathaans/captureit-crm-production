@@ -112,17 +112,49 @@ Artisan::command('my-email:sync', function () {
         'Sync Personal My Email accounts using the same service as Sync Now'
     );
 
-Schedule::command('my-email:sync')
-    ->everyFiveMinutes()
-    ->withoutOverlapping(10);
+
 // MY EMAIL PERSONAL AUTO SYNC V2 END
 
 
-/* CRM_DAILY_FULL_BACKUP_SCHEDULE_V1
- * Full database + storage backup every day at 02:00 application time.
+/* CRM_PRODUCTION_OPERATIONS_V2
+ * Application schedules. The operating system must run artisan schedule:run
+ * every minute, and a separate long-running queue:work process must be active.
  */
-Schedule::command('crm:backup')
-    ->dailyAt('02:00')
-    ->timezone((string) config('app.timezone', 'Asia/Jakarta'))
+$crmOperationsTimezone = (string) config('app.timezone', 'Asia/Jakarta');
+
+Schedule::command('crm:health:scheduler')
+    ->everyMinute()
+    ->withoutOverlapping(2);
+
+Schedule::command('crm:health:queue-dispatch')
+    ->everyMinute()
+    ->withoutOverlapping(2);
+
+Schedule::command('crm:email-sync-managed')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->appendOutputTo(storage_path('logs/crm-email-sync.log'));
+
+Schedule::command('crm:backup-managed --database-only')
+    ->dailyAt((string) config('crm-production-operations.backup.daily_database_time', '02:00'))
+    ->timezone($crmOperationsTimezone)
     ->withoutOverlapping(360)
-    ->appendOutputTo(storage_path('logs/crm-backup-schedule.log'));
+    ->appendOutputTo(storage_path('logs/crm-database-backup.log'));
+
+Schedule::command('crm:backup-managed')
+    ->weeklyOn(
+        (int) config('crm-production-operations.backup.weekly_full_day', 0),
+        (string) config('crm-production-operations.backup.weekly_full_time', '03:00')
+    )
+    ->timezone($crmOperationsTimezone)
+    ->withoutOverlapping(720)
+    ->appendOutputTo(storage_path('logs/crm-full-backup.log'));
+
+Schedule::command('crm:backup-retention')
+    ->dailyAt('04:00')
+    ->timezone($crmOperationsTimezone)
+    ->withoutOverlapping(30);
+
+Schedule::command('crm:operations-alerts')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(5);

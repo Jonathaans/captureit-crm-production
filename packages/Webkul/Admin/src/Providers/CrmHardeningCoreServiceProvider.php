@@ -25,6 +25,18 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        /* CRM_PRODUCTION_OPERATIONS_V2 */
+        $this->app['router']->pushMiddlewareToGroup(
+            'web',
+            \Webkul\Admin\Http\Middleware\CrmSecureUploadMiddleware::class
+        );
+
+        if (
+            $this->app->environment('production')
+            && config('crm-production-operations.production.force_https', false)
+        ) {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
         /* CRM_READ_ONLY_ARCHIVE_POLICY_V1
          * Final documents are readable/printable but cannot be modified or
          * deleted. Inventory movements are permanently append-only.
@@ -196,6 +208,49 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                         );
                 }
             );
+
+        /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
+        \Illuminate\Support\Facades\Route::middleware('web')
+            ->prefix('admin/invoice-billing')
+            ->controller(
+                \Webkul\Admin\Http\Controllers\Invoice\FlexibleQuoteBillingController::class
+            )
+            ->group(function () {
+                \Illuminate\Support\Facades\Route::get('create', 'create')
+                    ->name('admin.invoices.billing.create');
+
+                \Illuminate\Support\Facades\Route::get('quotes/{quoteId}', 'summary')
+                    ->whereNumber('quoteId')
+                    ->name('admin.invoices.billing.summary');
+
+                \Illuminate\Support\Facades\Route::post('/', 'store')
+                    ->name('admin.invoices.billing.store');
+            });
+
+        foreach (['creating', 'updating', 'deleting'] as $billingOperation) {
+            Event::listen(
+                'eloquent.'.$billingOperation.': *',
+                function (
+                    string $eventName,
+                    array $data
+                ) use ($billingOperation) {
+                    $model = $data[0] ?? null;
+
+                    if ($model instanceof Model) {
+                        app(
+                            \Webkul\Admin\Services\FlexibleQuoteBillingService::class
+                        )->assertMutable(
+                            $model,
+                            $billingOperation === 'deleting'
+                                ? 'delete'
+                                : ($billingOperation === 'creating'
+                                    ? 'create'
+                                    : 'update')
+                        );
+                    }
+                }
+            );
+        }
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CrmSecurityAuditCommand::class,
@@ -203,7 +258,16 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 CrmBackupVerifyCommand::class,
                 CrmProductionReadinessCommand::class,
                 CrmIncidentListCommand::class,
-            ]);
+                            \Webkul\Admin\Console\Commands\CrmSchedulerHeartbeatCommand::class,
+                \Webkul\Admin\Console\Commands\CrmQueueHeartbeatDispatchCommand::class,
+                \Webkul\Admin\Console\Commands\CrmManagedEmailSyncCommand::class,
+                \Webkul\Admin\Console\Commands\CrmManagedBackupCommand::class,
+                \Webkul\Admin\Console\Commands\CrmBackupRetentionCommand::class,
+                \Webkul\Admin\Console\Commands\CrmOperationalAlertsCommand::class,
+                \Webkul\Admin\Console\Commands\CrmAttachmentStorageAuditCommand::class,
+                \Webkul\Admin\Console\Commands\CrmAttachmentMigrateCommand::class,
+                \Webkul\Admin\Console\Commands\CrmProductionOperationsCheckCommand::class,
+]);
         }
     }
 }

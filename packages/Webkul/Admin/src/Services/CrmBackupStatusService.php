@@ -34,7 +34,7 @@ class CrmBackupStatusService
             'count' => count($files),
             'retention_days' => max(
                 1,
-                (int) config('crm-hardening.backup.retention_days', 14)
+                (int) config('crm-production-operations.backup.keep_daily_days', 14)
             ),
             'latest' => $detail,
             'directory_writable' => is_dir($directory)

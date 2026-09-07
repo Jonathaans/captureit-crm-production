@@ -37,7 +37,7 @@ class CrmBackupController extends Controller
                 @set_time_limit(0);
             }
 
-            $exitCode = Artisan::call('crm:backup');
+            $exitCode = Artisan::call('crm:backup-managed');
             $output = trim(Artisan::output());
 
             if ($exitCode !== 0) {

@@ -636,4 +636,169 @@ class InventoryAssetController extends Controller
             $asset->id
         );
     }
+    /**
+     * MISSING_ASSET_RECOVERY_V1
+     *
+     * Recover one serialized asset without forcing a full stock opname.
+     * A recovery is allowed only from MISSING and is recorded as an
+     * inventory movement. Active Delivery Order allocations block recovery.
+     */
+    public function recover(
+        \Illuminate\Http\Request $request,
+        int $id
+    ): \Illuminate\Http\RedirectResponse {
+        if (
+            function_exists('bouncer')
+            && ! bouncer()->hasPermission('inventory.assets.edit')
+        ) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'recovery_status' => [
+                'required',
+                \Illuminate\Validation\Rule::in([
+                    'available',
+                    'damaged',
+                ]),
+            ],
+            'recovery_notes' => [
+                'required',
+                'string',
+                'max:2000',
+            ],
+        ]);
+
+        \Illuminate\Support\Facades\DB::transaction(
+            function () use (
+                $id,
+                $validated
+            ): void {
+                $asset =
+                    \Webkul\Warehouse\Models\InventoryAsset::query()
+                        ->lockForUpdate()
+                        ->findOrFail($id);
+
+                if (
+                    strtolower((string) $asset->status)
+                    !== 'missing'
+                ) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'recovery_status' =>
+                            'Hanya asset berstatus MISSING yang dapat dipulihkan.',
+                    ]);
+                }
+
+                $hasActiveAllocation =
+                    \Illuminate\Support\Facades\DB::table(
+                        'delivery_order_inventory_allocations'
+                    )
+                        ->where(
+                            'inventory_asset_id',
+                            $asset->id
+                        )
+                        ->whereNotIn(
+                            'status',
+                            [
+                                'checked_in',
+                                'released',
+                            ]
+                        )
+                        ->exists();
+
+                if ($hasActiveAllocation) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'recovery_status' =>
+                            'Asset masih memiliki allocation / Delivery Order aktif. '
+                            .'Selesaikan transaksi tersebut sebelum recovery.',
+                    ]);
+                }
+
+                $fromStatus =
+                    strtolower(
+                        (string) $asset->status
+                    );
+
+                $toStatus =
+                    (string) $validated[
+                        'recovery_status'
+                    ];
+
+                $asset->status =
+                    $toStatus;
+
+                if ($toStatus === 'damaged') {
+                    $asset->condition =
+                        'damaged';
+                } elseif (
+                    strtolower(
+                        (string) $asset->condition
+                    ) === 'damaged'
+                ) {
+                    $asset->condition =
+                        'good';
+                }
+
+                $asset->save();
+
+                \Webkul\Warehouse\Models\InventoryStockMovement::query()
+                    ->create([
+                        'inventory_item_id' =>
+                            $asset->inventory_item_id,
+
+                        'inventory_asset_id' =>
+                            $asset->id,
+
+                        'warehouse_id' =>
+                            $asset->warehouse_id,
+
+                        'warehouse_location_id' =>
+                            $asset->warehouse_location_id,
+
+                        'movement_type' =>
+                            'missing_recovered',
+
+                        'quantity' =>
+                            1,
+
+                        'from_status' =>
+                            $fromStatus,
+
+                        'to_status' =>
+                            $toStatus,
+
+                        'reference_type' =>
+                            'asset_recovery',
+
+                        'reference_id' =>
+                            $asset->id,
+
+                        'reference_number' =>
+                            $asset->asset_code,
+
+                        'performed_by' =>
+                            auth()
+                                ->guard('user')
+                                ->id(),
+
+                        'notes' =>
+                            trim(
+                                (string) $validated[
+                                    'recovery_notes'
+                                ]
+                            ),
+
+                        'occurred_at' =>
+                            now(),
+                    ]);
+            }
+        );
+
+        session()->flash(
+            'success',
+            'Asset ditemukan dan status inventory berhasil diperbarui.'
+        );
+
+        return back();
+    }
 }

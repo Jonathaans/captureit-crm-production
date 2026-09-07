@@ -108,6 +108,16 @@ Route::prefix('inventory')
                     ->name('admin.inventory.assets.update');
             });
 
+        /* INVENTORY_MISSING_RECOVERY_SCAN_ROUTES_V1 */
+        Route::controller(\Webkul\Admin\Http\Controllers\Inventory\InventoryMissingRecoveryScanController::class)
+            ->prefix('assets')
+            ->group(function () {
+                Route::get('{id}/recover-missing-scan', 'create')
+                    ->name('admin.inventory.assets.missing-recovery.scan');
+
+                Route::post('{id}/recover-missing-scan', 'store')
+                    ->name('admin.inventory.assets.missing-recovery.store');
+            });
         Route::controller(InventoryMaintenanceController::class)
             ->prefix('maintenance')
             ->group(function () {

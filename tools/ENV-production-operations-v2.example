@@ -1,0 +1,46 @@
+# Production identity and transport
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://crm.example.com
+APP_TIMEZONE=Asia/Jakarta
+CRM_FORCE_HTTPS=true
+
+# Queue: run `php artisan queue:work --queue=default --sleep=3 --tries=3`
+QUEUE_CONNECTION=database
+
+# Operational heartbeat thresholds
+CRM_SCHEDULER_STALE_MINUTES=3
+CRM_QUEUE_STALE_MINUTES=5
+CRM_EMAIL_SYNC_STALE_MINUTES=15
+CRM_BACKUP_STALE_HOURS=26
+
+# Backup schedule and GFS retention
+CRM_DAILY_DATABASE_BACKUP_TIME=02:00
+CRM_WEEKLY_FULL_BACKUP_DAY=0
+CRM_WEEKLY_FULL_BACKUP_TIME=03:00
+CRM_BACKUP_KEEP_DAILY_DAYS=14
+CRM_BACKUP_KEEP_WEEKLY_WEEKS=8
+CRM_BACKUP_KEEP_MONTHLY_MONTHS=12
+CRM_BACKUP_KEEP_YEARLY_YEARS=7
+
+# Attachment object storage. Keep `local` until migration and read/write probe pass.
+CRM_ATTACHMENT_DISK=local
+CRM_UPLOAD_MAX_KB=20480
+CRM_UPLOAD_ALLOWED_EXTENSIONS=pdf,jpg,jpeg,png,webp,gif,txt,csv,doc,docx,xls,xlsx,zip,eml
+
+# Optional backup object storage with separate, least-privilege credentials
+CRM_BACKUP_OBJECT_DISK=crm-backup-s3
+CRM_BACKUP_OBJECT_PREFIX=crm-backups
+CRM_BACKUP_AWS_ACCESS_KEY_ID=
+CRM_BACKUP_AWS_SECRET_ACCESS_KEY=
+CRM_BACKUP_AWS_DEFAULT_REGION=ap-southeast-1
+CRM_BACKUP_AWS_BUCKET=
+CRM_BACKUP_AWS_URL=
+CRM_BACKUP_AWS_ENDPOINT=
+CRM_BACKUP_AWS_USE_PATH_STYLE_ENDPOINT=false
+
+# ClamAV. Enable only after clamscan is installed and `clamscan --version` works.
+CRM_CLAMAV_ENABLED=false
+CRM_CLAMAV_BINARY=clamscan.exe
+CRM_CLAMAV_TIMEOUT_SECONDS=60
+CRM_CLAMAV_FAIL_CLOSED=true

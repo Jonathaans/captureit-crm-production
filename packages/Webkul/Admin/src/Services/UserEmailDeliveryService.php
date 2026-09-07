@@ -200,6 +200,17 @@ class UserEmailDeliveryService
 
             $message->direction =
                 'outgoing';
+        } else {
+            /*
+             * MY_EMAIL_FOLDER_UID_TRANSITION_FIX_V1
+             *
+             * Draft already owns an imap_uid in the DRAFT namespace.
+             * When it moves to OUTBOX, give the existing local message a
+             * deterministic UID based on its immutable database id.
+             * This avoids carrying a DRAFT UID into another folder namespace.
+             */
+            $message->imap_uid =
+                (int) $message->id;
         }
 
         $message->folder =
@@ -502,6 +513,19 @@ class UserEmailDeliveryService
                 )
                     ? $sent->getMessageId()
                     : null;
+
+            /*
+             * MY_EMAIL_FOLDER_UID_TRANSITION_FIX_V1
+             *
+             * imap_uid is unique inside (account_id, folder).  The OUTBOX UID
+             * must therefore never be carried into CRM_SENT.  This message
+             * already has a database id, which is monotonic and unique, so it
+             * is a safe local UID for the CRM_SENT namespace and avoids the
+             * duplicate-key failure seen when OUTBOX uid 1/2 collided with
+             * existing CRM_SENT uid 1/2.
+             */
+            $message->imap_uid =
+                (int) $message->id;
 
             $message->folder =
                 'CRM_SENT';

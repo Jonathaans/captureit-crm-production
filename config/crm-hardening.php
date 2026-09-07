@@ -40,7 +40,7 @@ return [
     ],
 
     'backup' => [
-        'retention_days' => 14,
+        'retention_days' => 2555, // CRM_GFS_RETENTION_V2: deletion is managed by crm:backup-retention
 
         'directory' => storage_path(
             'app/private/crm-backups'

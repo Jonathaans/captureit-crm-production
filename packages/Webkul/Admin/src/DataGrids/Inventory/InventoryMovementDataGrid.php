@@ -181,6 +181,9 @@ class InventoryMovementDataGrid extends DataGrid
                 ['label' => 'Maintenance Completed', 'value' => 'maintenance_completed'],
                 ['label' => 'Asset Retired', 'value' => 'asset_retired'],
                 ['label' => 'Stock Opname Missing', 'value' => 'stock_opname_missing'],
+                // MISSING_ASSET_RECOVERY_V1_MOVEMENT
+                /* INVENTORY_MISSING_RECOVERY_MOVEMENT_V1 */
+                ['label' => 'Missing Recovered', 'value' => 'missing_recovered'],
                 ['label' => 'Stock Opname Found', 'value' => 'stock_opname_found'],
                 ['label' => 'Stock Opname Adjustment In', 'value' => 'stock_opname_adjustment_in'],
                 ['label' => 'Stock Opname Adjustment Out', 'value' => 'stock_opname_adjustment_out'],
@@ -246,6 +249,7 @@ class InventoryMovementDataGrid extends DataGrid
             'filterable_options' => [
                 ['label' => 'Surat Jalan', 'value' => 'delivery_order'],
                 ['label' => 'Stock Opname', 'value' => 'stock_opname'],
+                ['label' => 'Missing Recovery', 'value' => 'missing_recovery'],
                 ['label' => 'Maintenance', 'value' => 'maintenance'],
                 ['label' => 'Manual Stock Movement', 'value' => 'manual_stock_movement'],
                 ['label' => 'Opening', 'value' => 'opening'],
@@ -312,6 +316,7 @@ class InventoryMovementDataGrid extends DataGrid
         $types = [
             'delivery_order'        => ['SURAT JALAN', '#fff7ed', '#c2410c'],
             'stock_opname'          => ['STOCK OPNAME', '#ecfeff', '#0e7490'],
+            'missing_recovery'      => ['MISSING RECOVERY', '#dcfce7', '#15803d'],
             'maintenance'           => ['MAINTENANCE', '#f3e8ff', '#7e22ce'],
             'manual_stock_movement' => ['MANUAL', '#f3f4f6', '#4b5563'],
             'opening'               => ['OPENING', '#e0f2fe', '#0369a1'],
@@ -395,6 +400,7 @@ class InventoryMovementDataGrid extends DataGrid
             'maintenance_started'         => ['MAINT. START', '#f3e8ff', '#7e22ce'],
             'maintenance_completed'       => ['MAINT. DONE', '#dcfce7', '#15803d'],
             'asset_retired'               => ['ASSET RETIRED', '#f3f4f6', '#4b5563'],
+            'missing_recovered' => ['MISSING RECOVERED', '#dcfce7', '#15803d'],
             'stock_opname_missing'        => ['OPNAME MISSING', '#fee2e2', '#991b1b'],
             'stock_opname_found'          => ['OPNAME FOUND', '#dcfce7', '#15803d'],
             'stock_opname_adjustment_in'  => ['OPNAME ADJ. IN', '#d1fae5', '#047857'],

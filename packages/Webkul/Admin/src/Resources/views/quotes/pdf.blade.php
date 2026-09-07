@@ -112,7 +112,8 @@
              * Reserve a safe zone for the fixed footer on every page.
              * Content will continue on page 2 before reaching the footer.
              */
-            margin: 22px 28px 72px 28px;
+            /* CRM_DOCUMENT_PDF_SAFE_TOP_BOUNDARY_V1: 20 mm text-safe top boundary on every A4 page. */
+            margin: 76px 28px 72px 28px;
         }
 
         * {

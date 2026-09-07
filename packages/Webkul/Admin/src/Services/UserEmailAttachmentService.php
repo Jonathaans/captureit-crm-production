@@ -93,7 +93,7 @@ class UserEmailAttachmentService
 
         foreach ($attachments as $attachment) {
             if (
-                ! Storage::disk('local')
+                ! Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
                     ->exists(
                         $attachment->storage_path
                     )
@@ -102,7 +102,7 @@ class UserEmailAttachmentService
             }
 
             $data =
-                Storage::disk('local')
+                Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
                     ->get(
                         $attachment->storage_path
                     );
@@ -133,7 +133,7 @@ class UserEmailAttachmentService
                 ->get();
 
         foreach ($attachments as $attachment) {
-            Storage::disk('local')
+            Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
                 ->delete(
                     $attachment->storage_path
                 );
@@ -141,7 +141,7 @@ class UserEmailAttachmentService
             $attachment->delete();
         }
 
-        Storage::disk('local')
+        Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
             ->deleteDirectory(
                 $this->messageDirectory(
                     $message
@@ -207,7 +207,7 @@ class UserEmailAttachmentService
             .'/'
             .$storedName;
 
-        Storage::disk('local')
+        Storage::disk((string) config('crm-production-operations.attachments.disk', 'local'))
             ->put(
                 $path,
                 $data

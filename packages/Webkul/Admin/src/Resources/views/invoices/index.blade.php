@@ -21,17 +21,16 @@
                 Manage invoice, project, event status, payment, and expense.
             </p>
         </div>
-        {{-- EXPORT ALL EXPENSES CSV V1 --}}
-        @if (bouncer()->hasPermission('invoices.expense.export-all'))
-            <div class="flex items-center gap-2 max-sm:w-full">
-                <a
-                    href="{{ route('admin.invoices.expenses.export-all') }}"
-                    class="primary-button max-sm:w-full max-sm:justify-center"
-                >
-                    Export All Expenses
-                </a>
-            </div>
-        @endif
+        {{-- CRM_INVOICE_FLEXIBLE_BILLING_V1 --}}
+        <div class="flex items-center gap-2 max-sm:w-full">
+            <a
+                href="{{ route('admin.invoices.billing.create') }}"
+                class="primary-button max-sm:w-full max-sm:justify-center"
+            >
+                + Generate dari Quote
+            </a>
+        </div>
+        {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3: moved to Financial Report --}}
     </div>
 
     {!! view_render_event('admin.invoices.index.header.after') !!}

@@ -47,6 +47,19 @@
                         {{ $invoice->project_code ?? '-' }}
                     </span>
                 </div>
+                {{-- CRM_INVOICE_FLEXIBLE_BILLING_V1 --}}
+                @if ($invoice->billing_locked_at)
+                    @php
+                        $billingTypeLabel = match ($invoice->billing_type) {
+                            'down_payment' => 'DOWN PAYMENT',
+                            'settlement' => 'PELUNASAN',
+                            default => 'FULL PAYMENT',
+                        };
+                    @endphp
+                    <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        {{ $billingTypeLabel }}
+                    </span>
+                @endif
                 @if ($invoice->status === 'paid')
                     <span class="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
                         PAID

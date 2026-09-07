@@ -249,4 +249,46 @@
             </section>
         @endisset
     </div>
+
+        {{-- CRM_PRODUCTION_OPERATIONS_V2 --}}
+        @if (! empty($operationsHealth))
+            <div class="mt-4 rounded-xl border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">System Operations</p>
+                        <h2 class="text-xl font-bold text-gray-800 dark:text-white">Scheduler & Queue Health</h2>
+                        <p class="text-sm text-gray-500">Status aktual proses yang menjaga backup, email, dan pekerjaan background.</p>
+                    </div>
+                    <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                        Auto refresh saat dashboard dibuka
+                    </span>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    @foreach ($operationsHealth as $healthItem)
+                        @php
+                            $healthStatus = $healthItem['status'] ?? 'unknown';
+                            $healthTone = match ($healthStatus) {
+                                'healthy' => 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                                'running' => 'border-blue-200 bg-blue-50 text-blue-800',
+                                'warning', 'unknown' => 'border-amber-200 bg-amber-50 text-amber-800',
+                                default => 'border-red-200 bg-red-50 text-red-800',
+                            };
+                        @endphp
+
+                        <div class="rounded-xl border p-4 {{ $healthTone }}">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="font-semibold">{{ $healthItem['label'] }}</p>
+                                <span class="rounded-full bg-white/70 px-2 py-1 text-[10px] font-bold uppercase">{{ $healthStatus }}</span>
+                            </div>
+                            <p class="mt-3 text-sm font-semibold">Terakhir: {{ $healthItem['last_seen_human'] ?? '-' }}</p>
+                            @if (! empty($healthItem['message']))
+                                <p class="mt-1 line-clamp-3 text-xs opacity-80">{{ $healthItem['message'] }}</p>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
 </x-admin::layouts>

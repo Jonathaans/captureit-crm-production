@@ -1783,26 +1783,10 @@ if ($request->input('person_id') === '__new__') {
     public function generate(
         int $quoteId
     ): RedirectResponse {
-        $quote = Quote::with(
-            'items'
-        )->findOrFail(
-            $quoteId
-        );
-
-        $invoice = $this->invoiceService
-            ->createFromQuote(
-                $quote
-            );
-
-        session()->flash(
-            'success',
-            'Invoice berhasil dibuat: '
-            .$invoice->invoice_number
-        );
-
+        /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
         return redirect()->route(
-            'admin.invoices.show',
-            $invoice->id
+            'admin.invoices.billing.create',
+            ['quote_id' => $quoteId]
         );
     }
 /**

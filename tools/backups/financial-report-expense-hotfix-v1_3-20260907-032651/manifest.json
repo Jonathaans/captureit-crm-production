@@ -1,0 +1,15 @@
+{
+    "patch": "FINANCIAL REPORT + EXPENSE EXPORT HOTFIX V1.3",
+    "created_at": "2026-09-07T03:26:51+00:00",
+    "files": {
+        "packages/Webkul/Admin/src/Services/FlexibleQuoteBillingService.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/invoices/index.blade.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/invoices/financial-report.blade.php": {
+            "existed": true
+        }
+    }
+}
