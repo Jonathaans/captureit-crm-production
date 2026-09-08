@@ -1,0 +1,22 @@
+{
+    "patch": "INVENTORY MISSING RECOVERY STATION V2",
+    "created_at": "2026-09-08T02:49:58+00:00",
+    "files": [
+        {
+            "path": "packages/Webkul/Admin/src/Routes/Admin/inventory-routes.php",
+            "existed": true
+        },
+        {
+            "path": "packages/Webkul/Admin/src/Http/Controllers/Inventory/InventoryMissingRecoveryScanController.php",
+            "existed": true
+        },
+        {
+            "path": "packages/Webkul/Admin/src/Services/InventoryMissingRecoveryService.php",
+            "existed": true
+        },
+        {
+            "path": "packages/Webkul/Admin/src/Resources/views/inventory/assets/recover-missing-station.blade.php",
+            "existed": false
+        }
+    ]
+}

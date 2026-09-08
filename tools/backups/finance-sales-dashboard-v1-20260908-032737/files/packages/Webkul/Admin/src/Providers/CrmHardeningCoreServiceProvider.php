@@ -251,20 +251,6 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 }
             );
         }
-
-        /* CRM_FINANCE_SALES_DASHBOARD_V1 */
-        \Illuminate\Support\Facades\Route::middleware('web')
-            ->prefix('admin/finance-sales-dashboard')
-            ->controller(
-                \Webkul\Admin\Http\Controllers\Invoice\FinanceSalesDashboardController::class
-            )
-            ->group(function () {
-                \Illuminate\Support\Facades\Route::get('/', 'index')
-                    ->name('admin.finance-sales-dashboard.index');
-
-                \Illuminate\Support\Facades\Route::get('export', 'export')
-                    ->name('admin.finance-sales-dashboard.export');
-            });
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CrmSecurityAuditCommand::class,

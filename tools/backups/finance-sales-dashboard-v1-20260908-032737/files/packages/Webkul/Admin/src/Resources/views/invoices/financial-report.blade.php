@@ -69,13 +69,6 @@
                     </a>
                 @endif
 
-                {{-- CRM_FINANCE_SALES_DASHBOARD_V1 --}}
-                <a
-                    href="{{ route('admin.finance-sales-dashboard.index') }}"
-                    class="secondary-button rounded-lg px-4 py-2.5 text-sm"
-                >
-                    Finance & Sales Dashboard
-                </a>
                 {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3 --}}
                 @if (bouncer()->hasPermission('invoices.expense.export-all'))
                     <a

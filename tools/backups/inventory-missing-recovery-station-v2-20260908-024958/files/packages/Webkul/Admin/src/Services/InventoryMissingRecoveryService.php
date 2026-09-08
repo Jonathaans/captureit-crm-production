@@ -2,7 +2,6 @@
 
 namespace Webkul\Admin\Services;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Webkul\Warehouse\Models\InventoryAsset;
@@ -11,34 +10,8 @@ use Webkul\Warehouse\Models\InventoryStockMovement;
 class InventoryMissingRecoveryService
 {
     /**
-     * Resolve the physical scan on the server. This deliberately does not
-     * depend on a browser key-buffer: a keyboard-wedge scanner writes into a
-     * normal input and the native form submit sends the complete value here.
-     */
-    public function findByBarcode(string $scannedBarcode, ?string $status = null): ?InventoryAsset
-    {
-        $scanned = $this->normalize($scannedBarcode);
-
-        if ($scanned === '') {
-            return null;
-        }
-
-        return InventoryAsset::query()
-            ->with(['item', 'warehouse'])
-            ->when(
-                $status !== null,
-                static fn (Builder $query) => $query->where('status', $status)
-            )
-            ->where(function (Builder $query) use ($scanned) {
-                $query
-                    ->whereRaw('UPPER(TRIM(asset_code)) = ?', [$scanned])
-                    ->orWhereRaw('UPPER(TRIM(barcode_value)) = ?', [$scanned]);
-            })
-            ->first();
-    }
-
-    /**
-     * Accept the printed barcode value or asset code for legacy labels.
+     * Barcode/QR printed for older assets may contain either barcode_value
+     * or asset_code. Both are accepted, but an arbitrary/manual value is not.
      */
     public function barcodeMatches(InventoryAsset $asset, string $scannedBarcode): bool
     {
@@ -63,8 +36,8 @@ class InventoryMissingRecoveryService
     }
 
     /**
-     * Recover one missing serialized asset and write its immutable movement
-     * in the same database transaction. Row locking prevents double recovery.
+     * Recover one missing serialized asset and create its immutable movement
+     * entry atomically. Concurrent/double submissions cannot recover twice.
      */
     public function recover(int $assetId, array $data, int $performedBy): InventoryStockMovement
     {
@@ -77,13 +50,13 @@ class InventoryMissingRecoveryService
 
             if ($asset->status !== 'missing') {
                 throw ValidationException::withMessages([
-                    'barcode' => 'Asset ini sudah tidak berstatus MISSING. Mulai recovery baru.',
+                    'scanned_barcode' => 'Asset ini sudah tidak berstatus MISSING. Muat ulang halaman sebelum melanjutkan.',
                 ]);
             }
 
             if (! $this->barcodeMatches($asset, (string) $data['scanned_barcode'])) {
                 throw ValidationException::withMessages([
-                    'barcode' => 'Barcode/QR tidak lagi cocok dengan asset '.$asset->asset_code.'.',
+                    'scanned_barcode' => 'Barcode/QR yang dipindai tidak cocok dengan asset '.$asset->asset_code.'.',
                 ]);
             }
 
@@ -118,8 +91,8 @@ class InventoryMissingRecoveryService
             $recoveryNumber = 'REC-'.now()->format('Ymd-His').'-'.$asset->id;
 
             $auditNote = implode(' | ', array_filter([
-                'Missing asset recovered at Recovery Station',
-                'Physical scan: '.trim((string) $data['scanned_barcode']),
+                'Missing asset recovered by barcode scan',
+                'Scan: '.trim((string) $data['scanned_barcode']),
                 'Condition: '.strtoupper($condition),
                 'Warehouse: '.$warehouse->name,
                 'Location: '.$foundLocation,

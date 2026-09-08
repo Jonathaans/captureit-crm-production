@@ -105,9 +105,34 @@
                             Scan dengan Kamera
                         </button>
 
-                        <button id="usb-button" type="button" class="secondary-button justify-center">
-                            Scanner Keyboard Otomatis Aktif — Scan Sekarang
-                        </button>
+                        <div class="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
+                            <p class="text-sm font-bold text-green-900 dark:text-green-200">
+                                Tidak perlu klik input atau tombol
+                            </p>
+
+                            <p class="mt-1 text-xs leading-5 text-green-700 dark:text-green-300">
+                                Sama seperti Manage Allocation Items: langsung scan barcode/QR. Ketika scanner mengirim Enter,
+                                kode otomatis diperiksa dan masuk sebagai hasil scan.
+                            </p>
+
+                            <div class="mt-3 flex items-center gap-3">
+                                <div
+                                    id="scan-indicator"
+                                    class="flex h-10 w-10 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white"
+                                >
+                                    QR
+                                </div>
+
+                                <div>
+                                    <p id="scanner-state-text" class="text-sm font-bold text-green-900 dark:text-green-200">
+                                        READY — langsung scan QR
+                                    </p>
+                                    <p id="last-scan" class="mt-1 text-xs text-green-700 dark:text-green-300">
+                                        Belum ada scan pada sesi ini.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
 
                         <button id="reset-button" type="button" class="secondary-button hidden justify-center">
                             Reset Scan
@@ -120,7 +145,7 @@
                             <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Hasil Scan</p>
                             <p id="scan-result" class="mt-2 break-all font-mono text-sm font-semibold text-gray-700 dark:text-gray-200">—</p>
                             <p id="scan-help" class="mt-2 text-xs text-gray-500">
-                                Scanner keyboard otomatis aktif. Langsung pindai label atau gunakan kamera.
+                                Scanner siap tanpa tombol aktivasi. Langsung pindai label fisik sekarang.
                             </p>
                         </div>
                     </div>
@@ -242,7 +267,7 @@
         </form>
     </div>
 
-    {{-- INVENTORY_MISSING_RECOVERY_SCANNER_KEYBOARD_HOTFIX_V1_2 --}}
+    {{-- INVENTORY_MISSING_RECOVERY_SCANNER_ALLOCATION_BEHAVIOR_V1_3 --}}
     @pushOnce('scripts')
         <script>
             (() => {
@@ -253,13 +278,14 @@
                 const cameraShell = document.getElementById('camera-shell');
                 const video = document.getElementById('barcode-camera');
                 const cameraButton = document.getElementById('camera-button');
-                const usbButton = document.getElementById('usb-button');
                 const resetButton = document.getElementById('reset-button');
                 const hiddenBarcode = document.getElementById('scanned-barcode');
                 const scanResult = document.getElementById('scan-result');
                 const scanHelp = document.getElementById('scan-help');
                 const scanBadge = document.getElementById('scan-badge');
                 const resultBox = document.getElementById('scan-result-box');
+                const scannerState = document.getElementById('scanner-state-text');
+                const lastScan = document.getElementById('last-scan');
                 const condition = document.getElementById('condition');
                 const damageReasonWrap = document.getElementById('damage-reason-wrap');
                 const damageReason = document.getElementById('damage-reason');
@@ -269,10 +295,9 @@
                 let mediaStream = null;
                 let detector = null;
                 let detectFrame = null;
-                let usbActive = true;
-                let usbBuffer = '';
-                let usbLastKeyAt = 0;
-                let usbCommitTimer = null;
+                let scanBuffer = '';
+                let lastKeyAt = 0;
+                let scannerPaused = false;
                 let scanMatched = false;
 
                 const normalize = (value) => String(value || '').trim().toUpperCase();
@@ -302,13 +327,6 @@
                     cameraButton.textContent = 'Scan dengan Kamera';
                 };
 
-                const clearUsbCommitTimer = () => {
-                    if (usbCommitTimer) {
-                        clearTimeout(usbCommitTimer);
-                        usbCommitTimer = null;
-                    }
-                };
-
                 const setMismatch = (value) => {
                     scanMatched = false;
                     hiddenBarcode.value = '';
@@ -318,9 +336,10 @@
                     scanBadge.className = 'rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700';
                     resultBox.className = 'rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30';
                     resetButton.classList.remove('hidden');
-                    usbActive = true;
-                    usbBuffer = '';
-                    usbButton.textContent = 'Scanner Keyboard Aktif — Scan Ulang';
+                    scanBuffer = '';
+                    scannerPaused = false;
+                    scannerState.textContent = 'READY — scan ulang QR yang benar';
+                    lastScan.textContent = `Scan ditolak: ${value}`;
                     updateSubmit();
                 };
 
@@ -344,47 +363,28 @@
                     scanBadge.className = 'rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700';
                     resultBox.className = 'rounded-xl border border-green-300 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30';
                     resetButton.classList.remove('hidden');
-                    usbActive = false;
-                    usbBuffer = '';
-                    clearUsbCommitTimer();
-                    usbButton.textContent = 'Scan Berhasil';
+                    scannerPaused = true;
+                    scanBuffer = '';
+                    scannerState.textContent = 'SCAN BERHASIL';
+                    lastScan.textContent = `Last scan: ${rawValue.trim()}`;
                     stopCamera();
                     updateSubmit();
                 };
 
-                const commitUsbBuffer = () => {
-                    clearUsbCommitTimer();
-                    const value = usbBuffer;
-                    usbBuffer = '';
-
-                    if (value) {
-                        acceptScan(value);
-                    }
-                };
-
-                const armUsbScanner = () => {
-                    stopCamera();
-                    clearUsbCommitTimer();
-                    usbActive = true;
-                    usbBuffer = '';
-                    usbButton.textContent = 'Scanner Keyboard Aktif — Scan Sekarang';
-                    scanHelp.textContent = 'Scanner keyboard siap. Langsung pindai label; Enter/Tab atau jeda akhir scan akan terdeteksi otomatis.';
-                };
-
                 const resetScan = () => {
                     stopCamera();
-                    clearUsbCommitTimer();
-                    usbActive = true;
-                    usbBuffer = '';
+                    scannerPaused = false;
+                    scanBuffer = '';
                     scanMatched = false;
                     hiddenBarcode.value = '';
                     scanResult.textContent = '—';
-                    scanHelp.textContent = 'Scanner keyboard otomatis aktif. Langsung pindai label atau gunakan kamera.';
+                    scanHelp.textContent = 'Scanner siap tanpa tombol aktivasi. Langsung pindai label fisik sekarang.';
                     scanBadge.textContent = 'BELUM DIPINDAI';
                     scanBadge.className = 'rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700';
                     resultBox.className = 'rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-950';
                     resetButton.classList.add('hidden');
-                    usbButton.textContent = 'Scanner Keyboard Otomatis Aktif — Scan Sekarang';
+                    scannerState.textContent = 'READY — langsung scan QR';
+                    lastScan.textContent = 'Belum ada scan pada sesi ini.';
                     updateSubmit();
                 };
 
@@ -409,16 +409,20 @@
 
                 cameraButton.addEventListener('click', async () => {
                     if (mediaStream) {
-                        armUsbScanner();
+                        stopCamera();
+                        scannerPaused = false;
+                        scannerState.textContent = 'READY — langsung scan QR';
+                        scanHelp.textContent = 'Scanner siap tanpa tombol aktivasi. Langsung pindai label fisik sekarang.';
                         return;
                     }
 
-                    clearUsbCommitTimer();
-                    usbActive = false;
-                    usbBuffer = '';
-                    usbButton.textContent = 'Scanner Keyboard Dijeda Saat Kamera Aktif';
+                    scannerPaused = true;
+                    scanBuffer = '';
+                    scannerState.textContent = 'SCANNER KEYBOARD DIJEDA — kamera aktif';
 
                     if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) {
+                        scannerPaused = false;
+                        scannerState.textContent = 'READY — langsung scan QR';
                         scanHelp.textContent = 'Browser ini belum mendukung scan kamera. Gunakan Chrome/Edge terbaru melalui HTTPS/localhost atau scanner USB.';
                         return;
                     }
@@ -441,60 +445,67 @@
                         detectFrame = requestAnimationFrame(scanCameraFrame);
                     } catch (error) {
                         stopCamera();
-                        usbActive = true;
-                        usbButton.textContent = 'Scanner Keyboard Otomatis Aktif — Scan Sekarang';
+                        scannerPaused = false;
+                        scannerState.textContent = 'READY — langsung scan QR';
                         scanHelp.textContent = 'Kamera tidak dapat dibuka. Periksa izin browser atau gunakan scanner USB.';
                     }
                 });
 
-                usbButton.addEventListener('click', () => {
-                    if (!scanMatched) {
-                        armUsbScanner();
-                    }
-                });
-
+                // Same keyboard-wedge behavior used by Manage Allocation Items.
                 document.addEventListener('keydown', (event) => {
-                    if (!usbActive || scanMatched || mediaStream || event.ctrlKey || event.altKey || event.metaKey) {
+                    const target = event.target;
+
+                    if (
+                        target
+                        && (
+                            target.matches('[data-allow-typing]')
+                            || target.tagName === 'INPUT'
+                            || target.tagName === 'TEXTAREA'
+                            || target.tagName === 'SELECT'
+                            || target.isContentEditable
+                        )
+                    ) {
+                        return;
+                    }
+
+                    if (
+                        scannerPaused
+                        || scanMatched
+                        || mediaStream
+                        || event.ctrlKey
+                        || event.altKey
+                        || event.metaKey
+                    ) {
                         return;
                     }
 
                     const now = Date.now();
 
-                    if (now - usbLastKeyAt > 1500) {
-                        usbBuffer = '';
+                    if (lastKeyAt && now - lastKeyAt > 800) {
+                        scanBuffer = '';
                     }
 
-                    usbLastKeyAt = now;
+                    lastKeyAt = now;
 
                     if (event.key === 'Enter' || event.key === 'Tab') {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        commitUsbBuffer();
+                        if (scanBuffer.trim()) {
+                            event.preventDefault();
+                            event.stopPropagation();
+
+                            const code = scanBuffer.trim();
+                            scanBuffer = '';
+                            acceptScan(code);
+                        }
+
                         return;
                     }
 
-                    if (event.key === 'Backspace') {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        usbBuffer = usbBuffer.slice(0, -1);
-                        return;
+                    if (event.key.length === 1 && ! event.repeat) {
+                        scanBuffer += event.key;
+                        scannerState.textContent = 'SCANNING…';
+                        scanHelp.textContent = 'Menerima data langsung dari scanner keyboard…';
                     }
-
-                    if (event.key === 'Escape') {
-                        event.preventDefault();
-                        resetScan();
-                        return;
-                    }
-
-                    if (event.key.length === 1) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        usbBuffer += event.key;
-                        scanHelp.textContent = 'Menerima data dari scanner keyboard…';
-                        clearUsbCommitTimer();
-                        usbCommitTimer = setTimeout(commitUsbBuffer, 350);
-                    }
-                }, true);
+                });
 
                 const syncDamageReason = () => {
                     const isDamaged = condition.value === 'damaged';
@@ -508,7 +519,7 @@
                 window.addEventListener('pagehide', stopCamera);
                 syncDamageReason();
                 updateSubmit();
-                armUsbScanner();
+                scannerState.textContent = 'READY — langsung scan QR';
             })();
         </script>
     @endPushOnce

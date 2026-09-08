@@ -21,15 +21,6 @@
                 Manage invoice, project, event status, payment, and expense.
             </p>
         </div>
-        {{-- CRM_FINANCE_SALES_DASHBOARD_V1 --}}
-        <div class="flex items-center gap-2 max-sm:w-full">
-            <a
-                href="{{ route('admin.finance-sales-dashboard.index') }}"
-                class="secondary-button max-sm:w-full max-sm:justify-center"
-            >
-                Finance & Sales Dashboard
-            </a>
-        </div>
         {{-- CRM_INVOICE_FLEXIBLE_BILLING_V1 --}}
         <div class="flex items-center gap-2 max-sm:w-full">
             <a
