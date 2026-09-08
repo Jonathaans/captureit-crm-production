@@ -331,11 +331,13 @@
 
         pollUnread();
 
-        /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2: satu kali resync saat connect/reconnect. */
-        window.addEventListener('crm:realtime-status', (event) => {
-            if (event.detail?.status === 'connected') {
-                pollUnread();
-            }
-        });
+        window.setInterval(
+            () => {
+                if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                    pollUnread();
+                }
+            },
+            window.crmInternalChatRealtime?.fallbackPollMs || 30000
+        );
     })();
 </script>

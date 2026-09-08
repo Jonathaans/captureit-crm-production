@@ -229,7 +229,7 @@
                                 🔎 Search
                             </button>
 
-                            <span id="crm-chat-realtime-status" class="rounded-full px-3 py-2 text-xs font-semibold" title="Menghubungkan WebSocket" style="background:#fef3c7;color:#92400e;">Connecting</span>
+                            <span id="crm-chat-realtime-status" class="rounded-full px-3 py-2 text-xs font-semibold" title="Menghubungkan WebSocket" style="background:#fef3c7;color:#92400e;">Fallback</span>
 
                             <div class="rounded-full border bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">
                                 🔒 Private
@@ -1424,7 +1424,7 @@
                     }
                 };
 
-            /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2: typing hanya melalui event Reverb. */
+            /* Typing WebSocket; fallback ditangani listener V3.2.2 di bawah. */
 
             if (searchModal) {
                 searchModal.addEventListener(
@@ -3521,8 +3521,17 @@
                     )
                 );
 
-                /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2 */
-                window.crmChatSyncMessages = pollMessages;
+                /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+                window.crmChatPollMessages = pollMessages;
+
+                window.setInterval(
+                    () => {
+                        if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                            pollMessages();
+                        }
+                    },
+                    window.crmInternalChatRealtime?.fallbackPollMs || 30000
+                );
             })();
         </script>
     @endif
@@ -4610,8 +4619,13 @@
                     )
                     : '';
 
-            /* Status typing diterima melalui WebSocket. */
-
+            const typingStatusUrl =
+                chatRoot
+                    ? String(
+                        chatRoot.dataset.typingStatusUrl
+                        || ''
+                    )
+                    : '';
 
             const csrfToken =
                 csrf
@@ -4723,7 +4737,86 @@
                 );
             }
 
-            /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2: tidak ada polling typing. */
+            if (
+                typingStatusUrl
+                && typingIndicator
+                && ! window.__crmV322TypingPoll
+            ) {
+                window.__crmV322TypingPoll =
+                    window.setInterval(
+                        async () => {
+                            if (window.crmInternalChatRealtime?.isConnected?.()) {
+                                return;
+                            }
+
+                            try {
+                                const response =
+                                    await fetch(
+                                        typingStatusUrl,
+                                        {
+                                            headers: {
+                                                'Accept':
+                                                    'application/json',
+
+                                                'X-Requested-With':
+                                                    'XMLHttpRequest',
+                                            },
+
+                                            credentials:
+                                                'same-origin',
+
+                                            cache:
+                                                'no-store',
+                                        }
+                                    );
+
+                                if (! response.ok) {
+                                    return;
+                                }
+
+                                const data =
+                                    await response.json();
+
+                                if (
+                                    data.typing
+                                    && Array.isArray(
+                                        data.users
+                                    )
+                                    && data.users.length
+                                ) {
+                                    typingIndicator.textContent =
+                                        data.users
+                                            .map(
+                                                (user) =>
+                                                    user.name
+                                                    || 'User'
+                                            )
+                                            .join(
+                                                ', '
+                                            )
+                                        + ' sedang mengetik...';
+
+                                    typingIndicator.classList.remove(
+                                        'hidden'
+                                    );
+
+                                    typingIndicator.style.display =
+                                        'block';
+                                } else {
+                                    typingIndicator.classList.add(
+                                        'hidden'
+                                    );
+
+                                    typingIndicator.style.display =
+                                        'none';
+                                }
+                            } catch (error) {
+                                // Ignore temporary polling failure.
+                            }
+                        },
+                        window.crmInternalChatRealtime?.fallbackPollMs || 30000
+                    );
+            }
 
             /*
             |--------------------------------------------------------------------------
@@ -6853,7 +6946,14 @@
                 15000
             );
 
-            /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2: sidebar hanya resync dari event/reconnect. */
+            window.setInterval(
+                () => {
+                    if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                        refreshSidebar();
+                    }
+                },
+                window.crmInternalChatRealtime?.fallbackPollMs || 30000
+            );
 
             window.crmChatV33RefreshSidebar =
                 refreshSidebar;

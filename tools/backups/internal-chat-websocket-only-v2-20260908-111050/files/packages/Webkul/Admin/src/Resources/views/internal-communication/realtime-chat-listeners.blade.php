@@ -1,6 +1,5 @@
 @if ($conversation)
     <script>
-        /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2 */
         (() => {
             const conversationId = {{ (int) $conversation->id }};
             const currentUserId = {{ (int) auth()->guard('user')->id() }};
@@ -14,7 +13,7 @@
                     return;
                 }
 
-                window.crmChatSyncMessages?.();
+                window.crmChatPollMessages?.();
                 window.crmChatV33RefreshSidebar?.();
             };
 
@@ -51,11 +50,9 @@
             window.addEventListener('crm:chat-user-state', () => {
                 window.crmChatV33RefreshSidebar?.();
             });
-
-            /* Satu kali resync setelah koneksi/reconnect; tidak ada timer polling. */
             window.addEventListener('crm:realtime-status', (event) => {
                 if (event.detail?.status === 'connected') {
-                    window.crmChatSyncMessages?.();
+                    window.crmChatPollMessages?.();
                     window.crmChatV33RefreshSidebar?.();
                 }
             });

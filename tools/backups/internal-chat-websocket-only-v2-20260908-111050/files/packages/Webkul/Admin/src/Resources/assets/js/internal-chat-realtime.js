@@ -1,7 +1,6 @@
 import Echo from "laravel-echo";
 import Pusher from "pusher-js";
 
-/* INTERNAL_CHAT_WEBSOCKET_ONLY_V2 */
 const dispatch = (name, detail = {}) => {
     window.dispatchEvent(new CustomEvent(name, { detail }));
 };
@@ -23,12 +22,17 @@ const boot = () => {
     ).toLowerCase();
     const secure = scheme === "https" || window.location.protocol === "https:";
     const port = Number(config.dataset.port || (secure ? 443 : 80));
+    const fallbackPollMs = Math.max(15000, Number(config.dataset.fallbackPollMs || 30000));
 
     const state = {
         echo: null,
         status: "starting",
+        fallbackPollMs,
         isConnected() {
             return this.status === "connected";
+        },
+        shouldFallbackPoll() {
+            return !this.isConnected();
         },
     };
 
@@ -42,26 +46,12 @@ const boot = () => {
 
         if (statusBadge) {
             const connected = status === "connected";
-            const connecting = status === "starting" || status === "connecting";
-
-            statusBadge.textContent = connected
-                ? "Live"
-                : connecting
-                    ? "Connecting"
-                    : "Offline";
+            statusBadge.textContent = connected ? "Live" : "Fallback";
             statusBadge.title = connected
                 ? "WebSocket tersambung"
-                : `WebSocket ${status}${reason ? `: ${reason}` : ""}; pembaruan real-time berhenti sampai tersambung kembali`;
-            statusBadge.style.background = connected
-                ? "#dcfce7"
-                : connecting
-                    ? "#fef3c7"
-                    : "#fee2e2";
-            statusBadge.style.color = connected
-                ? "#166534"
-                : connecting
-                    ? "#92400e"
-                    : "#991b1b";
+                : `WebSocket ${status}${reason ? `: ${reason}` : ""}; HTTP fallback aktif`;
+            statusBadge.style.background = connected ? "#dcfce7" : "#fef3c7";
+            statusBadge.style.color = connected ? "#166534" : "#92400e";
         }
 
         dispatch("crm:realtime-status", { status, reason });

@@ -205,7 +205,7 @@ class InternalChatRealtimeService
                     (string) Str::uuid(),
                 ));
             } catch (Throwable $exception) {
-                Log::warning('Internal Chat realtime broadcast failed; clients will resync after WebSocket reconnect.', [
+                Log::warning('Internal Chat realtime broadcast failed; HTTP fallback remains active.', [
                     'channel' => $channel,
                     'kind' => $kind,
                     'exception' => $exception->getMessage(),

@@ -1,5 +1,4 @@
 @php
-    /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2 */
     $crmRealtimeConnection = (string) config('broadcasting.default', 'null');
     $crmRealtimeOptions = (array) config('broadcasting.connections.'.$crmRealtimeConnection.'.options', []);
     $crmRealtimeEnabled = (bool) config('internal_chat_realtime.enabled', true)
@@ -20,6 +19,7 @@
     data-scheme="{{ (string) ($crmRealtimeOptions['scheme'] ?? (request()->isSecure() ? 'https' : 'http')) }}"
     data-auth-endpoint="{{ url('/broadcasting/auth') }}"
     data-csrf="{{ csrf_token() }}"
+    data-fallback-poll-ms="{{ (int) config('internal_chat_realtime.fallback_poll_ms', 30000) }}"
     data-status="starting"
     hidden
 ></div>

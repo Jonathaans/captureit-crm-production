@@ -1,0 +1,39 @@
+{
+    "patch": "INTERNAL CHAT WEBSOCKET-ONLY V2.1",
+    "created_at": "2026-09-08T11:10:50+00:00",
+    "files": {
+        ".env.example": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Config/internal_chat_realtime.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Events/InternalChatRealtimeEvent.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Services/InternalChatRealtimeService.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/assets/js/internal-chat-realtime.js": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-config.blade.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-chat-listeners.blade.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/internal-communication/chat.blade.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/internal-communication/widget.blade.php": {
+            "existed": true
+        },
+        "packages/Webkul/Admin/src/Resources/views/internal-communication/chat-unread-badge.blade.php": {
+            "existed": true
+        },
+        "docs/INTERNAL_CHAT_WEBSOCKET_ONLY_V2.md": {
+            "existed": false
+        }
+    }
+}

@@ -1,5 +1,4 @@
 {{-- INTERNAL_CHAT_WEBSOCKET_REVERB_V1 --}}
-{{-- INTERNAL_CHAT_WEBSOCKET_ONLY_V2 --}}
 @include('admin::internal-communication.realtime-config')
 <!-- CRM_INTERNAL_COMMUNICATION_WIDGET -->
 <style>
@@ -251,7 +250,7 @@
                 credentials: 'same-origin',
             });
         } catch (error) {
-            // Reconnect resync will claim the notification later.
+            // Fallback polling can safely claim the notification later.
         }
     };
 
@@ -312,12 +311,14 @@
         1500
     );
 
-    /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2: satu kali resync saat connect/reconnect. */
-    window.addEventListener('crm:realtime-status', (event) => {
-        if (event.detail?.status === 'connected') {
-            poll();
-        }
-    });
+    window.setInterval(
+        () => {
+            if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                poll();
+            }
+        },
+        window.crmInternalChatRealtime?.fallbackPollMs || 30000
+    );
 })();
 </script>
 
