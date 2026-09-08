@@ -17,9 +17,7 @@
         ];
     @endphp
 
-    {{-- CRM_FINANCE_SALES_DASHBOARD_STYLE_STABILITY_V1_2 --}}
-    @push('styles')
-        <style id="crm-finance-sales-dashboard-styles-v1-2">
+    <style>
         .fsd-v11 {
             --fsd-bg: #ffffff;
             --fsd-soft: #f8fafc;
@@ -382,8 +380,7 @@
             .fsd-actions > a,
             .fsd-actions > button { justify-content: center; width: 100%; }
         }
-        </style>
-    @endpush
+    </style>
 
     <div class="fsd-v11">
         <section class="fsd-panel fsd-header">

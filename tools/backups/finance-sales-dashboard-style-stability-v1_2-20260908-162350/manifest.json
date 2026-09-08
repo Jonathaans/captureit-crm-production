@@ -1,0 +1,9 @@
+{
+    "patch": "FINANCE & SALES DASHBOARD STYLE STABILITY HOTFIX V1.2",
+    "created_at": "2026-09-08T16:23:50+00:00",
+    "files": {
+        "packages/Webkul/Admin/src/Resources/views/invoices/finance-sales-dashboard.blade.php": {
+            "existed": true
+        }
+    }
+}
