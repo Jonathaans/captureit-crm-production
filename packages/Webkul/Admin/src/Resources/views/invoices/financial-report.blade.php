@@ -60,35 +60,59 @@
                     </p>
                 </div>
 
-                @if (bouncer()->hasPermission('invoices.financial-report.export'))
+                {{-- CRM_FINANCE_SALES_DASHBOARD_UI_HOTFIX_V1_1 --}}
+                {{-- CRM_FINANCE_SALES_DASHBOARD_V1 --}}
+                {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3 --}}
+                <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto">
+                    @if (bouncer()->hasPermission('invoices.financial-report.export'))
+                        <a
+                            href="{{ route('admin.invoices.financial-report.export', ['year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
+                            class="secondary-button rounded-lg px-4 py-2.5 text-sm"
+                        >
+                            Export Financial Report
+                        </a>
+                    @endif
+
                     <a
-                        href="{{ route('admin.invoices.financial-report.export', ['year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
+                        href="{{ route('admin.finance-sales-dashboard.index') }}"
                         class="secondary-button rounded-lg px-4 py-2.5 text-sm"
                     >
-                        Export Financial Report
+                        Finance & Sales Dashboard
                     </a>
-                @endif
 
-                {{-- CRM_FINANCE_SALES_DASHBOARD_V1 --}}
-                <a
-                    href="{{ route('admin.finance-sales-dashboard.index') }}"
-                    class="secondary-button rounded-lg px-4 py-2.5 text-sm"
-                >
-                    Finance & Sales Dashboard
-                </a>
-                {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3 --}}
-                @if (bouncer()->hasPermission('invoices.expense.export-all'))
-                    <a
-                        href="{{ route('admin.invoices.expenses.export-all') }}"
-                        class="primary-button rounded-lg px-4 py-2.5 text-sm"
-                    >
-                        Export All Expenses
-                    </a>
-                @endif
+                    @if (bouncer()->hasPermission('invoices.expense.export-all'))
+                        <a
+                            href="{{ route('admin.invoices.expenses.export-all') }}"
+                            class="primary-button rounded-lg px-4 py-2.5 text-sm"
+                        >
+                            Export All Expenses
+                        </a>
+                    @endif
+                </div>
             </div>
 
+            <style>
+                .crm-fr-v11-filter-grid {
+                    display: grid;
+                    grid-template-columns: repeat(5, minmax(0, 1fr));
+                    gap: 16px;
+                }
+
+                @media (max-width: 1180px) {
+                    .crm-fr-v11-filter-grid {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                }
+
+                @media (max-width: 680px) {
+                    .crm-fr-v11-filter-grid {
+                        grid-template-columns: 1fr;
+                    }
+                }
+            </style>
+
             <form method="GET" action="{{ route('admin.invoices.financial-report') }}">
-                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <div class="crm-fr-v11-filter-grid">
                     <div>
                         <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             Year

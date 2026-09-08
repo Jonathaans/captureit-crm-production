@@ -264,7 +264,7 @@
     "isDynamicEntry": true
   },
   "src/Resources/assets/css/app.css": {
-    "file": "assets/app-BvLhLMO0.css",
+    "file": "assets/app-DzkUfpkS.css",
     "src": "src/Resources/assets/css/app.css",
     "isEntry": true
   },
@@ -349,8 +349,12 @@
     "src": "src/Resources/assets/images/error.svg"
   },
   "src/Resources/assets/images/favicon.ico": {
-    "file": "assets/favicon-BtbgZBji.ico",
+    "file": "assets/favicon-DMV8fRv9.ico",
     "src": "src/Resources/assets/images/favicon.ico"
+  },
+  "src/Resources/assets/images/favicon1.ico": {
+    "file": "assets/favicon1-BtbgZBji.ico",
+    "src": "src/Resources/assets/images/favicon1.ico"
   },
   "src/Resources/assets/images/logo.svg": {
     "file": "assets/logo-Bjh7YAuF.svg",
@@ -365,7 +369,7 @@
     "src": "src/Resources/assets/images/mobile-light-logo.svg"
   },
   "src/Resources/assets/js/app.js": {
-    "file": "assets/app-BNXXPcc9.js",
+    "file": "assets/app-IJiyOLYe.js",
     "name": "app",
     "src": "src/Resources/assets/js/app.js",
     "isEntry": true,

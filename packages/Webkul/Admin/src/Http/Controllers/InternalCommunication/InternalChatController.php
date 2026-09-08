@@ -13,6 +13,7 @@ use Webkul\Admin\Models\InternalConversation;
 use Webkul\Admin\Models\InternalConversationMember;
 use Webkul\Admin\Models\InternalMessage;
 use Webkul\Admin\Services\InternalChatService;
+use Webkul\Admin\Services\InternalChatRealtimeService;
 use Webkul\Admin\Services\WorkflowNotificationService;
 
 class InternalChatController extends Controller
@@ -67,10 +68,8 @@ $messages =
                     )
                     ->values();
 
-            $chat->markRead($conversationId, $user->id);
-
-            /* INTERNAL CHAT V3.3.9 READ CURSOR SYNC */
-            $this->syncReadMessageCursor(
+            $this->markConversationRead(
+                $chat,
                 $conversationId,
                 (int) $user->id
             );
@@ -378,6 +377,13 @@ $messages =
             );
         }
 
+        /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+        app(InternalChatRealtimeService::class)->conversationChanged(
+            $conversationId,
+            'message.created',
+            (int) $user->id
+        );
+
         if ($request->expectsJson()) {
             return response()->json(
                 $this->messagePayload(
@@ -480,10 +486,8 @@ $messages =
                 )
                 ->pluck('name', 'id');
 
-        $chat->markRead($conversationId, $user->id);
-
-            /* INTERNAL CHAT V3.3.9 READ CURSOR SYNC */
-            $this->syncReadMessageCursor(
+        $this->markConversationRead(
+                $chat,
                 $conversationId,
                 (int) $user->id
             );
@@ -567,6 +571,12 @@ $messages =
         $message->edited_at = now();
         $message->save();
 
+        app(InternalChatRealtimeService::class)->conversationChanged(
+            $conversationId,
+            'message.updated',
+            (int) $user->id
+        );
+
         return response()->json(
             $this->messagePayload(
                 $message->fresh('attachments'),
@@ -596,6 +606,12 @@ $messages =
          */
         $message->deleted_at = now();
         $message->save();
+
+        app(InternalChatRealtimeService::class)->conversationChanged(
+            $conversationId,
+            'message.deleted',
+            (int) $user->id
+        );
 
         return response()->json([
             'deleted' => true,
@@ -728,6 +744,39 @@ $messages =
         ];
     }
 
+    /** INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+    private function markConversationRead(
+        InternalChatService $chat,
+        int $conversationId,
+        int $userId
+    ): void {
+        $previousCursor = $this->readMessageCursor($conversationId, $userId);
+
+        $chat->markRead($conversationId, $userId);
+        $this->syncReadMessageCursor($conversationId, $userId);
+
+        $currentCursor = $this->readMessageCursor($conversationId, $userId);
+
+        if ($currentCursor > $previousCursor) {
+            app(InternalChatRealtimeService::class)->conversationChanged(
+                $conversationId,
+                'conversation.read',
+                $userId
+            );
+        }
+    }
+
+    private function readMessageCursor(int $conversationId, int $userId): int
+    {
+        if (! Schema::hasColumn('internal_conversation_members', 'last_read_message_id')) {
+            return 0;
+        }
+
+        return (int) (DB::table('internal_conversation_members')
+            ->where('conversation_id', $conversationId)
+            ->where('user_id', $userId)
+            ->value('last_read_message_id') ?? 0);
+    }
     /**
      * Keep unread state deterministic per conversation.
      *

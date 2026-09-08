@@ -19,6 +19,14 @@ use Webkul\Admin\Observers\InternalMessageAuditObserver;
 
 class InternalCommunicationServiceProvider extends ServiceProvider
 {
+    /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+    public function register(): void
+    {
+        $this->mergeConfigFrom(
+            dirname(__DIR__).'/Config/internal_chat_realtime.php',
+            'internal_chat_realtime'
+        );
+    }
     public function boot(
         Router $router
     ): void {
@@ -76,6 +84,16 @@ class InternalCommunicationServiceProvider extends ServiceProvider
                         'admin.internal-notifications.poll'
                     );
 
+                    /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+                    Route::post(
+                        'internal-notifications/{id}/popup-ack',
+                        [
+                            WorkflowNotificationController::class,
+                            'popupAck',
+                        ]
+                    )->name(
+                        'admin.internal-notifications.popup-ack'
+                    );
                     Route::get(
                         'internal-notifications/{id}/open',
                         [

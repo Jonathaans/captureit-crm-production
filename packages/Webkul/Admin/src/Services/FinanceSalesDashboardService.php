@@ -60,17 +60,7 @@ class FinanceSalesDashboardService
             'salesUsers' => User::query()
                 ->orderBy('name')
                 ->get(['id', 'name']),
-            'businessUnits' => Invoice::query()
-                ->whereNotNull('business_unit')
-                ->where('business_unit', '!=', '')
-                ->distinct()
-                ->orderBy('business_unit')
-                ->pluck('business_unit')
-                ->map(fn ($unit) => [
-                    'value' => (string) $unit,
-                    'label' => BusinessUnit::label((string) $unit),
-                ])
-                ->values(),
+            'businessUnits' => $this->businessUnitOptions(),
         ];
     }
 
@@ -91,6 +81,36 @@ class FinanceSalesDashboardService
             ->map(fn (Invoice $invoice) => $this->decorateInvoice($invoice));
     }
 
+    /* CRM_FINANCE_SALES_DASHBOARD_UI_HOTFIX_V1_1 */
+    private function businessUnitOptions(): Collection
+    {
+        $masterOptions = collect(BusinessUnit::options())
+            ->map(fn ($label, $value) => [
+                'value' => (string) $value,
+                'label' => (string) $label,
+            ])
+            ->values();
+
+        $knownValues = $masterOptions->pluck('value')->all();
+
+        $historicalOptions = Invoice::query()
+            ->whereNotNull('business_unit')
+            ->where('business_unit', '!=', '')
+            ->distinct()
+            ->pluck('business_unit')
+            ->map(fn ($value) => (string) $value)
+            ->filter(fn ($value) => ! in_array($value, $knownValues, true))
+            ->map(fn ($value) => [
+                'value' => $value,
+                'label' => BusinessUnit::label($value) ?: $value,
+            ]);
+
+        return $masterOptions
+            ->concat($historicalOptions)
+            ->unique('value')
+            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
+    }
     private function metricInvoices(array $filters): Collection
     {
         $query = $this->baseInvoiceQuery();

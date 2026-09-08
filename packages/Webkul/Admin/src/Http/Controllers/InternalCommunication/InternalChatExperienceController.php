@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\InternalChatRealtimeService;
 
 class InternalChatExperienceController extends Controller
 {
@@ -162,6 +163,14 @@ class InternalChatExperienceController extends Controller
                 $key
             );
         }
+
+        /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+        app(InternalChatRealtimeService::class)->typingChanged(
+            $conversationId,
+            (int) $user->id,
+            (string) ($user->name ?: 'User'),
+            $isTyping
+        );
 
         return response()->json([
             'ok' =>

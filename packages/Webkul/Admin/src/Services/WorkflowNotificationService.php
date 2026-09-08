@@ -24,7 +24,7 @@ class WorkflowNotificationService
             return null;
         }
 
-        return WorkflowNotification::query()
+        $notification = WorkflowNotification::query()
             ->firstOrCreate(
                 [
                     'user_id' =>
@@ -56,6 +56,14 @@ class WorkflowNotificationService
                         $meta ?: null,
                 ]
             );
+
+        /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+        if ($notification->wasRecentlyCreated) {
+            app(InternalChatRealtimeService::class)
+                ->workflowNotificationCreated($notification);
+        }
+
+        return $notification;
     }
 
     public function notifyUsers(

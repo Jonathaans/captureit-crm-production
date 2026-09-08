@@ -320,13 +320,24 @@
                 }
             };
 
+        /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+        window.addEventListener('crm:chat-user-state', (event) => {
+            renderCount(
+                Math.max(0, Number(event.detail?.payload?.chat_unread || 0))
+            );
+        });
+
         removeWrongRowBadges();
 
         pollUnread();
 
         window.setInterval(
-            pollUnread,
-            5000
+            () => {
+                if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                    pollUnread();
+                }
+            },
+            window.crmInternalChatRealtime?.fallbackPollMs || 30000
         );
     })();
 </script>

@@ -229,6 +229,8 @@
                                 🔎 Search
                             </button>
 
+                            <span id="crm-chat-realtime-status" class="rounded-full px-3 py-2 text-xs font-semibold" title="Menghubungkan WebSocket" style="background:#fef3c7;color:#92400e;">Fallback</span>
+
                             <div class="rounded-full border bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500">
                                 🔒 Private
                             </div>
@@ -1422,10 +1424,7 @@
                     }
                 };
 
-            window.setInterval(
-                pollTyping,
-                2000
-            );
+            /* Typing WebSocket; fallback ditangani listener V3.2.2 di bawah. */
 
             if (searchModal) {
                 searchModal.addEventListener(
@@ -3522,9 +3521,16 @@
                     )
                 );
 
+                /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+                window.crmChatPollMessages = pollMessages;
+
                 window.setInterval(
-                    pollMessages,
-                    5000
+                    () => {
+                        if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                            pollMessages();
+                        }
+                    },
+                    window.crmInternalChatRealtime?.fallbackPollMs || 30000
                 );
             })();
         </script>
@@ -4739,6 +4745,10 @@
                 window.__crmV322TypingPoll =
                     window.setInterval(
                         async () => {
+                            if (window.crmInternalChatRealtime?.isConnected?.()) {
+                                return;
+                            }
+
                             try {
                                 const response =
                                     await fetch(
@@ -4804,7 +4814,7 @@
                                 // Ignore temporary polling failure.
                             }
                         },
-                        2000
+                        window.crmInternalChatRealtime?.fallbackPollMs || 30000
                     );
             }
 
@@ -6937,8 +6947,12 @@
             );
 
             window.setInterval(
-                refreshSidebar,
-                4000
+                () => {
+                    if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                        refreshSidebar();
+                    }
+                },
+                window.crmInternalChatRealtime?.fallbackPollMs || 30000
             );
 
             window.crmChatV33RefreshSidebar =
@@ -8200,4 +8214,5 @@
             })();
         </script>
     @endif
+    @include('admin::internal-communication.realtime-chat-listeners')
 </x-admin::layouts>

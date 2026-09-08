@@ -146,6 +146,19 @@ class WorkflowNotificationController extends Controller
         ]);
     }
 
+    /** INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+    public function popupAck(int $id): JsonResponse
+    {
+        $user = $this->user();
+
+        WorkflowNotification::query()
+            ->where('user_id', $user->id)
+            ->whereKey($id)
+            ->whereNull('popup_at')
+            ->update(['popup_at' => now()]);
+
+        return response()->json(['ok' => true]);
+    }
     public function open(
         int $id
     ): RedirectResponse {

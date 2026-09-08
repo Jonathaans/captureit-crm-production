@@ -3,6 +3,9 @@
  */
 import.meta.glob(["../images/**", "../fonts/**"]);
 
+/* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+import "./internal-chat-realtime";
+
 /**
  * Main vue bundler.
  */

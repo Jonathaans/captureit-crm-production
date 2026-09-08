@@ -1,0 +1,83 @@
+{
+    "composer.json": {
+        "existed": true
+    },
+    "composer.lock": {
+        "existed": true
+    },
+    "config/broadcasting.php": {
+        "existed": true
+    },
+    "routes/channels.php": {
+        "existed": true
+    },
+    ".env.example": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/package.json": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Resources/assets/js/app.js": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Providers/InternalCommunicationServiceProvider.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatController.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatExperienceController.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/WorkflowNotificationController.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Services/WorkflowNotificationService.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/chat.blade.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/widget.blade.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/chat-unread-badge.blade.php": {
+        "existed": true
+    },
+    "packages/Webkul/Admin/package-lock.json": {
+        "existed": false
+    },
+    "config/reverb.php": {
+        "existed": false
+    },
+    "deploy/nginx/crm-reverb.conf.example": {
+        "existed": false
+    },
+    "deploy/supervisor/crm-reverb.conf.example": {
+        "existed": false
+    },
+    "docs/INTERNAL_CHAT_WEBSOCKET_REVERB_V1.md": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Config/internal_chat_realtime.php": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Events/InternalChatRealtimeEvent.php": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Services/InternalChatRealtimeService.php": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Resources/assets/js/internal-chat-realtime.js": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-config.blade.php": {
+        "existed": false
+    },
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-chat-listeners.blade.php": {
+        "existed": false
+    },
+    "tests/Unit/InternalChatRealtimeEventTest.php": {
+        "existed": false
+    }
+}

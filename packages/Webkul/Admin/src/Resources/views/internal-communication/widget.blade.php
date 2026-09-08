@@ -1,3 +1,5 @@
+{{-- INTERNAL_CHAT_WEBSOCKET_REVERB_V1 --}}
+@include('admin::internal-communication.realtime-config')
 <!-- CRM_INTERNAL_COMMUNICATION_WIDGET -->
 <style>
     #crm-comm-floating {
@@ -229,6 +231,40 @@
         }
     };
 
+    /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
+    const acknowledgeNotification = async (notification) => {
+        if (! notification?.ack_url) {
+            return;
+        }
+
+        const config = document.getElementById('crm-internal-chat-realtime-config');
+
+        try {
+            await fetch(notification.ack_url, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': config?.dataset.csrf || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            });
+        } catch (error) {
+            // Fallback polling can safely claim the notification later.
+        }
+    };
+
+    window.addEventListener('crm:chat-user-state', (event) => {
+        const payload = event.detail?.payload || {};
+
+        setBadge(notificationBadge, payload.notification_unread);
+        setBadge(chatBadge, payload.chat_unread);
+
+        if (payload.notification) {
+            showToast(payload.notification);
+            acknowledgeNotification(payload.notification);
+        }
+    });
     const poll = async () => {
         try {
             const response = await fetch(
@@ -276,8 +312,12 @@
     );
 
     window.setInterval(
-        poll,
-        12000
+        () => {
+            if (window.crmInternalChatRealtime?.shouldFallbackPoll?.() ?? true) {
+                poll();
+            }
+        },
+        window.crmInternalChatRealtime?.fallbackPollMs || 30000
     );
 })();
 </script>
