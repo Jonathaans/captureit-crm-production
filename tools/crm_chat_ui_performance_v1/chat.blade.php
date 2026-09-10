@@ -771,10 +771,6 @@
     </div>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const root =
                 document.getElementById(
@@ -1462,15 +1458,7 @@
                 );
             }
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
     {{-- New Chat modal. The long user list no longer consumes the sidebar. --}}
     <div
         id="crm-new-chat-modal"
@@ -1556,10 +1544,6 @@
     </div>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const conversationSearch =
                 document.getElementById('crm-wa-chat-search');
@@ -1664,23 +1648,11 @@
                 });
             }
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     @if ($conversation)
         {{-- INTERNAL CHAT V3.1.4 HARD ACTION FALLBACK --}}
         <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
             window.crmChatStopActionEvent = function (event) {
                 if (! event) {
                     return;
@@ -2108,21 +2080,9 @@
 
                 return false;
             };
-        
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+        </script>
 
         <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
             (() => {
                 const currentUserId =
                     {{ (int) $currentUser->id }};
@@ -2947,7 +2907,6 @@
                         container
                     );
 
-                    const wasNearNewest = messagesRoot.scrollHeight - messagesRoot.clientHeight - messagesRoot.scrollTop <= 64;
                     messageStack.appendChild(
                         wrapper
                     );
@@ -2964,11 +2923,8 @@
                             )
                         );
 
-                    if (window.crmChatFollowIncoming) {
-                        window.crmChatFollowIncoming();
-                    } else if (wasNearNewest) {
-                        messagesRoot.scrollTop = messagesRoot.scrollHeight;
-                    }
+                    messagesRoot.scrollTop =
+                        messagesRoot.scrollHeight;
                 };
 
                 const updateExistingMessage = (
@@ -3310,7 +3266,6 @@
                             appendMessage(
                                 message
                             );
-                            window.crmChatGoNewest?.();
 
                             form.reset();
 
@@ -3594,24 +3549,12 @@
                 /* INTERNAL_CHAT_WEBSOCKET_ONLY_V2 */
                 window.crmChatSyncMessages = pollMessages;
             })();
-        
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+        </script>
     @endif
 
 
     {{-- INTERNAL CHAT V3.2.2 ROBUST UI INTERACTIONS --}}
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const stopEvent = (
                 event
@@ -4853,22 +4796,10 @@
                 }
             );
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.2.3 PREVIEW + MODERN MODAL --}}
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const fileNameFromLink = (
                 link
@@ -5535,22 +5466,10 @@
                     return false;
                 };
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.2.6 UNIVERSAL PREVIEW TOOLBAR --}}
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const fileNameFromLink = (
                 link
@@ -5885,15 +5804,7 @@
                     return false;
                 };
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.3 CONVERSATION MANAGEMENT --}}
     <div
@@ -5907,10 +5818,6 @@
     ></div>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const config =
                 document.getElementById(
@@ -6931,15 +6838,7 @@
             window.crmChatV33RefreshSidebar =
                 refreshSidebar;
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.3.2 HARD PIN MUTE --}}
     <div
@@ -7004,10 +6903,6 @@
     </div>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const config =
                 document.getElementById(
@@ -7418,15 +7313,7 @@
                 }
             );
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.3.3 NATIVE PIN MUTE --}}
     <div
@@ -7535,10 +7422,6 @@
     </div>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const config =
                 document.getElementById(
@@ -7647,15 +7530,7 @@
                 }
             );
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.3.5 MODERN MUTE DIALOG --}}
     <dialog
@@ -7795,10 +7670,6 @@
     </dialog>
 
     <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
         (() => {
             const dialog =
                 document.getElementById(
@@ -7956,15 +7827,7 @@
                 }
             );
         })();
-    
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+    </script>
 
     {{-- INTERNAL CHAT V3.3.6 NATIVE MUTE SELECT FINAL --}}
     {{-- INTERNAL CHAT V3.3.7 PREFERENCE TOAST --}}
@@ -7991,10 +7854,6 @@
         </div>
 
         <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
             window.setTimeout(
                 () => {
                     const toast =
@@ -8008,15 +7867,7 @@
                 },
                 3500
             );
-        
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+        </script>
     @endif
     {{-- INTERNAL CHAT V3.3.8 EXPLICIT APPLY FINAL --}}
     {{-- INTERNAL CHAT V3.3.10 LEGACY UNREAD CLEANUP --}}
@@ -8024,10 +7875,6 @@
     {{-- INTERNAL CHAT NEWEST PANEL V1.3 HOTFIX --}}
     @if ($conversation)
         <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
             (() => {
                 const bootChatNewestV13 = () => {
                     const root = document.getElementById('crm-chat-messages');
@@ -8047,13 +7894,6 @@
                         history.scrollRestoration = 'manual';
                     }
 
-                    const jumpButton = document.createElement('button');
-                    jumpButton.type = 'button';
-                    jumpButton.textContent = '↓ Pesan terbaru';
-                    jumpButton.hidden = true;
-                    jumpButton.style.cssText = 'align-self:center;background:#fef3c7;color:#92400e;border-radius:16px;padding:6px 14px;margin:4px;font-size:12px;';
-                    root.insertAdjacentElement('afterend', jumpButton);
-                    root.tabIndex = 0;
                     let followNewest = true;
                     let pointerActive = false;
                     /* CRM_CHAT_UI_PERFORMANCE_V1: one scroll task per animation frame. */
@@ -8100,9 +7940,25 @@
                             return;
                         }
 
-                        // Scroll only the message pane, not the outer page or sidebar.
-                        root.scrollTop = root.scrollHeight;
-                        jumpButton.hidden = true;
+                        const candidates = scrollCandidates();
+
+                        candidates.forEach((candidate) => {
+                            candidate.scrollTop = candidate.scrollHeight + 100000;
+                        });
+
+                        const target = newestMessage();
+
+                        if (target) {
+                            target.scrollIntoView({
+                                behavior: 'auto',
+                                block: 'end',
+                                inline: 'nearest',
+                            });
+                        }
+
+                        candidates.forEach((candidate) => {
+                            candidate.scrollTop = candidate.scrollHeight + 100000;
+                        });
 
                         root.dataset.newestDistanceV13 = String(
                             Math.round(distanceFromNewest(root))
@@ -8124,20 +7980,6 @@
                         followNewest = true;
                         scheduleNewest();
                     };
-
-                    jumpButton.addEventListener('click', requestNewest);
-                    window.crmChatFollowIncoming = () => {
-                        if (followNewest) {
-                            scheduleNewest();
-                        } else {
-                            jumpButton.hidden = false;
-                        }
-                    };
-                    root.addEventListener('keydown', (event) => {
-                        if (event.target === root && ['ArrowUp', 'PageUp', 'Home'].includes(event.key)) {
-                            followNewest = false;
-                        }
-                    });
 
                     root.addEventListener('wheel', (event) => {
                         if (event.deltaY < 0) {
@@ -8174,13 +8016,16 @@
 
                         if (nearNewest) {
                             followNewest = true;
-                            jumpButton.hidden = true;
                         } else if (pointerActive) {
                             followNewest = false;
                         }
                     }, { passive: true });
 
-                    // Successful sends explicitly request newest after appendMessage.
+                    document.addEventListener('submit', (event) => {
+                        if (event.target === form || event.target?.id === 'crm-chat-send-form') {
+                            requestNewest();
+                        }
+                    }, true);
 
                     new MutationObserver(() => {
                         if (followNewest) {
@@ -8199,8 +8044,7 @@
                     };
 
                     window.crmChatNewestDiagnostics = () => ({
-                        version: 'live-scroll-v2',
-                        rootConnected: root.isConnected,
+                        version: '1.3-ui-performance-v1',
                         followNewest,
                         rootScrollTop: root.scrollTop,
                         rootScrollHeight: root.scrollHeight,
@@ -8233,15 +8077,7 @@
                     bootChatNewestV13();
                 }
             })();
-        
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
-</script>
+        </script>
     @endif
     @include('admin::internal-communication.realtime-chat-listeners')
 </x-admin::layouts>

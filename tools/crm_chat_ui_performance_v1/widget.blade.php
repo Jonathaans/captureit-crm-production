@@ -163,10 +163,6 @@
 </div>
 
 <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
 (() => {
     const pollUrl = @json(route('admin.internal-notifications.poll'));
     const toastRoot = document.getElementById('crm-comm-toasts');
@@ -324,14 +320,6 @@
         }
     });
 })();
-
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
 </script>
 
 @include('admin::internal-communication.chat-unread-badge')
@@ -349,10 +337,6 @@
 ></div>
 
 <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
     (() => {
         if (window.__crmActivityPresenceV332) {
             return;
@@ -531,12 +515,4 @@
             15000
         );
     })();
-
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
 </script>

@@ -1,0 +1,15 @@
+CRM Targeted Performance Optimization V1
+
+Files:
+- README.txt
+- MANIFEST.txt
+- tools/apply_crm_targeted_performance_optimization_v1.php
+- tools/check_crm_targeted_performance_optimization_v1.php
+
+Targets modified by installer:
+- packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatController.php
+- packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatConversationController.php
+- packages/Webkul/Admin/src/DataGrids/Invoice/InvoiceDataGrid.php
+- packages/Webkul/Admin/src/DataGrids/Quote/QuoteDataGrid.php
+- database/migrations/2026_09_09_200000_add_crm_targeted_performance_indexes_v1.php
+

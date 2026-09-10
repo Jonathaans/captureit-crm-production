@@ -66,195 +66,314 @@ class InternalChatConversationController extends Controller
                 'internal_chat_user_states'
             );
 
-        /* CRM_TARGETED_PERFORMANCE_OPTIMIZATION_V1: batched realtime sidebar */
-        $conversationIds = $rows
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $conversations =
+            $rows
+                ->map(
+                    function ($row) use (
+                        $user,
+                        $hasPresenceTable,
+                        $hasCursor
+                    ) {
+                        $other =
+                            DB::table(
+                                'internal_conversation_members as member'
+                            )
+                                ->join(
+                                    'users',
+                                    'users.id',
+                                    '=',
+                                    'member.user_id'
+                                )
+                                ->leftJoin(
+                                    'roles',
+                                    'roles.id',
+                                    '=',
+                                    'users.role_id'
+                                )
+                                ->where(
+                                    'member.conversation_id',
+                                    $row->id
+                                )
+                                ->where(
+                                    'member.user_id',
+                                    '<>',
+                                    $user->id
+                                )
+                                ->select([
+                                    'users.id',
+                                    'users.name',
+                                    'users.email',
+                                    'roles.name as role_name',
+                                ])
+                                ->first();
 
-        $otherUsersByConversation = $conversationIds->isEmpty()
-            ? collect()
-            : DB::table('internal_conversation_members as member')
-                ->join('users', 'users.id', '=', 'member.user_id')
-                ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-                ->whereIn('member.conversation_id', $conversationIds->all())
-                ->where('member.user_id', '<>', $user->id)
-                ->select([
-                    'member.conversation_id',
-                    'users.id',
-                    'users.name',
-                    'users.email',
-                    'roles.name as role_name',
-                ])
-                ->get()
-                ->keyBy('conversation_id');
+                        $lastMessage =
+                            DB::table(
+                                'internal_messages'
+                            )
+                                ->where(
+                                    'conversation_id',
+                                    $row->id
+                                )
+                                ->whereNull(
+                                    'deleted_at'
+                                )
+                                ->orderByDesc(
+                                    'id'
+                                )
+                                ->first([
+                                    'id',
+                                    'user_id',
+                                    'body',
+                                    'created_at',
+                                ]);
 
-        $lastMessageIds = $conversationIds->isEmpty()
-            ? collect()
-            : DB::table('internal_messages')
-                ->whereIn('conversation_id', $conversationIds->all())
-                ->whereNull('deleted_at')
-                ->groupBy('conversation_id')
-                ->selectRaw('conversation_id, MAX(id) as last_message_id')
-                ->pluck('last_message_id');
+                        /*
+                         * V3.3.9 unread cursor.
+                         *
+                         * Timestamp-only unread tracking is ambiguous when
+                         * last_read_at is null and can make old messages appear
+                         * unread in every conversation. Message-id cursor makes
+                         * unread state conversation-specific and deterministic.
+                         */
+                        $readCursor =
+                            $hasCursor
+                                ? max(
+                                    0,
+                                    (int) (
+                                        $row->last_read_message_id
+                                        ?? 0
+                                    )
+                                )
+                                : 0;
 
-        $lastMessagesByConversation = $lastMessageIds->isEmpty()
-            ? collect()
-            : DB::table('internal_messages')
-                ->whereIn('id', $lastMessageIds->map(fn ($id) => (int) $id)->all())
-                ->get(['id', 'conversation_id', 'user_id', 'body', 'created_at'])
-                ->keyBy('conversation_id');
+                        $unreadQuery =
+                            DB::table(
+                                'internal_messages'
+                            )
+                                ->where(
+                                    'conversation_id',
+                                    $row->id
+                                )
+                                ->where(
+                                    'user_id',
+                                    '<>',
+                                    $user->id
+                                )
+                                ->whereNull(
+                                    'deleted_at'
+                                );
 
-        $attachmentMessageIds = $lastMessagesByConversation->isEmpty()
-            ? collect()
-            : DB::table('internal_message_attachments')
-                ->whereIn(
-                    'message_id',
-                    $lastMessagesByConversation->pluck('id')->map(fn ($id) => (int) $id)->all()
+                        if ($hasCursor) {
+                            $unreadQuery->where(
+                                'id',
+                                '>',
+                                $readCursor
+                            );
+                        } elseif (
+                            ! empty(
+                                $row->last_read_at
+                            )
+                        ) {
+                            $unreadQuery->where(
+                                'created_at',
+                                '>',
+                                $row->last_read_at
+                            );
+                        }
+
+                        $unread =
+                            (int) $unreadQuery
+                                ->count();
+
+                        $preview =
+                            trim(
+                                (string) (
+                                    $lastMessage?->body
+                                    ?? ''
+                                )
+                            );
+
+                        if (
+                            $preview === ''
+                            && $lastMessage
+                        ) {
+                            $hasAttachment =
+                                DB::table(
+                                    'internal_message_attachments'
+                                )
+                                    ->where(
+                                        'message_id',
+                                        $lastMessage->id
+                                    )
+                                    ->exists();
+
+                            $preview =
+                                $hasAttachment
+                                    ? '📎 Attachment'
+                                    : 'Pesan';
+                        }
+
+                        if ($preview === '') {
+                            $preview =
+                                'Belum ada pesan.';
+                        }
+
+                        $lastAt =
+                            $lastMessage?->created_at
+                            ?? $row->updated_at;
+
+                        $timeLabel =
+                            '';
+
+                        if ($lastAt) {
+                            $time =
+                                Carbon::parse(
+                                    $lastAt
+                                );
+
+                            $timeLabel =
+                                $time->isToday()
+                                    ? $time->format(
+                                        'H:i'
+                                    )
+                                    : $time->format(
+                                        'd M'
+                                    );
+                        }
+
+                        $muted =
+                            $this->isMuted(
+                                $row->muted_until,
+                                (bool) $row->mute_forever
+                            );
+
+                        $otherUserId =
+                            (int) (
+                                $other?->id
+                                ?? 0
+                            );
+
+                        $presence =
+                            $this->presenceState(
+                                $otherUserId,
+                                $hasPresenceTable
+                            );
+
+                        return [
+                            'id' =>
+                                (int) $row->id,
+
+                            'name' =>
+                                (string) (
+                                    $other?->name
+                                    ?: 'User'
+                                ),
+
+                            'email' =>
+                                (string) (
+                                    $other?->email
+                                    ?: ''
+                                ),
+
+                            'role' =>
+                                (string) (
+                                    $other?->role_name
+                                    ?: 'Internal User'
+                                ),
+
+                            'initials' =>
+                                $this->initials(
+                                    (string) (
+                                        $other?->name
+                                        ?: 'User'
+                                    )
+                                ),
+
+                            'preview' =>
+                                mb_strimwidth(
+                                    preg_replace(
+                                        '/\s+/',
+                                        ' ',
+                                        $preview
+                                    ),
+                                    0,
+                                    56,
+                                    '…'
+                                ),
+
+                            'time' =>
+                                $timeLabel,
+
+                            'unread' =>
+                                $unread,
+
+                            'read_cursor' =>
+                                $readCursor,
+
+                            'pinned' =>
+                                ! empty(
+                                    $row->pinned_at
+                                ),
+
+                            'muted' =>
+                                $muted,
+
+                            'mute_label' =>
+                                $this->muteLabel(
+                                    $row->muted_until,
+                                    (bool) $row->mute_forever
+                                ),
+
+                            'online' =>
+                                $presence['state']
+                                === 'online',
+
+                            'idle' =>
+                                $presence['state']
+                                === 'idle',
+
+                            'in_chat' =>
+                                $presence['in_chat'],
+
+                            'presence_state' =>
+                                $presence['state'],
+
+                            'presence' =>
+                                $presence['label'],
+
+                            'sort_at' =>
+                                $lastAt
+                                    ? Carbon::parse(
+                                        $lastAt
+                                    )->format(
+                                        'Y-m-d H:i:s.u'
+                                    )
+                                    : '',
+                        ];
+                    }
                 )
-                ->distinct()
-                ->pluck('message_id')
-                ->mapWithKeys(fn ($id) => [(int) $id => true]);
+                ->sort(
+                    function (
+                        array $a,
+                        array $b
+                    ) {
+                        if (
+                            $a['pinned']
+                            !== $b['pinned']
+                        ) {
+                            return $a['pinned']
+                                ? -1
+                                : 1;
+                        }
 
-        $unreadCountsByConversation = collect();
-
-        if ($conversationIds->isNotEmpty()) {
-            $unreadQuery = DB::table('internal_messages as message')
-                ->join('internal_conversation_members as self_member', function ($join) use ($user) {
-                    $join->on('self_member.conversation_id', '=', 'message.conversation_id')
-                        ->where('self_member.user_id', '=', (int) $user->id);
-                })
-                ->whereIn('message.conversation_id', $conversationIds->all())
-                ->where('message.user_id', '<>', $user->id)
-                ->whereNull('message.deleted_at');
-
-            if ($hasCursor) {
-                $unreadQuery->whereRaw(
-                    'message.id > COALESCE(self_member.last_read_message_id, 0)'
-                );
-            } else {
-                $unreadQuery->where(function ($query) {
-                    $query->whereNull('self_member.last_read_at')
-                        ->orWhereColumn('message.created_at', '>', 'self_member.last_read_at');
-                });
-            }
-
-            $unreadCountsByConversation = $unreadQuery
-                ->groupBy('message.conversation_id')
-                ->selectRaw('message.conversation_id, COUNT(*) as unread_count')
-                ->get()
-                ->mapWithKeys(fn ($row) => [
-                    (int) $row->conversation_id => (int) $row->unread_count,
-                ]);
-        }
-
-        $otherUserIds = $otherUsersByConversation
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
-
-        // CRM_CHAT_BACKEND_PERFORMANCE_V2: Redis/database cache supports a batch read.
-        $presenceKeys = $otherUserIds->map(fn ($id) => $this->presenceKey((int) $id))->all();
-        $presenceCache = $presenceKeys === [] ? [] : Cache::many($presenceKeys);
-
-        $presenceLastSeenByUser = ! $hasPresenceTable || $otherUserIds->isEmpty()
-            ? collect()
-            : DB::table('internal_chat_user_states')
-                ->whereIn('user_id', $otherUserIds->all())
-                ->pluck('last_seen_at', 'user_id');
-
-        $conversations = $rows
-            ->map(function ($row) use (
-                $user,
-                $hasPresenceTable,
-                $hasCursor,
-                $otherUsersByConversation,
-                $lastMessagesByConversation,
-                $attachmentMessageIds,
-                $unreadCountsByConversation,
-                $presenceLastSeenByUser,
-                $presenceCache
-            ) {
-                $conversationId = (int) $row->id;
-                $other = $otherUsersByConversation->get($conversationId);
-                $lastMessage = $lastMessagesByConversation->get($conversationId);
-                $readCursor = $hasCursor
-                    ? max(0, (int) ($row->last_read_message_id ?? 0))
-                    : 0;
-                $unread = (int) $unreadCountsByConversation->get($conversationId, 0);
-
-                $preview = trim((string) ($lastMessage?->body ?? ''));
-
-                if ($preview === '' && $lastMessage) {
-                    $preview = $attachmentMessageIds->get((int) $lastMessage->id, false)
-                        ? '📎 Attachment'
-                        : 'Pesan';
-                }
-
-                if ($preview === '') {
-                    $preview = 'Belum ada pesan.';
-                }
-
-                $lastAt = $lastMessage?->created_at ?? $row->updated_at;
-                $timeLabel = '';
-
-                if ($lastAt) {
-                    $time = Carbon::parse($lastAt);
-                    $timeLabel = $time->isToday() ? $time->format('H:i') : $time->format('d M');
-                }
-
-                $muted = $this->isMuted($row->muted_until, (bool) $row->mute_forever);
-                $otherUserId = (int) ($other?->id ?? 0);
-                $presence = $this->presenceState(
-                    $otherUserId,
-                    $hasPresenceTable,
-                    $presenceLastSeenByUser->get($otherUserId),
-                    true,
-                    $presenceCache[$this->presenceKey($otherUserId)] ?? null,
-                    true
-                );
-
-                return [
-                    'id' => $conversationId,
-                    'name' => (string) ($other?->name ?: 'User'),
-                    'email' => (string) ($other?->email ?: ''),
-                    'role' => (string) ($other?->role_name ?: 'Internal User'),
-                    'initials' => $this->initials((string) ($other?->name ?: 'User')),
-                    'preview' => mb_strimwidth(
-                        preg_replace('/\s+/', ' ', $preview),
-                        0,
-                        56,
-                        '…'
-                    ),
-                    'time' => $timeLabel,
-                    'unread' => $unread,
-                    'read_cursor' => $readCursor,
-                    'pinned' => ! empty($row->pinned_at),
-                    'muted' => $muted,
-                    'mute_label' => $this->muteLabel(
-                        $row->muted_until,
-                        (bool) $row->mute_forever
-                    ),
-                    'online' => $presence['state'] === 'online',
-                    'idle' => $presence['state'] === 'idle',
-                    'in_chat' => $presence['in_chat'],
-                    'presence_state' => $presence['state'],
-                    'presence' => $presence['label'],
-                    'sort_at' => $lastAt
-                        ? Carbon::parse($lastAt)->format('Y-m-d H:i:s.u')
-                        : '',
-                ];
-            })
-            ->sort(function (array $a, array $b) {
-                if ($a['pinned'] !== $b['pinned']) {
-                    return $a['pinned'] ? -1 : 1;
-                }
-
-                return strcmp($b['sort_at'], $a['sort_at']);
-            })
-            ->values();
+                        return strcmp(
+                            $b['sort_at'],
+                            $a['sort_at']
+                        );
+                    }
+                )
+                ->values();
 
         return response()->json([
             'conversations' =>
@@ -551,11 +670,7 @@ class InternalChatConversationController extends Controller
 
     private function presenceState(
         int $userId,
-        bool $hasPresenceTable,
-        mixed $knownLastSeen = null,
-        bool $knownLastSeenLoaded = false,
-        mixed $knownCached = null,
-        bool $knownCachedLoaded = false
+        bool $hasPresenceTable
     ): array {
         if ($userId < 1) {
             return [
@@ -570,9 +685,8 @@ class InternalChatConversationController extends Controller
             ];
         }
 
-        $cached = $knownCachedLoaded
-            ? $knownCached
-            : Cache::get(
+        $cached =
+            Cache::get(
                 $this->presenceKey(
                     $userId
                 )
@@ -643,12 +757,21 @@ class InternalChatConversationController extends Controller
             }
         }
 
-        $lastSeen = $knownLastSeen;
+        $lastSeen =
+            null;
 
-        if ($hasPresenceTable && ! $knownLastSeenLoaded) {
-            $lastSeen = DB::table('internal_chat_user_states')
-                ->where('user_id', $userId)
-                ->value('last_seen_at');
+        if ($hasPresenceTable) {
+            $lastSeen =
+                DB::table(
+                    'internal_chat_user_states'
+                )
+                    ->where(
+                        'user_id',
+                        $userId
+                    )
+                    ->value(
+                        'last_seen_at'
+                    );
         }
 
         return [

@@ -10,8 +10,6 @@ use Webkul\User\Repositories\UserRepository;
 
 class QuoteDataGrid extends DataGrid
 {
-    /* CRM_TARGETED_PERFORMANCE_OPTIMIZATION_V1 */
-    protected $sortColumn = 'quotes.id';
     /**
      * Prepare query builder.
      */

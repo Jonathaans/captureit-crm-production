@@ -5,7 +5,6 @@ namespace Webkul\Admin\Http\Controllers\InternalCommunication;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -109,90 +108,46 @@ $messages =
             ])
             ->get();
 
-        /* CRM_TARGETED_PERFORMANCE_OPTIMIZATION_V1: batched initial chat list */
-        $conversationIds = $conversationRows
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $conversationList = $conversationRows
+            ->map(
+                function ($row) use ($user) {
+                    $other = DB::table('internal_conversation_members as m')
+                        ->join('users', 'users.id', '=', 'm.user_id')
+                        ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
+                        ->where('m.conversation_id', $row->id)
+                        ->where('m.user_id', '<>', $user->id)
+                        ->select([
+                            'users.id',
+                            'users.name',
+                            'users.email',
+                            'roles.name as role_name',
+                        ])
+                        ->first();
 
-        $otherUsersByConversation = $conversationIds->isEmpty()
-            ? collect()
-            : DB::table('internal_conversation_members as member')
-                ->join('users', 'users.id', '=', 'member.user_id')
-                ->leftJoin('roles', 'roles.id', '=', 'users.role_id')
-                ->whereIn('member.conversation_id', $conversationIds->all())
-                ->where('member.user_id', '<>', $user->id)
-                ->select([
-                    'member.conversation_id',
-                    'users.id',
-                    'users.name',
-                    'users.email',
-                    'roles.name as role_name',
-                ])
-                ->get()
-                ->keyBy('conversation_id');
+                    $lastMessage = DB::table('internal_messages')
+                        ->where('conversation_id', $row->id)
+                        ->whereNull('deleted_at')
+                        ->orderByDesc('id')
+                        ->first();
 
-        $lastMessageIds = $conversationIds->isEmpty()
-            ? collect()
-            : DB::table('internal_messages')
-                ->whereIn('conversation_id', $conversationIds->all())
-                ->whereNull('deleted_at')
-                ->groupBy('conversation_id')
-                ->selectRaw('conversation_id, MAX(id) as last_message_id')
-                ->pluck('last_message_id');
+                    $unreadQuery = DB::table('internal_messages')
+                        ->where('conversation_id', $row->id)
+                        ->where('user_id', '<>', $user->id)
+                        ->whereNull('deleted_at');
 
-        $lastMessagesByConversation = $lastMessageIds->isEmpty()
-            ? collect()
-            : DB::table('internal_messages')
-                ->whereIn('id', $lastMessageIds->map(fn ($id) => (int) $id)->all())
-                ->get()
-                ->keyBy('conversation_id');
+                    if ($row->last_read_at) {
+                        $unreadQuery->where('created_at', '>', $row->last_read_at);
+                    }
 
-        $hasReadCursor = Schema::hasColumn(
-            'internal_conversation_members',
-            'last_read_message_id'
-        );
+                    return (object) [
+                        'id' => $row->id,
+                        'other' => $other,
+                        'last_message' => $lastMessage,
+                        'unread_count' => (int) $unreadQuery->count(),
+                    ];
+                }
+            );
 
-        $unreadCountsByConversation = collect();
-
-        if ($conversationIds->isNotEmpty()) {
-            $unreadQuery = DB::table('internal_messages as message')
-                ->join('internal_conversation_members as self_member', function ($join) use ($user) {
-                    $join->on('self_member.conversation_id', '=', 'message.conversation_id')
-                        ->where('self_member.user_id', '=', (int) $user->id);
-                })
-                ->whereIn('message.conversation_id', $conversationIds->all())
-                ->where('message.user_id', '<>', $user->id)
-                ->whereNull('message.deleted_at');
-
-            if ($hasReadCursor) {
-                $unreadQuery->whereRaw(
-                    'message.id > COALESCE(self_member.last_read_message_id, 0)'
-                );
-            } else {
-                $unreadQuery->where(function ($query) {
-                    $query->whereNull('self_member.last_read_at')
-                        ->orWhereColumn('message.created_at', '>', 'self_member.last_read_at');
-                });
-            }
-
-            $unreadCountsByConversation = $unreadQuery
-                ->groupBy('message.conversation_id')
-                ->selectRaw('message.conversation_id, COUNT(*) as unread_count')
-                ->get()
-                ->mapWithKeys(fn ($row) => [
-                    (int) $row->conversation_id => (int) $row->unread_count,
-                ]);
-        }
-
-        $conversationList = $conversationRows->map(
-            fn ($row) => (object) [
-                'id' => (int) $row->id,
-                'other' => $otherUsersByConversation->get((int) $row->id),
-                'last_message' => $lastMessagesByConversation->get((int) $row->id),
-                'unread_count' => (int) $unreadCountsByConversation->get((int) $row->id, 0),
-            ]
-        );
         $senderIds = $messages
             ->pluck('user_id')
             ->unique()
@@ -213,7 +168,6 @@ $messages =
         $replyMessages = $replyIds->isEmpty()
             ? collect()
             : InternalMessage::query()
-                ->where('conversation_id', $conversationId)
                 ->whereIn('id', $replyIds)
                 ->get()
                 ->keyBy('id');
@@ -520,9 +474,6 @@ $messages =
             }
         }
 
-        // CRM_CHAT_BACKEND_PERFORMANCE_V2: one reply lookup for both result sets.
-        $replyPayloads = $this->replyPayloads($messages->concat($changedMessages));
-
         $changedSenderNames = $changedMessages->isEmpty()
             ? collect()
             : DB::table('users')
@@ -560,8 +511,7 @@ $messages =
                         (string) (
                             $senderNames[$message->user_id]
                             ?? 'User'
-                        ),
-                        $replyPayloads
+                        )
                     )
                 )
                 ->values(),
@@ -575,8 +525,7 @@ $messages =
                         (string) (
                             $changedSenderNames[$message->user_id]
                             ?? 'User'
-                        ),
-                        $replyPayloads
+                        )
                     )
                 )
                 ->values(),
@@ -734,43 +683,37 @@ $messages =
         );
     }
 
-    /** CRM_CHAT_BACKEND_PERFORMANCE_V2: zero queries without replies, at most two otherwise. */
-    private function replyPayloads(Collection $messages): array
-    {
-        $replyIds = $messages->pluck('reply_to_message_id')->filter()->unique()->values();
-
-        if ($replyIds->isEmpty()) {
-            return [];
-        }
-
-        $replies = InternalMessage::query()
-            ->whereIn('conversation_id', $messages->pluck('conversation_id')->unique()->all())
-            ->whereIn('id', $replyIds->all())
-            ->get(['id', 'conversation_id', 'user_id', 'body', 'deleted_at']);
-
-        $names = $replies->isEmpty()
-            ? collect()
-            : DB::table('users')->whereIn('id', $replies->pluck('user_id')->unique()->all())
-                ->pluck('name', 'id');
-
-        return $replies->mapWithKeys(fn ($reply) => [(int) $reply->id => [
-            'id' => $reply->id,
-            'sender_name' => $names->get($reply->user_id) ?: 'User',
-            'body' => $reply->deleted_at
-                ? 'Pesan telah dihapus'
-                : (trim((string) $reply->body) ?: 'Attachment'),
-        ]])->all();
-    }
-
     private function messagePayload(
         InternalMessage $message,
-        string $senderName,
-        ?array $replyPayloads = null
+        string $senderName
     ): array {
-        // Single-message send/edit responses use the same formatter. An empty
-        // supplied map deliberately does not fall back to a query per message.
-        $replyPayloads ??= $this->replyPayloads(collect([$message]));
-        $reply = $replyPayloads[(int) $message->reply_to_message_id] ?? null;
+        $reply = null;
+
+        if ($message->reply_to_message_id) {
+            $replyMessage = InternalMessage::query()
+                ->where(
+                    'id',
+                    $message->reply_to_message_id
+                )
+                ->first();
+
+            if ($replyMessage) {
+                $replySender = DB::table('users')
+                    ->where('id', $replyMessage->user_id)
+                    ->value('name');
+
+                $reply = [
+                    'id' => $replyMessage->id,
+                    'sender_name' => $replySender ?: 'User',
+                    'body' => $replyMessage->deleted_at
+                        ? 'Pesan telah dihapus'
+                        : (
+                            trim((string) $replyMessage->body)
+                            ?: 'Attachment'
+                        ),
+                ];
+            }
+        }
 
         return [
             'id' => $message->id,

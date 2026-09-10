@@ -1,0 +1,128 @@
+{
+  "patch": "CRM_PERFORMANCE_COMPLETION_V2",
+  "source_export": "crm-optimization-sources-20260910_094055-af4785e3.json",
+  "files": [
+    {
+      "path": "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatController.php",
+      "payload": "0.php",
+      "before_sha256": "67961ca539941a9f3ba4142e1de498d824b7804259f267c39c4e9ad361c60eaf",
+      "after_sha256": "d65f11fb1062f6dde6898df929607e84f3ecc2ffd922d692c8c91fd56d162489"
+    },
+    {
+      "path": "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatConversationController.php",
+      "payload": "1.php",
+      "before_sha256": "444532f918717649be64ee4b9f4d1ada0f866ac9916372fbd523b5c1915dc253",
+      "after_sha256": "c328fce496ff84a21935e84a3b53549a8f2344ffafd557a081839d11c2202cd0"
+    },
+    {
+      "path": "packages/Webkul/Admin/src/Services/InternalChatRealtimeService.php",
+      "payload": "2.php",
+      "before_sha256": "20e4c7079dbc76093af0cd9a342cb7d25e210c08554837cea64600f21ce4b82d",
+      "after_sha256": "73634a5ccd520cdcf03f82997105d335cb7f44956f7579b13c93d9026692cd96"
+    },
+    {
+      "path": "tools/check_crm_targeted_performance_optimization_v1.php",
+      "payload": "3.php",
+      "before_sha256": "de2ac3a157d5476e4a76cff2fa4a868a8eb2fcafd4a9e2a4b18ed9fa0b4393f9",
+      "after_sha256": "d76adc098b0dba19bdfbd56339d7fb06caf35f50cb8524114246a56e1ac92b12"
+    },
+    {
+      "path": "packages/Webkul/Admin/src/Resources/views/internal-communication/widget.blade.php",
+      "payload": "4.blade.php",
+      "before_sha256": "c40ec0b82ee06f3866207100c2af4f78497c2bde50a6cc17ee11c9af27fd4b4d",
+      "after_sha256": "dba6975e715d6d73db8102ef771a4695063ac5f5cbf533e7faee3edb1b3ee1db"
+    }
+  ],
+  "audited_files": {
+    "database/migrations/2026_09_09_200000_add_crm_targeted_performance_indexes_v1.php": "a7faf4fb2334e984240bab53929eb86491ec1ff8ad923095779bd4f8698b32e2",
+    "packages/Webkul/Admin/src/DataGrids/Invoice/InvoiceDataGrid.php": "2dc42e73d53618a042ce3e8b32ec8fe2a6c4974ee5b48e2d138caa78424801a0",
+    "packages/Webkul/Admin/src/DataGrids/Quote/QuoteDataGrid.php": "148368e39eede9451b464700542b894ab20118136fb06eac3b0511b314b9b5df",
+    "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatController.php": "67961ca539941a9f3ba4142e1de498d824b7804259f267c39c4e9ad361c60eaf",
+    "packages/Webkul/Admin/src/Http/Controllers/InternalCommunication/InternalChatConversationController.php": "444532f918717649be64ee4b9f4d1ada0f866ac9916372fbd523b5c1915dc253",
+    "packages/Webkul/Admin/src/Models/InternalConversation.php": "8f57ad480b1fee317c723771780765a1b013fca24d89be6d5c23dd98d2f69799",
+    "packages/Webkul/Admin/src/Models/InternalConversationMember.php": "aad8494a20f49c6e0c3983896fc2b83b812c77c06335ee8ff2e8d7b55dc662c4",
+    "packages/Webkul/Admin/src/Models/InternalMessage.php": "b4cb5b30520e752948079935a2b9be1a405109a4ba2580bfd9b9d87d2c472077",
+    "packages/Webkul/Admin/src/Models/InternalMessageAttachment.php": "c91d6edf3ea1b24a95d3a460bb6a7529bfb8c68e302245fa189e7e7c441850b2",
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/chat-unread-badge.blade.php": "854b4516ae69b8d0fa8e7a59ec30690272639f477bbeed9afc63785c91da06b0",
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/chat.blade.php": "c39decbfbea29d9e5da1c0f95b6ec6c3f804a4ec64d7ff5f732e771ef6609281",
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-chat-listeners.blade.php": "b5183ba099b8151b954596d93e84ea5fc773913196c51dc954fa160e26f93bf9",
+    "packages/Webkul/Admin/src/Resources/views/internal-communication/realtime-config.blade.php": "36d3b202295b95901faca02821a858e673eb62fd4c261e18885d0f2435b08e5f",
+    "packages/Webkul/Admin/src/Services/InternalChatRealtimeService.php": "20e4c7079dbc76093af0cd9a342cb7d25e210c08554837cea64600f21ce4b82d",
+    "packages/Webkul/Admin/src/Services/InternalChatService.php": "522729c719310a88851d43652ed6b0b61a472eff22819a7efd1c9ebfe2cc1174",
+    "packages/Webkul/Admin/src/Services/WorkflowNotificationService.php": "40a1d9466514d2f7f7501cab5ec09527681f3cd777c8d6fca334b4e4217fa37e",
+    "packages/Webkul/DataGrid/src/DataGrid.php": "2b8db62c07506176f61aa3c8234d9a8e44e3ca99e7b368f0821662d1fc0bbf55",
+    "packages/Webkul/Product/src/Models/Product.php": "5059b5a4ec45a5bed21fe6b2bc6ab5eba96e1a15eba5bf92f095ba8757610e08",
+    "packages/Webkul/Product/src/Repositories/ProductRepository.php": "d04418634325f1bdb93914e0ab086ef6bd10dca545b0fb15e152e27cea890d27",
+    "tools/apply_crm_targeted_performance_optimization_v1.php": "8f63e62241024cf3f24aa50f0a45726202723045fc38769a6262cf5761fed03e",
+    "tools/check_crm_targeted_performance_optimization_v1.php": "de2ac3a157d5476e4a76cff2fa4a868a8eb2fcafd4a9e2a4b18ed9fa0b4393f9"
+  },
+  "indexes": {
+    "internal_messages": {
+      "crm_chat_latest_v1_idx": [
+        "conversation_id",
+        "deleted_at",
+        "id"
+      ],
+      "crm_chat_unread_v1_idx": [
+        "conversation_id",
+        "deleted_at",
+        "user_id",
+        "id"
+      ],
+      "crm_chat_edited_v1_idx": [
+        "conversation_id",
+        "deleted_at",
+        "edited_at",
+        "id"
+      ]
+    },
+    "internal_conversation_members": {
+      "crm_chat_member_user_v1_idx": [
+        "user_id",
+        "conversation_id"
+      ]
+    },
+    "invoice_items": {
+      "crm_invoice_item_product_v1_idx": [
+        "invoice_id",
+        "name"
+      ]
+    },
+    "invoices": {
+      "crm_invoice_business_v1_idx": [
+        "business_unit",
+        "id"
+      ],
+      "crm_invoice_owner_v1_idx": [
+        "user_id",
+        "id"
+      ],
+      "crm_invoice_person_v1_idx": [
+        "person_id",
+        "id"
+      ],
+      "crm_invoice_issued_v1_idx": [
+        "issued_at",
+        "id"
+      ],
+      "crm_invoice_event_v1_idx": [
+        "event_status",
+        "id"
+      ]
+    },
+    "quotes": {
+      "crm_quote_business_v1_idx": [
+        "business_unit",
+        "id"
+      ],
+      "crm_quote_person_v1_idx": [
+        "person_id",
+        "id"
+      ],
+      "crm_quote_expired_v1_idx": [
+        "expired_at",
+        "id"
+      ]
+    }
+  }
+}

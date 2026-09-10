@@ -265,16 +265,6 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 \Illuminate\Support\Facades\Route::get('export', 'export')
                     ->name('admin.finance-sales-dashboard.export');
             });
-        /* CRM_SALES_COMMISSION_PAID_DEALS_EXPORT_V1 */
-        \Illuminate\Support\Facades\Route::middleware('web')
-            ->get(
-                'admin/finance-sales-dashboard/commission-export',
-                [
-                    \Webkul\Admin\Http\Controllers\Invoice\SalesCommissionExportController::class,
-                    'export',
-                ]
-            )
-            ->name('admin.finance-sales-dashboard.commission-export');
         if ($this->app->runningInConsole()) {
             $this->commands([
                 CrmSecurityAuditCommand::class,

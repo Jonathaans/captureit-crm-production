@@ -1,0 +1,15 @@
+{
+  "patch": "CRM_CHAT_UI_PERFORMANCE_V1",
+  "files": [
+    {
+      "name": "chat.blade.php",
+      "before_sha256": "c65d73f6fa41546af070ccb8a11fb1cb780d05da992f9f116d3e3bdc821143ed",
+      "after_sha256": "c39decbfbea29d9e5da1c0f95b6ec6c3f804a4ec64d7ff5f732e771ef6609281"
+    },
+    {
+      "name": "widget.blade.php",
+      "before_sha256": "c40ec0b82ee06f3866207100c2af4f78497c2bde50a6cc17ee11c9af27fd4b4d",
+      "after_sha256": "dba6975e715d6d73db8102ef771a4695063ac5f5cbf533e7faee3edb1b3ee1db"
+    }
+  ]
+}

@@ -2,13 +2,12 @@
 {{-- INTERNAL_CHAT_WEBSOCKET_ONLY_V2 --}}
 @include('admin::internal-communication.realtime-config')
 <!-- CRM_INTERNAL_COMMUNICATION_WIDGET -->
-{{-- INTERNAL_COMMUNICATION_FLOATING_LAYER_FIX_V1 --}}
 <style>
     #crm-comm-floating {
         position: fixed;
         right: 22px;
         bottom: 22px;
-        z-index: 10000;
+        z-index: 99990;
         display: flex;
         gap: 10px;
         align-items: center;
@@ -58,7 +57,7 @@
         position: fixed;
         right: 22px;
         top: 82px;
-        z-index: 10000;
+        z-index: 99999;
         width: min(380px, calc(100vw - 30px));
         display: flex;
         flex-direction: column;
@@ -163,10 +162,6 @@
 </div>
 
 <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
 (() => {
     const pollUrl = @json(route('admin.internal-notifications.poll'));
     const toastRoot = document.getElementById('crm-comm-toasts');
@@ -324,20 +319,120 @@
         }
     });
 })();
-
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
 </script>
 
 @include('admin::internal-communication.chat-unread-badge')
 
 
-{{-- CRM_CHAT_UI_PERFORMANCE_V1: only the activity-aware presence sender remains. --}}
+{{-- INTERNAL CHAT V3.3.1 GLOBAL PRESENCE --}}
+<div
+    id="crm-global-presence-v331"
+    data-heartbeat-url="{{ route('admin.internal-chat.presence.heartbeat') }}"
+    data-csrf="{{ csrf_token() }}"
+    style="display:none;"
+></div>
+
+<script>
+    (() => {
+        if (window.__crmGlobalPresenceHeartbeatV331) {
+            return;
+        }
+
+        window.__crmGlobalPresenceHeartbeatV331 =
+            true;
+
+        const config =
+            document.getElementById(
+                'crm-global-presence-v331'
+            );
+
+        if (! config) {
+            return;
+        }
+
+        const url =
+            String(
+                config.dataset.heartbeatUrl
+                || ''
+            );
+
+        const csrf =
+            String(
+                config.dataset.csrf
+                || ''
+            );
+
+        if (! url) {
+            return;
+        }
+
+        const ping =
+            async () => {
+                if (
+                    document.visibilityState
+                    === 'hidden'
+                ) {
+                    return;
+                }
+
+                try {
+                    await fetch(
+                        url,
+                        {
+                            method:
+                                'POST',
+
+                            headers: {
+                                'Accept':
+                                    'application/json',
+
+                                'Content-Type':
+                                    'application/json',
+
+                                'X-CSRF-TOKEN':
+                                    csrf,
+
+                                'X-Requested-With':
+                                    'XMLHttpRequest',
+                            },
+
+                            credentials:
+                                'same-origin',
+
+                            body:
+                                '{}',
+                        }
+                    );
+                } catch (error) {
+                    // Presence is best-effort and must never block CRM pages.
+                }
+            };
+
+        ping();
+
+        window.setInterval(
+            ping,
+            15000
+        );
+
+        window.addEventListener(
+            'focus',
+            ping
+        );
+
+        document.addEventListener(
+            'visibilitychange',
+            () => {
+                if (
+                    document.visibilityState
+                    === 'visible'
+                ) {
+                    ping();
+                }
+            }
+        );
+    })();
+</script>
 
 
 {{-- INTERNAL CHAT V3.3.2 ACTIVITY PRESENCE --}}
@@ -349,10 +444,6 @@
 ></div>
 
 <script>
-/* CRM_CHAT_LIVE_SCROLL_V2: use live DOM after the layout mounts Vue on load. */
-(() => {
-    const boot = () => window.requestAnimationFrame(() => {
-
     (() => {
         if (window.__crmActivityPresenceV332) {
             return;
@@ -392,9 +483,6 @@
         let lastSentAt =
             0;
 
-        /* CRM_CHAT_UI_PERFORMANCE_V1: never overlap presence requests. */
-        let presenceInFlight = false;
-
         const markActivity =
             () => {
                 lastActivityAt =
@@ -426,7 +514,6 @@
                 if (
                     document.visibilityState
                     === 'hidden'
-                    || presenceInFlight
                 ) {
                     return;
                 }
@@ -445,8 +532,6 @@
 
                 lastSentAt =
                     Date.now();
-
-                presenceInFlight = true;
 
                 try {
                     await fetch(
@@ -484,8 +569,6 @@
                     );
                 } catch (error) {
                     // Presence must never break ordinary CRM work.
-                } finally {
-                    presenceInFlight = false;
                 }
             };
 
@@ -531,12 +614,4 @@
             15000
         );
     })();
-
-    });
-    if (document.readyState === "complete") {
-        boot();
-    } else {
-        window.addEventListener("load", boot, { once: true });
-    }
-})();
 </script>

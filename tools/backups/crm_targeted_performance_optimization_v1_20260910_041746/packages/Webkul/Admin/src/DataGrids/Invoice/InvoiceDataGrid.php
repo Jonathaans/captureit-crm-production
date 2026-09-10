@@ -3,7 +3,6 @@
 namespace Webkul\Admin\DataGrids\Invoice;
 
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Webkul\Contact\Repositories\PersonRepository;
 use Webkul\DataGrid\DataGrid;
@@ -11,8 +10,6 @@ use Webkul\User\Repositories\UserRepository;
 
 class InvoiceDataGrid extends DataGrid
 {
-    /* CRM_TARGETED_PERFORMANCE_OPTIMIZATION_V1 */
-    protected $sortColumn = 'invoices.id';
     /**
      * Prepare query builder.
      */
@@ -64,43 +61,29 @@ class InvoiceDataGrid extends DataGrid
          */
         
         /*
-         * CRM_INVOICE_DATAGRID_FAST_PRODUCTS_V1
-         *
-         * The expensive invoice_items join is only needed while the product
-         * filter is active. The normal paginated list keeps one row per invoice,
-         * so its COUNT query no longer needs DISTINCT over multiplied item rows.
+         * Product reporting/filter dimension.
+         * invoice_items.name is the historical commercial snapshot.
          */
-        $productFilters = (array) request()->input('filters', []);
-        $productFilterActive = array_key_exists('products', $productFilters)
-            && $productFilters['products'] !== null
-            && $productFilters['products'] !== ''
-            && $productFilters['products'] !== [];
-
-        $queryBuilder->addSelect(
-            DB::raw(
-                "(SELECT GROUP_CONCAT(DISTINCT ii_product.name ORDER BY ii_product.name SEPARATOR ', ')"
-                ." FROM invoice_items ii_product"
-                ." WHERE ii_product.invoice_id = invoices.id"
-                .") as products"
+        $queryBuilder
+            ->leftJoin(
+                'invoice_items as invoice_product_items',
+                'invoices.id',
+                '=',
+                'invoice_product_items.invoice_id'
             )
-        );
-
-        if ($productFilterActive) {
-            $queryBuilder
-                ->join(
-                    'invoice_items as invoice_product_filter_items',
-                    'invoices.id',
-                    '=',
-                    'invoice_product_filter_items.invoice_id'
+            ->addSelect(
+                DB::raw(
+                    "(SELECT GROUP_CONCAT(DISTINCT ii_product.name ORDER BY ii_product.name SEPARATOR ', ')"
+                    ." FROM invoice_items ii_product"
+                    ." WHERE ii_product.invoice_id = invoices.id"
+                    .") as products"
                 )
-                ->distinct();
-        }
+            )
+            ->distinct();
 
         $this->addFilter(
             'products',
-            $productFilterActive
-                ? 'invoice_product_filter_items.name'
-                : 'products'
+            'invoice_product_items.name'
         );
 $this->addFilter(
             'invoice_number',
@@ -329,24 +312,21 @@ $this->addColumn([
             'sortable'   => false,
             'filterable' => true,
             'filterable_type' => 'dropdown',
-            'filterable_options' => Cache::remember(
-                'invoice.datagrid.product-options.v1.'
-                    .sha1(DB::connection()->getDatabaseName()),
-                now()->addMinutes(5),
-                fn () => DB::table('invoice_items')
-                    ->whereNotNull('name')
-                    ->where('name', '<>', '')
-                    ->select('name')
-                    ->distinct()
-                    ->orderBy('name')
-                    ->pluck('name')
-                    ->map(fn ($name) => [
+            'filterable_options' => DB::table('invoice_items')
+                ->whereNotNull('name')
+                ->where('name', '<>', '')
+                ->select('name')
+                ->distinct()
+                ->orderBy('name')
+                ->pluck('name')
+                ->map(
+                    fn ($name) => [
                         'label' => (string) $name,
                         'value' => (string) $name,
-                    ])
-                    ->values()
-                    ->all()
-            ),
+                    ]
+                )
+                ->values()
+                ->all(),
             'closure' => function ($row) {
                 $products = trim(
                     (string) (
