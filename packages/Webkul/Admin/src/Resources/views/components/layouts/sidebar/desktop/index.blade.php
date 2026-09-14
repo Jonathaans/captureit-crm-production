@@ -8,7 +8,7 @@
     <div class="journal-scroll h-[calc(100vh-100px)] overflow-hidden group-[.sidebar-collapsed]/container:overflow-visible">
         <nav class="sidebar-rounded grid w-full gap-2">
             <!-- Navigation Menu -->
-            @foreach (menu()->getItems('admin') as $menuItem)
+            @foreach (app(\Webkul\Admin\Services\SidebarNavigationService::class)->getItems() as $menuItem)
                 <div class="px-4 group/item {{ $menuItem->isActive() ? 'active' : 'inactive' }}">
                     <a
                         class="flex gap-2 p-1.5 items-center cursor-pointer hover:rounded-lg {{ $menuItem->isActive() == 'active' ? 'bg-brandColor rounded-lg' : ' hover:bg-gray-100 hover:dark:bg-gray-950' }} peer"

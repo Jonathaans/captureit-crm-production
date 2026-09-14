@@ -96,16 +96,9 @@ return [
     ],[
     'key'        => 'inventory',
     'name'       => 'Inventory',
-    'route'      => 'admin.inventory.dashboard',
+    'route'      => 'admin.inventory.items.index',
     'sort'       => 70,
     'icon-class' => 'icon-settings-warehouse',
-],
-[
-    'key'        => 'inventory.dashboard',
-    'name'       => 'Dashboard',
-    'route'      => 'admin.inventory.dashboard',
-    'sort'       => 1,
-    'icon-class' => '',
 ],
 
 [

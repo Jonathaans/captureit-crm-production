@@ -29,13 +29,6 @@
             style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto"
         >
             <a
-                href="{{ route('admin.finance-sales-dashboard.index') }}"
-                class="secondary-button max-sm:w-full max-sm:justify-center"
-            >
-                Finance & Sales Dashboard
-            </a>
-
-            <a
                 href="{{ route('admin.invoices.billing.create') }}"
                 class="primary-button max-sm:w-full max-sm:justify-center"
             >
