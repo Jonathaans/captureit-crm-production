@@ -19,10 +19,12 @@ it('can logout from the admin panel', function () {
     $admin = getDefaultAdmin();
 
     test()->actingAs($admin)
+        ->withSession(['url.intended' => route('admin.dashboard.index')])
         ->delete(route('admin.session.destroy'), [
             '_token' => csrf_token(),
         ])
-        ->assertStatus(302);
+        ->assertRedirect(route('admin.session.create'))
+        ->assertSessionMissing('url.intended');
 
     expect(auth()->guard('user')->user())->toBeNull();
 });

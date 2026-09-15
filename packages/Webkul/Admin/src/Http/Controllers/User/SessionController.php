@@ -3,29 +3,34 @@
 namespace Webkul\Admin\Http\Controllers\User;
 
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Collection;
 use Illuminate\View\View;
 use Webkul\Admin\Http\Controllers\Controller;
-use Webkul\Core\Menu\MenuItem;
+use Webkul\Admin\Services\AclLandingPageService;
 
 class SessionController extends Controller
 {
+    public function __construct(
+        protected AclLandingPageService $landingPage,
+    ) {}
+
     /**
      * Show the form for creating a new resource.
      */
     public function create(): RedirectResponse|View
     {
         if (auth()->guard('user')->check()) {
-            return redirect()->route('admin.dashboard.index');
+            if ($landingUrl = $this->landingPage->getUrl()) {
+                return redirect()->to($landingUrl);
+            }
+
+            $this->invalidateUserSession();
+
+            session()->flash('error', trans('admin::app.users.not-permission'));
+
+            return redirect()->route('admin.session.create');
         }
 
-        $previousUrl = url()->previous();
-
-        $intendedUrl = str_contains($previousUrl, 'admin')
-            ? $previousUrl
-            : route('admin.dashboard.index');
-
-        session()->put('url.intended', $intendedUrl);
+        session()->forget('url.intended');
 
         return view('admin::sessions.login');
     }
@@ -47,36 +52,25 @@ class SessionController extends Controller
         }
 
         if (auth()->guard('user')->user()->status == 0) {
-            session()->flash('warning', trans('admin::app.users.activate-warning'));
+            $this->invalidateUserSession();
 
-            auth()->guard('user')->logout();
+            session()->flash('warning', trans('admin::app.users.activate-warning'));
 
             return redirect()->route('admin.session.create');
         }
 
-        $menus = menu()->getItems('admin');
+        request()->session()->regenerate();
+        request()->session()->forget('url.intended');
 
-        $availableNextMenu = $menus?->first();
-
-        if (! bouncer()->hasPermission('dashboard')) {
-            if (is_null($availableNextMenu)) {
-                session()->flash('error', trans('admin::app.users.not-permission'));
-
-                auth()->guard('user')->logout();
-
-                return redirect()->route('admin.session.create');
-            }
-
-            return redirect()->to($availableNextMenu->getUrl());
+        if ($landingUrl = $this->landingPage->getUrl()) {
+            return redirect()->to($landingUrl);
         }
 
-        $hasAccessToIntendedUrl = $this->canAccessIntendedUrl($menus, redirect()->getIntendedUrl());
+        $this->invalidateUserSession();
 
-        if ($hasAccessToIntendedUrl) {
-            return redirect()->intended(route('admin.dashboard.index'));
-        }
+        session()->flash('error', trans('admin::app.users.not-permission'));
 
-        return redirect()->to($availableNextMenu->getUrl());
+        return redirect()->route('admin.session.create');
     }
 
     /**
@@ -84,34 +78,19 @@ class SessionController extends Controller
      */
     public function destroy(): RedirectResponse
     {
-        auth()->guard('user')->logout();
+        $this->invalidateUserSession();
 
         return redirect()->route('admin.session.create');
     }
 
     /**
-     * Find menu item by URL.
+     * Logout and remove all state belonging to the previous account.
      */
-    protected function canAccessIntendedUrl(Collection $menus, ?string $url): ?MenuItem
+    protected function invalidateUserSession(): void
     {
-        if (is_null($url)) {
-            return null;
-        }
+        auth()->guard('user')->logout();
 
-        foreach ($menus as $menu) {
-            if ($menu->getUrl() === $url) {
-                return $menu;
-            }
-
-            if ($menu->haveChildren()) {
-                $found = $this->canAccessIntendedUrl($menu->getChildren(), $url);
-
-                if ($found) {
-                    return $found;
-                }
-            }
-        }
-
-        return null;
+        request()->session()->invalidate();
+        request()->session()->regenerateToken();
     }
 }

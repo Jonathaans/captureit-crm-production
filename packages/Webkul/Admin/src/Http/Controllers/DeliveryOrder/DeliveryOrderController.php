@@ -100,6 +100,7 @@ class DeliveryOrderController extends Controller
     public function issue(int $id): RedirectResponse
     {
         $deliveryOrder = $this->findDeliveryOrder($id);
+        $releaseUser = auth()->guard('user')->user();
 
         $allocationService = app(
             DeliveryOrderInventoryAllocationService::class
@@ -125,22 +126,53 @@ class DeliveryOrderController extends Controller
                 );
         }
 
-        DB::transaction(
-            function () use ($deliveryOrder) {
+        $released = DB::transaction(
+            function () use (
+                $deliveryOrder,
+                $releaseUser
+            ): bool {
+                $lockedDeliveryOrder = DeliveryOrder::query()
+                    ->lockForUpdate()
+                    ->findOrFail($deliveryOrder->id);
+
+                if (
+                    strtolower(
+                        $lockedDeliveryOrder->status ?: 'draft'
+                    ) !== 'draft'
+                ) {
+                    return false;
+                }
+
                 app(
                     DeliveryOrderWarehouseReleaseService::class
                 )->releaseOnIssue(
-                    $deliveryOrder,
-                    auth()->guard('user')->id()
+                    $lockedDeliveryOrder,
+                    $releaseUser?->id
                 );
 
-                $deliveryOrder->update([
+                $lockedDeliveryOrder->update([
                     'status' => 'issued',
-                    'issued_at' => $deliveryOrder->issued_at
+                    'issued_at' => $lockedDeliveryOrder->issued_at
                         ?: now(),
+                    'released_by' => $releaseUser?->id,
+                    'released_by_name' => $releaseUser?->name,
                 ]);
+
+                return true;
             }
         );
+
+        if (! $released) {
+            return redirect()
+                ->route(
+                    'admin.delivery-orders.show',
+                    $deliveryOrder->id
+                )
+                ->with(
+                    'error',
+                    'Surat Jalan hanya dapat dirilis dari status DRAFT.'
+                );
+        }
 
         return redirect()
             ->route(
