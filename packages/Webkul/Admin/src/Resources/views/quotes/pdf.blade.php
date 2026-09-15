@@ -104,6 +104,14 @@
         $validUntil = $quote->expired_at
             ? core()->formatDate($quote->expired_at, 'd M Y')
             : '-';
+
+        /*
+         * Terms & Conditions approval identity.
+         * Person already eager-loads its organization, so these values stay
+         * tied to the same client data shown on the quotation.
+         */
+        $clientName = trim((string) ($quote->person?->name ?? '')) ?: '-';
+        $clientCompanyName = trim((string) ($quote->person?->organization?->name ?? '')) ?: '-';
     @endphp
 
     <style>
@@ -416,6 +424,108 @@
             line-height: 1.45;
         }
 
+        .terms-page {
+            page-break-before: always;
+            padding: 0 68px;
+            color: #111111;
+            font-size: 10.2px;
+            line-height: 1.5;
+        }
+
+        .terms-columns {
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        .terms-columns > tbody > tr > td {
+            width: 50%;
+            vertical-align: top;
+        }
+
+        .terms-column-left {
+            padding-right: 25px;
+        }
+
+        .terms-column-right {
+            padding-left: 25px;
+        }
+
+        .terms-title {
+            margin: 0 0 14px;
+            color: #111111;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .terms-section {
+            margin: 0 0 12px;
+        }
+
+        .terms-section-title {
+            margin: 0 0 7px;
+            color: #111111;
+            font-size: 10.2px;
+            font-weight: bold;
+        }
+
+        .terms-section p,
+        .terms-continuation p {
+            margin: 0 0 9px;
+        }
+
+        .terms-section ul {
+            margin: 0 0 9px 18px;
+            padding: 0;
+        }
+
+        .terms-section li {
+            margin: 0 0 7px;
+            padding-left: 3px;
+        }
+
+        .terms-bank-title {
+            margin: 0 0 7px;
+            font-weight: bold;
+        }
+
+        .terms-bank-details {
+            margin-bottom: 9px;
+        }
+
+        .terms-final-statement {
+            margin-top: 14px;
+            font-size: 10.2px;
+            line-height: 1.5;
+        }
+
+        .terms-signatures {
+            margin-top: 20px;
+            table-layout: fixed;
+        }
+
+        .terms-signatures td {
+            width: 50%;
+            vertical-align: top;
+        }
+
+        .terms-signatures td:first-child {
+            padding-right: 35px;
+        }
+
+        .terms-signatures td:last-child {
+            padding-left: 35px;
+        }
+
+        .terms-approval-label {
+            margin-bottom: 58px;
+        }
+
+        .terms-signer-name,
+        .terms-signer-company {
+            margin: 0;
+            line-height: 1.45;
+        }
+
 .footer {
     position: fixed;
 
@@ -436,8 +546,8 @@
 
     text-align: center;
 
-    color: #9ca3af;
-    font-size: 7px;
+    color: #6b7280;
+    font-size: 6.8px;
 }
     </style>
 </head>
@@ -728,8 +838,15 @@
         </tr>
     </table>
 
+    @include('admin::quotes.partials.terms-and-conditions', [
+        'clientName' => $clientName,
+        'clientCompanyName' => $clientCompanyName,
+    ])
+
     <div class="footer">
-        Member of Rental Indonesia.
+        PT Varbel Anvaya Bersaudara tercatat sebagai anggota
+        <strong>Asosiasi Rental Indonesia</strong>
+        dengan Nomor Anggota <strong>JK-0006-VII-2026</strong>,
     </div>
 </body>
 </html>
