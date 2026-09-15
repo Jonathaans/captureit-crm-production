@@ -13,6 +13,11 @@ use Webkul\Admin\Services\SalesCommissionExportService;
 /** CRM_SALES_COMMISSION_PAID_DEALS_EXPORT_V1 */
 class SalesCommissionExportController extends Controller
 {
+    private const ALLOWED_EXPORT_ROLES = [
+        'administrator',
+        'superadministrator',
+    ];
+
     public function __construct(
         private readonly SalesCommissionExportService $commissionExport,
     ) {
@@ -138,10 +143,11 @@ class SalesCommissionExportController extends Controller
 
         abort_unless($user, 403);
 
-        $allowed = $user->hasPermission('invoices')
-            || $user->hasPermission('invoices.view')
-            || $user->hasPermission('invoices.financial-report');
+        $roleName = strtolower(trim((string) ($user->role?->name ?? '')));
 
-        abort_unless($allowed, 403);
+        abort_unless(
+            in_array($roleName, self::ALLOWED_EXPORT_ROLES, true),
+            403
+        );
     }
 }
