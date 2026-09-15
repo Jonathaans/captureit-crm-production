@@ -1,4 +1,12 @@
 <x-admin::layouts.anonymous>
+    @php
+        $safeUrl = auth()->guard('user')->check()
+            ? app(\Webkul\Admin\Services\AclLandingPageService::class)->getUrl()
+            : null;
+
+        $safeUrl ??= route('admin.session.create');
+    @endphp
+
     <!-- Page Title -->
     <x-slot:title>
         @lang("admin::app.errors.{$errorCode}.title")
@@ -9,13 +17,10 @@
         <div class="flex max-w-[745px] items-center gap-5">
             <div class="flex w-full flex-col gap-6">
                 <img
-                    src="{{ 
-                        request()->cookie('dark_mode') 
-                        ? vite()->asset('images/dark-logo.svg') 
-                        : vite()->asset('images/logo.svg') 
-                    }}"
-                    class="w-40 ltr:pr-16 rtl:pl-16"
-                >
+                    src="{{ asset('images/logo-varbel.png') }}"
+                    class="h-auto w-[150px] rounded-md bg-white p-2"
+                    alt="Varbel Corps"
+                />
 
 				<div class="text-[38px] font-bold text-gray-800 dark:text-white">
                     {{ $errorCode }}
@@ -27,7 +32,7 @@
 
                 <div class="flex items-center gap-2.5">
                     <a
-                        href="{{ url()->previous() }}"
+                        href="{{ $safeUrl }}"
                         class="cursor-pointer text-sm font-semibold text-blue-600 transition-all hover:underline"
                     >
                         @lang('admin::app.errors.go-back')
@@ -40,7 +45,7 @@
                     </span>
 
                     <a
-                        href="{{ route('admin.dashboard.index') }}"
+                        href="{{ $safeUrl }}"
                         class="hover:underlsine text-sm font-semibold text-blue-600 transition-all"
                     >
                         @lang('admin::app.errors.dashboard')
@@ -49,8 +54,8 @@
 
                 <p class="text-sm text-gray-800 dark:text-white">
                     @lang('admin::app.errors.support', [
-                        'link' => 'mailto:support@example.com',
-                        'email' => 'support@example.com',
+                        'link' => 'ask.me@captureitphotobooth.id.com',
+                        'email' => 'ask.me@captureitphotobooth.id',
                         'class' => 'font-semibold text-blue-600 transition-all hover:underline',
                     ])
                 </p>

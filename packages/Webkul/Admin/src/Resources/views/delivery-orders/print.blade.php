@@ -748,7 +748,10 @@
 
                     <div class="signature-line">
                         <div class="signature-name">
-                            __________________
+                            {{
+                                $deliveryOrder->released_by_name
+                                ?: '________________'
+                            }}
                         </div>
 
                     </div>
@@ -770,7 +773,6 @@
                         <div class="signature-name">
                             {{
                                 $deliveryOrder->pic_name
-                                ?: $deliveryOrder->recipient_name
                                 ?: '________________'
                             }}
                         </div>

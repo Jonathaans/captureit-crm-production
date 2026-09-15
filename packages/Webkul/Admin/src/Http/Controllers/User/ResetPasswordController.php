@@ -13,10 +13,15 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\AclLandingPageService;
 
 class ResetPasswordController extends Controller
 {
     use ResetsPasswords;
+
+    public function __construct(
+        protected AclLandingPageService $landingPage,
+    ) {}
 
     /**
      * Display the password reset view for the given token.
@@ -55,7 +60,21 @@ class ResetPasswordController extends Controller
             );
 
             if ($response == Password::PASSWORD_RESET) {
-                return redirect()->route('admin.dashboard.index');
+                request()->session()->regenerate();
+                request()->session()->forget('url.intended');
+
+                if ($landingUrl = $this->landingPage->getUrl()) {
+                    return redirect()->to($landingUrl);
+                }
+
+                auth()->guard('user')->logout();
+
+                request()->session()->invalidate();
+                request()->session()->regenerateToken();
+
+                session()->flash('error', trans('admin::app.users.not-permission'));
+
+                return redirect()->route('admin.session.create');
             }
 
             return back()

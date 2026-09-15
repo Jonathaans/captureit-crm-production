@@ -8,10 +8,15 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Password;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Notifications\User\UserResetPassword;
+use Webkul\Admin\Services\AclLandingPageService;
 
 class ForgotPasswordController extends Controller
 {
     use SendsPasswordResetEmails;
+
+    public function __construct(
+        protected AclLandingPageService $landingPage,
+    ) {}
 
     /**
      * Show the form for creating a new resource.
@@ -19,18 +24,19 @@ class ForgotPasswordController extends Controller
     public function create()
     {
         if (auth()->guard('user')->check()) {
-            return redirect()->route('admin.dashboard.index');
-        } else {
-            if (strpos(url()->previous(), 'user') !== false) {
-                $intendedUrl = url()->previous();
-            } else {
-                $intendedUrl = route('admin.dashboard.index');
+            if ($landingUrl = $this->landingPage->getUrl()) {
+                return redirect()->to($landingUrl);
             }
 
-            session()->put('url.intended', $intendedUrl);
+            auth()->guard('user')->logout();
 
-            return view('admin::sessions.forgot-password');
+            request()->session()->invalidate();
+            request()->session()->regenerateToken();
         }
+
+        session()->forget('url.intended');
+
+        return view('admin::sessions.forgot-password');
     }
 
     /**

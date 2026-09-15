@@ -53,6 +53,8 @@ class DeliveryOrder extends Model implements DeliveryOrderContract
         'returned_at',
 
         'created_by',
+        'released_by',
+        'released_by_name',
     ];
 
     protected $casts = [
@@ -97,6 +99,14 @@ class DeliveryOrder extends Model implements DeliveryOrderContract
         return $this->belongsTo(
             UserProxy::modelClass(),
             'created_by'
+        );
+    }
+
+    public function releaser()
+    {
+        return $this->belongsTo(
+            UserProxy::modelClass(),
+            'released_by'
         );
     }
 
