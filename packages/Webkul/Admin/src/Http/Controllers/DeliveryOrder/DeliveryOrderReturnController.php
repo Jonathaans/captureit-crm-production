@@ -76,7 +76,7 @@ class DeliveryOrderReturnController extends Controller
     }
 
     /**
-     * Scanner Check-In for serialized assets.
+     * Scanner or manual Check-In for serialized assets.
      *
      * Default condition from UI is GOOD. For damaged/fair, choose the
      * condition before scanning. Missing assets still use the row form
@@ -92,7 +92,7 @@ class DeliveryOrderReturnController extends Controller
             'barcode' => [
                 'required',
                 'string',
-                'max:100',
+                'max:150',
             ],
         ]);
 
@@ -100,17 +100,13 @@ class DeliveryOrderReturnController extends Controller
             $validated['barcode']
         );
 
-        $asset = InventoryAsset::query()
-            ->where(function ($query) use ($barcode) {
-                $query
-                    ->where('barcode_value', $barcode)
-                    ->orWhere('asset_code', $barcode);
-            })
-            ->first();
+        $asset = $this->findAssetByReturnIdentifier(
+            $barcode
+        );
 
         if (! $asset) {
             throw ValidationException::withMessages([
-                'barcode' => 'QR / Barcode / Asset Code tidak ditemukan: '.$barcode,
+                'barcode' => 'QR / Barcode / Asset Code / Serial Number tidak ditemukan: '.$barcode,
             ]);
         }
 
@@ -370,6 +366,41 @@ class DeliveryOrderReturnController extends Controller
             'admin.delivery-orders.return.show',
             $deliveryOrder->id
         );
+    }
+
+    /**
+     * Resolve input from the scanner and manual fallback through one path.
+     *
+     * Asset Code and Barcode are unique. Serial Number is allowed only when
+     * it resolves to exactly one asset, preventing an ambiguous manual return.
+     */
+    private function findAssetByReturnIdentifier(
+        string $identifier
+    ): ?InventoryAsset {
+        $asset = InventoryAsset::query()
+            ->where(function ($query) use ($identifier) {
+                $query
+                    ->where('barcode_value', $identifier)
+                    ->orWhere('asset_code', $identifier);
+            })
+            ->first();
+
+        if ($asset) {
+            return $asset;
+        }
+
+        $serialMatches = InventoryAsset::query()
+            ->where('serial_number', $identifier)
+            ->limit(2)
+            ->get();
+
+        if ($serialMatches->count() > 1) {
+            throw ValidationException::withMessages([
+                'barcode' => 'Serial Number digunakan oleh lebih dari satu asset. Gunakan Asset Code agar tidak salah return.',
+            ]);
+        }
+
+        return $serialMatches->first();
     }
 
     private function findDeliveryOrder(

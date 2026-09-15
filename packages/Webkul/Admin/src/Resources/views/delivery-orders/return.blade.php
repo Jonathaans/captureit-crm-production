@@ -133,6 +133,101 @@
                 OUT &rarr; Scan &rarr; RETURN PENDING / RECEIVED &rarr; Inspection &rarr; Finalize Return.
             </div>
 
+            @if (bouncer()->hasPermission('delivery-orders.return.check-in'))
+            <details
+                id="return-manual-disclosure"
+                class="group mt-4 rounded-lg border border-yellow-200 bg-yellow-50 dark:border-gray-800 dark:bg-gray-900"
+                @if ($errors->has('barcode')) open @endif
+            >
+                <summary
+                    id="return-manual-toggle"
+                    aria-controls="return-manual-panel"
+                    class="flex cursor-pointer list-none items-center justify-between gap-4 p-4 max-sm:flex-wrap"
+                >
+                    <div class="flex items-start gap-3">
+                        <div class="rounded-full bg-yellow-100 px-3 py-2 text-xs font-bold text-yellow-700">
+                            !
+                        </div>
+
+                        <div>
+                            <p class="font-bold text-yellow-800 dark:text-white">
+                                QR rusak atau tidak terbaca?
+                            </p>
+
+                            <p class="mt-1 text-xs text-yellow-700 dark:text-gray-300">
+                                Ketik Asset Code, Barcode, atau Serial Number. Input manual tetap melewati validasi Surat Jalan dan proses return yang sama.
+                            </p>
+                        </div>
+                    </div>
+
+                    <span
+                        class="secondary-button whitespace-nowrap max-sm:w-full max-sm:justify-center"
+                    >
+                        Input Manual
+                    </span>
+                </summary>
+
+                <div
+                    id="return-manual-panel"
+                    class="mx-4 mb-4 rounded-lg border border-yellow-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-950"
+                >
+                    <form
+                        id="return-manual-form"
+                        method="POST"
+                        action="{{ route(
+                            'admin.delivery-orders.return.scan-check-in',
+                            $deliveryOrder->id
+                        ) }}"
+                        class="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 max-sm:grid-cols-1"
+                    >
+                        @csrf
+                        @method('PUT')
+
+                        <div>
+                            <label
+                                for="return-manual-code"
+                                class="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300"
+                            >
+                                Asset Code / Barcode / Serial Number
+                            </label>
+
+                            <input
+                                id="return-manual-code"
+                                type="text"
+                                name="barcode"
+                                value="{{ old('barcode') }}"
+                                maxlength="150"
+                                autocomplete="off"
+                                spellcheck="false"
+                                data-allow-typing
+                                required
+                                placeholder="Contoh: CAM-0007"
+                                class="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 font-mono text-sm font-semibold uppercase text-gray-800 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                            >
+
+                            @error('barcode')
+                                <p class="mt-2 text-xs font-semibold text-red-600">
+                                    {{ $message }}
+                                </p>
+                            @enderror
+                        </div>
+
+                        <button
+                            id="return-manual-submit"
+                            type="submit"
+                            class="primary-button max-sm:w-full max-sm:justify-center"
+                        >
+                            Submit Manual
+                        </button>
+                    </form>
+
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                        Sistem tidak mengubah database secara langsung. Asset hanya diterima jika kode ditemukan, terdaftar pada Surat Jalan ini, dan status return-nya valid.
+                    </p>
+                </div>
+            </details>
+            @endif
+
             <div
                 id="return-scan-message"
                 class="mt-4 hidden rounded-md px-4 py-3 text-sm font-semibold"
@@ -557,6 +652,28 @@
                 const lastScan = document.getElementById('return-last-scan');
                 const waitingCount = document.getElementById('waiting-count');
                 const receivedCount = document.getElementById('received-count');
+                const manualDisclosure = document.getElementById('return-manual-disclosure');
+                const manualForm = document.getElementById('return-manual-form');
+                const manualInput = document.getElementById('return-manual-code');
+                const manualSubmit = document.getElementById('return-manual-submit');
+
+                function setManualOpen(open) {
+                    if (! manualDisclosure) {
+                        return;
+                    }
+
+                    manualDisclosure.open = Boolean(open);
+
+                    if (
+                        open
+                        && manualInput
+                    ) {
+                        window.setTimeout(
+                            () => manualInput.focus(),
+                            0
+                        );
+                    }
+                }
 
                 function showMessage(message, type = 'success') {
                     messageBox.classList.remove(
@@ -789,7 +906,9 @@
 
                     processing = true;
 
-                    const code = queue.shift();
+                    const job = queue.shift();
+                    const code = job.code;
+                    let successful = false;
 
                     state.textContent = `PROCESSING ${code}`;
                     lastScan.textContent = `Last scan: ${code}`;
@@ -841,6 +960,8 @@
                                 : 'success'
                         );
 
+                        successful = true;
+
                         beep(true);
                     } catch (error) {
                         showMessage(
@@ -850,6 +971,26 @@
 
                         beep(false);
                     } finally {
+                        if (job.source === 'manual') {
+                            if (manualSubmit) {
+                                manualSubmit.disabled = false;
+                                manualSubmit.classList.remove(
+                                    'cursor-not-allowed',
+                                    'opacity-60'
+                                );
+                            }
+
+                            if (successful) {
+                                if (manualInput) {
+                                    manualInput.value = '';
+                                }
+
+                                setManualOpen(false);
+                            } else {
+                                setManualOpen(true);
+                            }
+                        }
+
                         processing = false;
 
                         state.textContent = queue.length
@@ -860,17 +1001,55 @@
                     }
                 }
 
-                function enqueue(code) {
+                function enqueue(code, source = 'scanner') {
                     code = String(code || '').trim();
 
                     if (! code) {
                         return;
                     }
 
-                    queue.push(code);
+                    queue.push({
+                        code,
+                        source,
+                    });
+
+                    if (
+                        source === 'manual'
+                        && manualSubmit
+                    ) {
+                        manualSubmit.disabled = true;
+                        manualSubmit.classList.add(
+                            'cursor-not-allowed',
+                            'opacity-60'
+                        );
+                    }
 
                     processNext();
                 }
+
+                manualForm?.addEventListener(
+                    'submit',
+                    (event) => {
+                        event.preventDefault();
+
+                        const code = manualInput?.value.trim() || '';
+
+                        if (! code) {
+                            showMessage(
+                                'Masukkan Asset Code, Barcode, atau Serial Number.',
+                                'error'
+                            );
+                            setManualOpen(true);
+
+                            return;
+                        }
+
+                        enqueue(
+                            code,
+                            'manual'
+                        );
+                    }
+                );
 
                 document.addEventListener(
                     'keydown',
