@@ -15,6 +15,14 @@
             'down_payment' => 'DP Belum Lunas',
             'settlement' => 'Pelunasan Belum Lunas',
         ];
+        $commissionExportRole = strtolower(trim((string) (
+            auth()->guard('user')->user()?->role?->name ?? ''
+        )));
+        $canExportSalesCommission = in_array(
+            $commissionExportRole,
+            ['administrator', 'superadministrator'],
+            true
+        );
     @endphp
 
     {{-- CRM_FINANCE_SALES_DASHBOARD_STYLE_STABILITY_V1_2 --}}
@@ -448,6 +456,7 @@
         </form>
 
         {{-- CRM_SALES_COMMISSION_PAID_DEALS_EXPORT_V1 --}}
+        @if ($canExportSalesCommission)
         <section class="fsd-panel" aria-labelledby="sales-commission-export-title">
             <div class="fsd-section-head">
                 <div>
@@ -516,6 +525,7 @@
                 </div>
             </form>
         </section>
+        @endif
 
         <section class="fsd-kpi-grid">
             <a href="{{ route('admin.finance-sales-dashboard.index', array_merge($filters, ['focus' => 'all'])) }}" class="fsd-kpi fsd-kpi--primary">

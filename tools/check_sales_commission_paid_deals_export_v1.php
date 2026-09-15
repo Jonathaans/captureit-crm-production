@@ -92,6 +92,31 @@ sceCheckContent($root, $controller, [
     "fputcsv(\$output",
 ], 'Controller menghasilkan CSV aman dengan ringkasan dan detail');
 
+$controllerContent = is_file(sceCheckPath($root, $controller))
+    ? (string) file_get_contents(sceCheckPath($root, $controller))
+    : '';
+
+sceCheck(
+    str_contains($controllerContent, 'ALLOWED_EXPORT_ROLES')
+        && str_contains($controllerContent, "'administrator'")
+        && str_contains($controllerContent, "'superadministrator'")
+        && str_contains($controllerContent, '$user->role?->name')
+        && str_contains($controllerContent, 'in_array($roleName, self::ALLOWED_EXPORT_ROLES, true)')
+        && ! str_contains($controllerContent, '$user->hasPermission('),
+    'Endpoint export dibatasi untuk Administrator dan SuperAdministrator',
+);
+
+$viewContent = is_file(sceCheckPath($root, $view))
+    ? (string) file_get_contents(sceCheckPath($root, $view))
+    : '';
+
+sceCheck(
+    str_contains($viewContent, '$canExportSalesCommission')
+        && str_contains($viewContent, "['administrator', 'superadministrator']")
+        && str_contains($viewContent, '@if ($canExportSalesCommission)'),
+    'Panel export komisi disembunyikan dari role lain',
+);
+
 sceCheckContent($root, $provider, [
     CHECK_MARKER,
     'SalesCommissionExportController::class',
