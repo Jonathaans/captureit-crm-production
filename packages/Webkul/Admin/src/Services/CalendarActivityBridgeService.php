@@ -330,6 +330,13 @@ class CalendarActivityBridgeService
                         'lead_id',
                     ]
                 )
+                ->whereNotIn(
+                    'TABLE_NAME',
+                    [
+                        // CALENDAR_ACTIVITY_BRIDGE_EXCLUDE_SELF_TABLE_V1
+                        'google_calendar_events',
+                    ]
+                )
                 ->groupBy(
                     'TABLE_NAME'
                 )
