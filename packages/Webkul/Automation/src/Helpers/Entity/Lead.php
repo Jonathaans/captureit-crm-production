@@ -97,7 +97,24 @@ class Lead extends AbstractEntity
         ];
     }
 
-    /**
+       /**
+     * Replace Lead placeholders and placeholders belonging
+     * to the Contact attached to the Lead.
+     */
+    public function replacePlaceholders(mixed $entity, string $content): string
+    {
+        $content = parent::replacePlaceholders($entity, $content);
+
+        $person = $entity->person;
+
+        if (! $person) {
+            return $content;
+        }
+
+        return app(\Webkul\Automation\Helpers\Entity\Person::class)
+            ->replacePlaceholders($person, $content);
+    }
+  /**
      * Execute workflow actions.
      */
     public function executeActions(mixed $workflow, mixed $lead): void
