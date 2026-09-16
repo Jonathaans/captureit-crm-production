@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\TopProductReportService;
 use Webkul\Core\Support\BusinessUnit;
 use Webkul\Invoice\Models\Expense;
 use Webkul\Invoice\Models\Invoice;
@@ -16,6 +17,11 @@ use Webkul\Invoice\Models\Payment;
 
 class FinancialReportController extends Controller
 {
+    public function __construct(
+        private readonly TopProductReportService $topProductReport,
+    ) {
+    }
+
     /**
      * Financial Report page.
      *
@@ -51,6 +57,8 @@ class FinancialReportController extends Controller
         $invoiceStats = $this->buildInvoiceStats($filters);
 
         $expenseByCategory = $this->buildExpenseByCategory($filters);
+
+        $topProducts = $this->topProductReport->rows($filters);
 
         /*
          * Monthly analytics only matters when Month = All.
@@ -88,6 +96,8 @@ class FinancialReportController extends Controller
                 'invoiceStats' => $invoiceStats,
                 'expenseByCategory' => $expenseByCategory,
                 'monthlyPerformance' => $monthlyPerformance,
+                'topProducts' => $topProducts->take(10)->values(),
+                'topProductTotal' => $topProducts->count(),
             ]
         );
     }
@@ -98,6 +108,10 @@ class FinancialReportController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $filters = $this->normalizeFilters($request);
+
+        if ($request->input('section') === 'top-products') {
+            return $this->exportTopProducts($filters);
+        }
 
         $financialSummary = $this->buildFinancialSummary($filters);
 
@@ -288,6 +302,110 @@ class FinancialReportController extends Controller
             $fileName,
             [
                 'Content-Type' => 'text/csv; charset=UTF-8',
+            ]
+        );
+    }
+
+    /**
+     * Export product ranking for the same filters shown on screen.
+     */
+    private function exportTopProducts(array $filters): StreamedResponse
+    {
+        $topProducts = $this->topProductReport->rows($filters);
+        $fileName = $this->buildTopProductExportFileName($filters);
+
+        return response()->streamDownload(
+            function () use ($filters, $topProducts): void {
+                $handle = fopen('php://output', 'w');
+
+                if ($handle === false) {
+                    return;
+                }
+
+                fwrite($handle, "\xEF\xBB\xBF");
+
+                $safeCell = static function (mixed $value): string|int|float {
+                    if (is_int($value) || is_float($value)) {
+                        return $value;
+                    }
+
+                    $value = str_replace(["\r\n", "\r", "\n"], ' ', trim((string) $value));
+
+                    if ($value !== '' && in_array($value[0], ['=', '+', '-', '@'], true)) {
+                        return "'".$value;
+                    }
+
+                    return $value;
+                };
+
+                $writeRow = static function ($stream, array $row) use ($safeCell): void {
+                    fputcsv(
+                        $stream,
+                        array_map($safeCell, $row),
+                        ';',
+                        '"',
+                        ''
+                    );
+                };
+
+                $writeRow($handle, ['TOP PRODUCT REPORT']);
+                $writeRow($handle, ['Year', $filters['year']]);
+                $writeRow($handle, [
+                    'Month',
+                    $filters['month']
+                        ? Carbon::createFromDate($filters['year'], $filters['month'], 1)->format('F')
+                        : 'ALL MONTHS',
+                ]);
+                $writeRow($handle, [
+                    'Business Unit',
+                    $filters['business_unit']
+                        ? BusinessUnit::label($filters['business_unit'])
+                        : 'ALL BUSINESS UNITS',
+                ]);
+                $writeRow($handle, ['Product', $filters['product'] ?: 'ALL PRODUCTS']);
+                $writeRow($handle, [
+                    'Rule',
+                    'One confirmed quote/project is counted once; DP and settlement invoices are not duplicated.',
+                ]);
+                $writeRow($handle, [
+                    'Period Basis',
+                    'Date of the first confirmed invoice in each deal.',
+                ]);
+                $writeRow($handle, [
+                    'Payment Allocation',
+                    'Payments received to date are allocated proportionally using each product value in the deal.',
+                ]);
+                $writeRow($handle, []);
+                $writeRow($handle, [
+                    'Rank',
+                    'Product',
+                    'SKU',
+                    'Confirmed Projects',
+                    'Quantity',
+                    'Allocated Deal Value',
+                    'Allocated Payment Received',
+                    'Collection Rate (%)',
+                ]);
+
+                foreach ($topProducts as $row) {
+                    $writeRow($handle, [
+                        $row['rank'],
+                        $row['product_name'],
+                        $row['sku'],
+                        $row['deal_count'],
+                        $row['quantity'],
+                        $row['sales_value'],
+                        $row['received_allocated'],
+                        $row['collection_rate'],
+                    ]);
+                }
+
+                fclose($handle);
+            },
+            $fileName,
+            [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
             ]
         );
     }
@@ -1120,6 +1238,15 @@ class FinancialReportController extends Controller
             ->unique()
             ->sortDesc()
             ->values();
+    }
+
+    private function buildTopProductExportFileName(array $filters): string
+    {
+        return str_replace(
+            'financial-report-',
+            'top-products-',
+            $this->buildExportFileName($filters)
+        );
     }
 
     private function buildExportFileName(array $filters): string

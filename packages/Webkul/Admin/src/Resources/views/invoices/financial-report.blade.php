@@ -264,6 +264,89 @@
             </div>
         </div>
 
+        {{-- CRM_TOP_PRODUCT_REPORT_V1 --}}
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div class="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Top Product</h2>
+                    <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                        Peringkat berdasarkan jumlah proyek confirmed. Invoice DP dan pelunasan dari proyek yang sama dihitung satu kali.
+                    </p>
+                    <p class="text-xs leading-5 text-gray-400 dark:text-gray-500">
+                        Periode memakai tanggal invoice confirmed pertama; pembayaran diterima dialokasikan proporsional per produk.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                    @if ($topProductTotal > 10)
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            Menampilkan 10 dari {{ $topProductTotal }} produk
+                        </span>
+                    @endif
+
+                    @if (bouncer()->hasPermission('invoices.financial-report.export'))
+                        <a
+                            href="{{ route('admin.invoices.financial-report.export', ['section' => 'top-products', 'year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
+                            class="secondary-button rounded-lg px-4 py-2.5 text-sm"
+                        >
+                            Export Top Product
+                        </a>
+                    @endif
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[980px]">
+                    <thead>
+                        <tr class="bg-gray-50 dark:bg-gray-950">
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rank</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Product</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Confirmed Projects</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qty</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Deal Value</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payment Received</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Collection</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @forelse ($topProducts as $topProduct)
+                            <tr class="border-t border-gray-100 dark:border-gray-800">
+                                <td class="px-6 py-4 text-center align-top">
+                                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-full {{ $topProduct['rank'] <= 3 ? 'bg-blue-50 font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'bg-gray-100 font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300' }}">
+                                        {{ $topProduct['rank'] }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 align-top">
+                                    <div class="font-semibold text-gray-800 dark:text-white">{{ $topProduct['product_name'] }}</div>
+                                    @if ($topProduct['sku'])
+                                        <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">SKU: {{ $topProduct['sku'] }}</div>
+                                    @endif
+                                </td>
+                                <td class="px-6 py-4 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $topProduct['deal_count'] }}</td>
+                                <td class="px-6 py-4 text-right align-top text-gray-700 dark:text-gray-300">
+                                    {{ rtrim(rtrim(number_format((float) $topProduct['quantity'], 2, ',', '.'), '0'), ',') }}
+                                </td>
+                                <td class="px-6 py-4 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $rupiah($topProduct['sales_value']) }}</td>
+                                <td class="px-6 py-4 text-right align-top font-semibold text-green-600 dark:text-green-400">{{ $rupiah($topProduct['received_allocated']) }}</td>
+                                <td class="px-6 py-4 text-right align-top">
+                                    <span class="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 dark:bg-green-950/40 dark:text-green-300">
+                                        {{ number_format((float) $topProduct['collection_rate'], 2, ',', '.') }}%
+                                    </span>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    Belum ada produk dari proyek confirmed untuk filter ini.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         {{-- Invoice performance --}}
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex flex-col gap-2 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:flex-row md:items-center md:justify-between">
