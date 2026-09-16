@@ -39,7 +39,7 @@
      * semuanya tetap tampil.
      */
     $equipmentRowCount = max(
-        10,
+        20,
         count($existingEquipmentItems)
     );
 @endphp
@@ -270,3 +270,7 @@
         Mengubah template ini tidak mengubah Surat Jalan yang sudah pernah dibuat.
     </div>
 </div>
+
+<!-- CRM_EQUIPMENT_ROWS_FIX_V14_INCLUDE -->
+<script src="{{ asset('js/crm-delivery-order-equipment-v1-2.js') }}?v=1.4.0"></script>
+<!-- /CRM_EQUIPMENT_ROWS_FIX_V14_INCLUDE -->

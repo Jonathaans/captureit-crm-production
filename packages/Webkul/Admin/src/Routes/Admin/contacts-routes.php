@@ -40,7 +40,7 @@ Route::prefix('contacts')->group(function () {
         Route::get(
             'identity-document/{id}/file',
             [\Webkul\Admin\Http\Controllers\Contact\ContactIdentityDocumentController::class, 'personKtp']
-        )->name('admin.contacts.persons.ktp');
+        )->name('admin.contacts.persons.identity-document.file');
 
         Route::put('edit/{id}', 'update')->name('admin.contacts.persons.update');
 
@@ -98,7 +98,7 @@ Route::prefix('contacts')->group(function () {
             '{id}/npwp-document',
             [\Webkul\Admin\Http\Controllers\Contact\ContactIdentityDocumentController::class, 'organizationNpwp']
         )
-            ->name('admin.contacts.organizations.npwp');
+            ->name('admin.contacts.organizations.npwp-document.file');
 
         Route::put('edit/{id}', 'update')->name('admin.contacts.organizations.update');
 
