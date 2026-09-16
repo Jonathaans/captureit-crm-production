@@ -26,6 +26,31 @@ sedangkan tabel halaman hanya menampilkan 10 peringkat teratas.
 
 ## Pemeriksaan lokal
 
+Untuk membuat data transaksi khusus pengujian, jalankan dry run lalu apply:
+
+```bash
+php tools/seed_top_product_demo_v1.php
+php tools/seed_top_product_demo_v1.php --apply --date=2026-09-16
+```
+
+Script hanya dapat berjalan saat `APP_ENV=local`. Data memakai prefix
+`DEMO-TOP-`, sehingga dapat dibersihkan tanpa menyentuh transaksi lain:
+
+```bash
+php tools/seed_top_product_demo_v1.php --cleanup --apply
+```
+
+Hasil yang diharapkan untuk September 2026 dan Business Unit
+**Capture It - Photobooth**:
+
+| Rank | Product | Projects | Qty | Deal Value | Received |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | DEMO Classic Photobooth | 3 | 3 | Rp15.000.000 | Rp12.500.000 |
+| 2 | DEMO 360 Booth | 2 | 2 | Rp14.000.000 | Rp14.000.000 |
+| 3 | DEMO Slow Motion | 1 | 1 | Rp9.000.000 | Rp0 |
+
+Sesudah membuat atau membersihkan data demo, jalankan pemeriksaan aplikasi:
+
 ```bash
 php artisan test --compact tests/Unit/TopProductReportServiceTest.php
 ./vendor/bin/pint --test \
