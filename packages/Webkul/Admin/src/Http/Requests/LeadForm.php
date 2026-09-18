@@ -62,12 +62,18 @@ class LeadForm extends FormRequest
                     $attribute->code = 'person.'.$attribute->code;
                 }
 
+                $isRequired = (bool) $attribute->is_required;
+
+                if ($attribute->code === 'person.emails') {
+                    $isRequired = false;
+                }
+
                 $validations = [];
 
                 if ($attribute->type == 'boolean') {
                     continue;
                 } elseif ($attribute->type == 'address') {
-                    if (! $attribute->is_required) {
+                    if (! $isRequired) {
                         continue;
                     }
 
@@ -80,18 +86,18 @@ class LeadForm extends FormRequest
                     ];
                 } elseif ($attribute->type == 'email') {
                     $validations = [
-                        $attribute->code => [$attribute->is_required ? 'required' : 'nullable'],
-                        $attribute->code.'.*.value' => [$attribute->is_required ? 'required' : 'nullable', 'email'],
-                        $attribute->code.'.*.label' => $attribute->is_required ? 'required' : 'nullable',
+                        $attribute->code => [$isRequired ? 'required' : 'nullable'],
+                        $attribute->code.'.*.value' => [$isRequired ? 'required' : 'nullable', 'email'],
+                        $attribute->code.'.*.label' => $isRequired ? 'required' : 'nullable',
                     ];
                 } elseif ($attribute->type == 'phone') {
                     $validations = [
-                        $attribute->code => [$attribute->is_required ? 'required' : 'nullable'],
-                        $attribute->code.'.*.value' => [$attribute->is_required ? 'required' : 'nullable'],
-                        $attribute->code.'.*.label' => $attribute->is_required ? 'required' : 'nullable',
+                        $attribute->code => [$isRequired ? 'required' : 'nullable'],
+                        $attribute->code.'.*.value' => [$isRequired ? 'required' : 'nullable'],
+                        $attribute->code.'.*.label' => $isRequired ? 'required' : 'nullable',
                     ];
                 } else {
-                    $validations[$attribute->code] = [$attribute->is_required ? 'required' : 'nullable'];
+                    $validations[$attribute->code] = [$isRequired ? 'required' : 'nullable'];
 
                     if ($attribute->type == 'text' && $attribute->validation) {
                         array_push($validations[$attribute->code],
@@ -129,6 +135,7 @@ class LeadForm extends FormRequest
 
         return [
             ...$this->rules,
+            'person.organization_name' => ['nullable', 'string', 'max:255'],
             'products' => 'array',
             'products.*.product_id' => 'sometimes|required|exists:products,id',
             'products.*.name' => 'required_with:products.*.product_id',
