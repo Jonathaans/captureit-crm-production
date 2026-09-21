@@ -1724,8 +1724,8 @@ if ($request->input('person_id') === '__new__') {
                 'items',
                 'payments.creator',
                 'expenses.creator',
-                'quote',
-                'person',
+                'quote.person.organization',
+                'person.organization',
                 'user',
                 'deliveryOrders',
             ])->findOrFail(
@@ -2335,8 +2335,8 @@ public function generateDeliveryOrder(
             'items',
             'payments',
             'expenses',
-            'quote',
-            'person',
+            'quote.person.organization',
+            'person.organization',
             'user',
         ])->findOrFail(
             $id

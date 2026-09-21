@@ -28,7 +28,9 @@ class InvoiceService
                 return $existingInvoice;
             }
 
-            $quote->loadMissing('items');
+            $quote->loadMissing(['items', 'person.organization']);
+
+            $billToIdentity = $this->resolveQuoteBillToIdentity($quote);
 
             $invoice = Invoice::create([
                 'invoice_number' => 'TMP-'.Str::uuid(),
@@ -45,6 +47,9 @@ class InvoiceService
 
                 'quote_id' => $quote->id,
                 'person_id' => $quote->person_id,
+                'bill_to_display_mode' => $billToIdentity['mode'],
+                'bill_to_person_name' => $billToIdentity['person_name'],
+                'bill_to_company_name' => $billToIdentity['company_name'],
                 'user_id' => $quote->user_id,
 
                 'subject' => $quote->subject,
@@ -173,5 +178,37 @@ class InvoiceService
                 'user',
             ]);
         });
+    }
+
+    /**
+     * Copy the selected Quote Bill To presentation into the Invoice.
+     */
+    private function resolveQuoteBillToIdentity(Quote $quote): array
+    {
+        $personName = trim((string) (
+            $quote->bill_to_person_name
+            ?: $quote->person?->name
+            ?: ''
+        ));
+        $companyName = trim((string) (
+            $quote->bill_to_company_name
+            ?: $quote->person?->organization?->name
+            ?: ''
+        ));
+        $mode = (string) ($quote->bill_to_display_mode ?: 'person');
+
+        if (! in_array($mode, ['person', 'company', 'both'], true)) {
+            $mode = 'person';
+        }
+
+        if ($mode !== 'person' && $companyName === '') {
+            $mode = 'person';
+        }
+
+        return [
+            'mode' => $mode,
+            'person_name' => $personName ?: null,
+            'company_name' => $companyName ?: null,
+        ];
     }
 }

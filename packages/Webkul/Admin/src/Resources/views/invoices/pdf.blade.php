@@ -93,6 +93,12 @@
             : '';
 
         /*
+         * New invoices use their immutable snapshot. Existing invoices made
+         * before this feature fall back to the linked Quote snapshot.
+         */
+        $billToIdentity = $invoice->billToIdentity();
+
+        /*
          * Dates.
          */
         $issuedDate = $invoice->issued_at
@@ -280,6 +286,12 @@
             color: #111827;
             font-size: 12px;
             font-weight: bold;
+        }
+
+        .customer-contact-name {
+            margin: -1px 0 4px;
+            color: #111827;
+            font-size: 10px;
         }
 
         .address-line {
@@ -604,9 +616,23 @@
                     Bill To
                 </div>
 
-                <div class="customer-name">
-                    {{ $invoice->person?->name ?? '-' }}
-                </div>
+                @if ($billToIdentity['mode'] === 'company')
+                    <div class="customer-name">
+                        {{ $billToIdentity['company_name'] }}
+                    </div>
+                @elseif ($billToIdentity['mode'] === 'both')
+                    <div class="customer-name">
+                        {{ $billToIdentity['company_name'] }}
+                    </div>
+
+                    <div class="customer-contact-name">
+                        {{ $billToIdentity['person_name'] }}
+                    </div>
+                @else
+                    <div class="customer-name">
+                        {{ $billToIdentity['person_name'] }}
+                    </div>
+                @endif
 
                 @if ($addressLine)
                     <div class="address-line">{{ $addressLine }}</div>

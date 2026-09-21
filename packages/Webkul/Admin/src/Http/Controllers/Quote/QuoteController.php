@@ -16,6 +16,7 @@ use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
+use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Contact\Repositories\PersonRepository;
 use Webkul\Core\Support\BusinessUnit;
@@ -37,6 +38,7 @@ class QuoteController extends Controller
         protected LeadRepository $leadRepository,
         protected AttributeRepository $attributeRepository,
         protected PersonRepository $personRepository,
+        protected CrmReadOnlyArchivePolicyService $archivePolicy,
     ) {
         request()->request->add(['entity_type' => 'quotes']);
     }
@@ -208,6 +210,8 @@ class QuoteController extends Controller
             ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
             : [];
 
+        $archiveReason = $this->archivePolicy->archiveReason($quote);
+
         return view(
             'admin::quotes.edit',
             compact(
@@ -215,7 +219,8 @@ class QuoteController extends Controller
                 'linkedLead',
                 'initialQuoteItems',
                 'lookUpEntityData',
-                'personLookUpEntityData'
+                'personLookUpEntityData',
+                'archiveReason'
             )
         );
     }
@@ -225,7 +230,22 @@ class QuoteController extends Controller
      */
     public function update(AttributeForm $request, int $id): RedirectResponse
     {
-        $this->preventUnauthorizedAccess($this->quoteRepository->findOrFail($id)->user_id);
+        $currentQuote = $this->quoteRepository->findOrFail($id);
+
+        $this->preventUnauthorizedAccess($currentQuote->user_id);
+
+        /*
+         * A converted or expired quotation remains commercially read-only,
+         * but its display identity may need a clerical correction. Persist
+         * only Bill To fields here; totals, items, addresses and dates remain
+         * protected by the archive policy.
+         */
+        if ($this->archivePolicy->archiveReason($currentQuote) !== null) {
+            return $this->updateArchivedBillToIdentity(
+                $request,
+                $currentQuote
+            );
+        }
 
         $this->additionalValidation();
 
@@ -246,6 +266,8 @@ class QuoteController extends Controller
             $this->prepareBillToIdentity($request->all()),
             $id
         );
+
+        $quote->refresh();
 
         $quote->leads()->detach();
 
@@ -465,19 +487,73 @@ class QuoteController extends Controller
      */
     private function additionalValidation(): void
     {
-        $this->validate(request(), [
+        $this->validate(request(), array_merge(
+            $this->billToValidationRules(),
+            [
+                'items' => 'required|array',
+                'items.*.product_id' => 'required|exists:products,id',
+                'items.*.quantity' => 'required|numeric|min:0',
+                'items.*.price' => 'required|numeric|min:0',
+                'items.*.total' => 'required|numeric|min:0',
+                'items.*.discount_amount' => 'required|numeric|min:0',
+                'items.*.tax_amount' => 'required|numeric|min:0',
+                'items.*.final_total' => 'required|numeric|min:0',
+            ]
+        ));
+    }
+
+    /**
+     * Validation shared by normal and archived Bill To updates.
+     */
+    private function billToValidationRules(): array
+    {
+        return [
+            'person_id' => 'required|exists:persons,id',
             'bill_to_display_mode' => ['nullable', Rule::in(['person', 'company', 'both'])],
             'client_signer_name' => 'nullable|string|max:255',
             'client_signer_company' => 'nullable|string|max:255',
-            'items' => 'required|array',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|numeric|min:0',
-            'items.*.price' => 'required|numeric|min:0',
-            'items.*.total' => 'required|numeric|min:0',
-            'items.*.discount_amount' => 'required|numeric|min:0',
-            'items.*.tax_amount' => 'required|numeric|min:0',
-            'items.*.final_total' => 'required|numeric|min:0',
-        ]);
+        ];
+    }
+
+    /**
+     * Correct Bill To identity without reopening an archived quotation.
+     */
+    private function updateArchivedBillToIdentity(
+        AttributeForm $request,
+        $quote
+    ): RedirectResponse {
+        $this->validate($request, $this->billToValidationRules());
+
+        $data = $this->prepareBillToIdentity($request->all());
+        $fields = [
+            'person_id',
+            'bill_to_display_mode',
+            'bill_to_person_name',
+            'bill_to_company_name',
+            'client_signer_name',
+            'client_signer_company',
+        ];
+
+        Event::dispatch('quote.update.before', $quote->id);
+
+        $quote->forceFill(
+            array_intersect_key($data, array_flip($fields))
+        );
+
+        if ($quote->isDirty()) {
+            $quote->save();
+        }
+
+        $quote->refresh();
+
+        Event::dispatch('quote.update.after', $quote);
+
+        session()->flash(
+            'success',
+            'Bill To berhasil diperbarui. Nilai dan item quotation lama tetap terkunci.'
+        );
+
+        return redirect()->route('admin.quotes.index');
     }
 
     /**

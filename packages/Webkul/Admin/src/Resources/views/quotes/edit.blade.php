@@ -39,17 +39,44 @@
         </button>
 
         <!-- Save Quote -->
-        <button
-            type="submit"
-            class="primary-button"
-        >
-            @lang('admin::app.quotes.edit.save-btn')
-        </button>
+        @if ($archiveReason)
+            <button
+                type="button"
+                class="primary-button"
+                onclick="this.form.submit()"
+            >
+                Save Bill To
+            </button>
+        @else
+            <button
+                type="submit"
+                class="primary-button"
+            >
+                @lang('admin::app.quotes.edit.save-btn')
+            </button>
+        @endif
 
         {!! view_render_event('admin.contacts.quotes.edit.save_button.after', ['quote' => $quote]) !!}
     </div>
 </div>
             </div>
+
+            @if ($archiveReason)
+                <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    <p class="font-semibold">Quotation lama bersifat read-only.</p>
+                    <p class="mt-1">
+                        {{ $archiveReason }} Tombol Save Quote hanya akan menyimpan pilihan Bill To,
+                        nama contact/company, dan identitas penandatangan. Nilai, item, alamat, serta
+                        tanggal quotation tetap tidak berubah.
+                    </p>
+                </div>
+            @endif
+
+            @if ($errors->has('archive'))
+                <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+                    {{ $errors->first('archive') }}
+                </div>
+            @endif
 
             <v-quote :errors="errors">
                 <x-admin::shimmer.quotes />

@@ -21,6 +21,9 @@ class Invoice extends Model implements InvoiceContract
         'location',
         'payment_term',
         'person_id',
+        'bill_to_display_mode',
+        'bill_to_person_name',
+        'bill_to_company_name',
         'user_id',
         'subject',
         'description',
@@ -67,6 +70,56 @@ class Invoice extends Model implements InvoiceContract
     public function person()
     {
         return $this->belongsTo(PersonProxy::modelClass());
+    }
+
+    /**
+     * Resolve the immutable invoice snapshot, with a legacy Quote fallback.
+     */
+    public function billToIdentity(): array
+    {
+        $invoicePersonName = trim((string) $this->bill_to_person_name);
+        $invoiceCompanyName = trim((string) $this->bill_to_company_name);
+        $hasInvoiceSnapshot = $invoicePersonName !== ''
+            || $invoiceCompanyName !== '';
+
+        if ($hasInvoiceSnapshot) {
+            $mode = (string) ($this->bill_to_display_mode ?: 'person');
+            $personName = $invoicePersonName;
+            $companyName = $invoiceCompanyName;
+        } else {
+            $quote = $this->quote;
+            $mode = (string) ($quote?->bill_to_display_mode ?: 'person');
+            $personName = trim((string) (
+                $quote?->bill_to_person_name
+                ?: $quote?->person?->name
+                ?: $this->person?->name
+                ?: ''
+            ));
+            $companyName = trim((string) (
+                $quote?->bill_to_company_name
+                ?: $quote?->person?->organization?->name
+                ?: $this->person?->organization?->name
+                ?: ''
+            ));
+        }
+
+        if (! in_array($mode, ['person', 'company', 'both'], true)) {
+            $mode = 'person';
+        }
+
+        if ($mode !== 'person' && $companyName === '') {
+            $mode = 'person';
+        }
+
+        if ($mode === 'person' && $personName === '' && $companyName !== '') {
+            $mode = 'company';
+        }
+
+        return [
+            'mode' => $mode,
+            'person_name' => $personName ?: '-',
+            'company_name' => $companyName ?: null,
+        ];
     }
 
     public function user()

@@ -14,6 +14,8 @@
         $invoice->deliveryOrders
             ->sortBy('id')
             ->first();
+
+    $billToIdentity = $invoice->billToIdentity();
 @endphp
 
 
@@ -224,9 +226,23 @@
                     Bill To
                 </p>
 
-                <p class="mt-2 font-semibold text-gray-800 dark:text-white">
-                    {{ $invoice->person?->name ?? '-' }}
-                </p>
+                @if ($billToIdentity['mode'] === 'company')
+                    <p class="mt-2 font-semibold text-gray-800 dark:text-white">
+                        {{ $billToIdentity['company_name'] }}
+                    </p>
+                @elseif ($billToIdentity['mode'] === 'both')
+                    <p class="mt-2 font-semibold text-gray-800 dark:text-white">
+                        {{ $billToIdentity['company_name'] }}
+                    </p>
+
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                        {{ $billToIdentity['person_name'] }}
+                    </p>
+                @else
+                    <p class="mt-2 font-semibold text-gray-800 dark:text-white">
+                        {{ $billToIdentity['person_name'] }}
+                    </p>
+                @endif
             </div>
 
             <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950">

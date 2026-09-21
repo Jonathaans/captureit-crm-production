@@ -105,3 +105,31 @@ it('renders the selected bill to format and signature snapshots in the quote PDF
         ->toContain('{{ $clientName }}')
         ->toContain('{{ $clientCompanyName }}');
 });
+
+it('allows only bill to identity corrections on archived quotations', function (): void {
+    $controller = file_get_contents(
+        base_path('packages/Webkul/Admin/src/Http/Controllers/Quote/QuoteController.php')
+    );
+    $policy = file_get_contents(
+        base_path('packages/Webkul/Admin/src/Services/CrmReadOnlyArchivePolicyService.php')
+    );
+    $editView = file_get_contents(
+        base_path('packages/Webkul/Admin/src/Resources/views/quotes/edit.blade.php')
+    );
+
+    expect($controller)
+        ->toContain('updateArchivedBillToIdentity')
+        ->toContain("'person_id',")
+        ->toContain('Nilai dan item quotation lama tetap terkunci.');
+
+    expect($policy)
+        ->toContain('isQuoteIdentityCorrection')
+        ->toContain("'bill_to_display_mode',")
+        ->toContain("'bill_to_person_name',")
+        ->toContain("'bill_to_company_name',");
+
+    expect($editView)
+        ->toContain('Quotation lama bersifat read-only.')
+        ->toContain('onclick="this.form.submit()"')
+        ->toContain('Save Bill To');
+});
