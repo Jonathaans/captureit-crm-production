@@ -106,12 +106,45 @@
             : '-';
 
         /*
-         * Terms & Conditions approval identity.
-         * Person already eager-loads its organization, so these values stay
-         * tied to the same client data shown on the quotation.
+         * Bill To and approval identity.
+         * New quotes use immutable snapshots. Legacy quotes keep working by
+         * falling back to the current Person and Organization relationship.
          */
-        $clientName = trim((string) ($quote->person?->name ?? '')) ?: '-';
-        $clientCompanyName = trim((string) ($quote->person?->organization?->name ?? '')) ?: '-';
+        $hasBillToSnapshot = trim((string) ($quote->bill_to_person_name ?? '')) !== '';
+
+        $billToPersonName = trim((string) (
+            $quote->bill_to_person_name
+                ?: $quote->person?->name
+        )) ?: '-';
+
+        $billToCompanyName = trim((string) (
+            $quote->bill_to_company_name
+                ?: $quote->person?->organization?->name
+        ));
+
+        $billToDisplayMode = in_array(
+            $quote->bill_to_display_mode,
+            ['person', 'company', 'both'],
+            true
+        )
+            ? $quote->bill_to_display_mode
+            : 'person';
+
+        if ($billToCompanyName === '' && $billToDisplayMode !== 'person') {
+            $billToDisplayMode = 'person';
+        }
+
+        $clientName = trim((string) (
+            $quote->client_signer_name
+                ?: $billToPersonName
+        )) ?: '-';
+
+        $clientCompanyName = $hasBillToSnapshot
+            ? trim((string) ($quote->client_signer_company ?? ''))
+            : trim((string) (
+                $quote->client_signer_company
+                    ?: $billToCompanyName
+            ));
     @endphp
 
     <style>
@@ -236,6 +269,12 @@
             color: #111827;
             font-size: 12px;
             font-weight: bold;
+        }
+
+        .customer-contact {
+            margin: -1px 0 4px;
+            color: #374151;
+            font-size: 10px;
         }
 
         .address-line {
@@ -616,9 +655,23 @@
                     Bill To
                 </div>
 
-                <div class="customer-name">
-                    {{ $quote->person->name ?? '-' }}
-                </div>
+                @if ($billToDisplayMode === 'company')
+                    <div class="customer-name">
+                        {{ $billToCompanyName }}
+                    </div>
+                @elseif ($billToDisplayMode === 'both')
+                    <div class="customer-name">
+                        {{ $billToCompanyName }}
+                    </div>
+
+                    <div class="customer-contact">
+                        Attn: {{ $billToPersonName }}
+                    </div>
+                @else
+                    <div class="customer-name">
+                        {{ $billToPersonName }}
+                    </div>
+                @endif
 
                 @if ($addressLine)
                     <div class="address-line">{{ $addressLine }}</div>

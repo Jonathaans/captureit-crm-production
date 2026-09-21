@@ -27,6 +27,12 @@ Route::controller(QuoteController::class)
         Route::get('lead-products/{lead_id}', 'leadProducts')
             ->name('admin.quotes.lead_products');
 
+        Route::get('bill-to-people', 'billToPeople')
+            ->name('admin.quotes.bill_to_people');
+
+        Route::get('bill-to-person', 'billToPerson')
+            ->name('admin.quotes.bill_to_person');
+
         /*
         |--------------------------------------------------------------------------
         | Create Quote

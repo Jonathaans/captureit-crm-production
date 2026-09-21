@@ -340,6 +340,8 @@
                                                     lookup_type: 'persons'
                                                 }"
                                                 :value="personEntity"
+                                                search-url="{{ route('admin.quotes.bill_to_people') }}"
+                                                lookup-entity-url="{{ route('admin.quotes.bill_to_person') }}"
                                                 @lookup-added="setPersonEntity"
                                                 @lookup-removed="setPersonEntity"
                                             ></v-lookup-component>
@@ -357,6 +359,8 @@
                                     <x-admin::form.control-group.error
                                         control-name="person_id"
                                     />
+
+                                    @include('admin::quotes.partials.bill-to-identity-fields')
 
                                     <!-- Native Person Quick Add -->
                                     <div
@@ -942,6 +946,29 @@
             </x-admin::table.thead.tr>
         </script>
 
+        @php
+            $initialBillToDisplayMode = old(
+                'bill_to_display_mode',
+                $quote->bill_to_person_name
+                    ? ($quote->bill_to_display_mode ?: 'person')
+                    : (! empty($personLookUpEntityData['company_name']) ? 'both' : 'person')
+            );
+
+            $initialClientSignerName = old(
+                'client_signer_name',
+                $quote->bill_to_person_name
+                    ? ($quote->client_signer_name ?: $quote->bill_to_person_name)
+                    : ($personLookUpEntityData['person_name'] ?? '')
+            );
+
+            $initialClientSignerCompany = old(
+                'client_signer_company',
+                $quote->bill_to_person_name
+                    ? ($quote->client_signer_company ?? '')
+                    : ($personLookUpEntityData['company_name'] ?? '')
+            );
+        @endphp
+
         <script type="module">
             app.component('v-quote', {
                 template: '#v-quote-template',
@@ -963,6 +990,16 @@
                         personEntity: @json($personLookUpEntityData ?? []),
 
                         personLookupKey: 0,
+
+                        personName: @json($personLookUpEntityData['person_name'] ?? ''),
+
+                        personCompanyName: @json($personLookUpEntityData['company_name'] ?? ''),
+
+                        billToDisplayMode: @json($initialBillToDisplayMode),
+
+                        clientSignerName: @json($initialClientSignerName),
+
+                        clientSignerCompany: @json($initialClientSignerCompany),
 
                         showNewClientForm: false,
 
@@ -1084,7 +1121,37 @@
                     },
 
                     setPersonEntity($event) {
-                        this.personEntity = $event ?? { id: '', name: '' };
+                        this.applyPersonEntity($event);
+                    },
+
+                    applyPersonEntity(person) {
+                        if (! person?.id) {
+                            this.personEntity = { id: '', name: '' };
+                            this.personName = '';
+                            this.personCompanyName = '';
+                            this.billToDisplayMode = 'person';
+                            this.clientSignerName = '';
+                            this.clientSignerCompany = '';
+
+                            return;
+                        }
+
+                        const personName = person.person_name || person.name || '';
+                        const companyName = person.company_name || person.organization?.name || '';
+
+                        this.personEntity = {
+                            ...person,
+                            name: companyName
+                                ? `${personName} — ${companyName}`
+                                : personName,
+                            person_name: personName,
+                            company_name: companyName,
+                        };
+                        this.personName = personName;
+                        this.personCompanyName = companyName;
+                        this.billToDisplayMode = companyName ? 'both' : 'person';
+                        this.clientSignerName = personName;
+                        this.clientSignerCompany = companyName;
                     },
 
                     openNewClientForm() {
@@ -1229,10 +1296,12 @@
                                 /*
                                  * Client baru langsung menjadi Bill To.
                                  */
-                                this.personEntity = {
+                                this.applyPersonEntity({
                                     id: person.id,
                                     name: person.name,
-                                };
+                                    person_name: person.name,
+                                    company_name: person.organization?.name || organizationName,
+                                });
 
                                 /*
                                  * Remount lookup original Krayin supaya hidden
