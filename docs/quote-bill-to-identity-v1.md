@@ -6,9 +6,10 @@ Fitur ini membuat identitas `Bill To` quotation fleksibel tanpa melepaskan relas
 
 - `Contact only`: PDF menampilkan nama orang yang memesan.
 - `Company only`: PDF hanya menampilkan nama perusahaan.
-- `Company + Contact`: PDF menampilkan perusahaan dan `Attn: nama contact`.
+- `Company + Contact`: PDF menampilkan perusahaan lalu nama contact pada baris berikutnya.
 - Dropdown Bill To menampilkan `Nama Contact — Nama Company` dan dapat dicari memakai keduanya.
 - Nama Bill To disimpan sebagai snapshot saat quotation disimpan agar PDF lama tidak ikut berubah ketika master Contact atau Company diedit.
+- Alur Create memiliki pengamanan persistensi agar snapshot Bill To langsung tersimpan pada Quote baru.
 - Nama penanda tangan client dan company dapat disesuaikan sebelum quotation disimpan.
 - Quotation lama tetap dapat dicetak melalui fallback ke relasi Contact/Company yang sudah ada.
 

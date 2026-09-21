@@ -665,7 +665,7 @@
                     </div>
 
                     <div class="customer-contact">
-                        Attn: {{ $billToPersonName }}
+                        {{ $billToPersonName }}
                     </div>
                 @else
                     <div class="customer-name">

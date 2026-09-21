@@ -53,7 +53,7 @@
                 </p>
 
                 <p v-if="billToDisplayMode !== 'company'">
-                    <span v-if="billToDisplayMode === 'both'">Attn: </span>@{{ personName }}
+                    @{{ personName }}
                 </p>
             </div>
         </div>

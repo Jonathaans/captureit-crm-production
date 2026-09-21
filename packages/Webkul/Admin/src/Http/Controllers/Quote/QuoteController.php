@@ -147,6 +147,16 @@ class QuoteController extends Controller
 
         $quote = $this->quoteRepository->create($data);
 
+        /*
+         * Keep the Bill To snapshot reliable on the create flow as well.
+         *
+         * Some installations extend the Quote model and may still use an
+         * older fillable list. forceFill is intentionally limited to these
+         * five server-prepared fields, and saveQuietly prevents an artificial
+         * quote.update workflow immediately after quote.create.
+         */
+        $this->persistCreatedBillToIdentity($quote, $data);
+
         $leadId = request('lead_id');
 
         if ($leadId) {
@@ -511,6 +521,32 @@ class QuoteController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Guarantee that a newly created quote contains its Bill To snapshot.
+     */
+    private function persistCreatedBillToIdentity($quote, array $data): void
+    {
+        $fields = [
+            'bill_to_display_mode',
+            'bill_to_person_name',
+            'bill_to_company_name',
+            'client_signer_name',
+            'client_signer_company',
+        ];
+
+        $identity = array_intersect_key($data, array_flip($fields));
+
+        if ($identity === []) {
+            return;
+        }
+
+        $quote->forceFill($identity);
+
+        if ($quote->isDirty()) {
+            $quote->saveQuietly();
+        }
     }
 
     /**

@@ -22,7 +22,10 @@ it('persists a quote bill to snapshot and validates the selected display mode', 
         ->toContain("\$data['bill_to_person_name'] = \$personName")
         ->toContain("\$data['bill_to_company_name'] = \$companyName ?: null")
         ->toContain("'client_signer_name'")
-        ->toContain('prepareBillToIdentity($request->all())')
+        ->toContain("\$data = \$this->prepareBillToIdentity(\$request->all());")
+        ->toContain("\$this->prepareBillToIdentity(\$request->all()),")
+        ->toContain("\$this->persistCreatedBillToIdentity(\$quote, \$data);")
+        ->toContain("\$quote->saveQuietly();")
         ->toContain('Contact yang dipilih belum memiliki Company.');
 
     expect($model)
@@ -75,7 +78,7 @@ it('shows company context in the quote bill to lookup and form', function (): vo
         ->toContain('value="both"')
         ->toContain('name="client_signer_name"')
         ->toContain('name="client_signer_company"')
-        ->toContain('Attn:');
+        ->not->toContain('Attn:');
 });
 
 it('renders the selected bill to format and signature snapshots in the quote PDF', function (): void {
@@ -93,7 +96,8 @@ it('renders the selected bill to format and signature snapshots in the quote PDF
         ->toContain('$quote->client_signer_company')
         ->toContain("\$billToDisplayMode === 'company'")
         ->toContain("\$billToDisplayMode === 'both'")
-        ->toContain('Attn: {{ $billToPersonName }}')
+        ->toContain('{{ $billToPersonName }}')
+        ->not->toContain('Attn: {{ $billToPersonName }}')
         ->toContain('$quote->person?->organization?->name');
 
     expect($terms)
