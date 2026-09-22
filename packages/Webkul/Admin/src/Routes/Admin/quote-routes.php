@@ -33,6 +33,9 @@ Route::controller(QuoteController::class)
         Route::get('bill-to-person', 'billToPerson')
             ->name('admin.quotes.bill_to_person');
 
+        Route::get('sales-owners', 'salesOwners')
+            ->name('admin.quotes.sales_owners');
+
         /*
         |--------------------------------------------------------------------------
         | Create Quote
