@@ -152,7 +152,15 @@
         app.component('v-lookup-component', {
             template: '#v-lookup-component-template',
 
-            props: ['validations', 'isDisabled', 'attribute', 'value', 'canAddNew'],
+            props: [
+                'validations',
+                'isDisabled',
+                'attribute',
+                'value',
+                'canAddNew',
+                'searchUrl',
+                'lookupEntityUrl',
+            ],
 
             emits: ['lookup-added', 'lookup-removed'],
 
@@ -169,15 +177,21 @@
                         name: ''
                     },
 
-                    searchRoute: `{{ route('admin.settings.attributes.lookup') }}/${this.attribute.lookup_type}`,
+                    searchRoute: this.searchUrl
+                        || `{{ route('admin.settings.attributes.lookup') }}/${this.attribute.lookup_type}`,
 
-                    lookupEntityRoute: `{{ route('admin.settings.attributes.lookup_entity') }}/${this.attribute.lookup_type}`,
+                    lookupEntityRoute: this.lookupEntityUrl
+                        || `{{ route('admin.settings.attributes.lookup_entity') }}/${this.attribute.lookup_type}`,
 
                     isSearching: false,
                 };
             },
 
             mounted() {
+                if (this.value?.id) {
+                    this.selectedItem = this.value;
+                }
+
                 if (this.value) {
                     this.getLookUpEntity();
                 }

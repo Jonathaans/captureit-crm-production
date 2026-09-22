@@ -505,7 +505,10 @@
             <td>
                 <div class="terms-approval-label">Disetujui oleh,</div>
                 <p class="terms-signer-name">{{ $clientName }}</p>
-                <p class="terms-signer-company">{{ $clientCompanyName }}</p>
+
+                @if ($clientCompanyName)
+                    <p class="terms-signer-company">{{ $clientCompanyName }}</p>
+                @endif
             </td>
         </tr>
     </table>

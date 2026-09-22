@@ -158,7 +158,7 @@ class FlexibleQuoteBillingService
         try {
             return DB::transaction(function () use ($quote, $input, $createdBy) {
             $lockedQuote = Quote::query()
-                ->with('items')
+                ->with(['items', 'person.organization'])
                 ->lockForUpdate()
                 ->findOrFail($quote->id);
 
@@ -244,6 +244,8 @@ class FlexibleQuoteBillingService
                 self::SCALE
             );
 
+            $billToIdentity = $this->resolveQuoteBillToIdentity($lockedQuote);
+
             $invoice = Invoice::create([
                 'invoice_number' => 'TMP-'.Str::uuid(),
                 'project_code' => $lockedQuote->project_code,
@@ -253,6 +255,9 @@ class FlexibleQuoteBillingService
                 'payment_term' => $lockedQuote->payment_term,
                 'quote_id' => $lockedQuote->id,
                 'person_id' => $lockedQuote->person_id,
+                'bill_to_display_mode' => $billToIdentity['mode'],
+                'bill_to_person_name' => $billToIdentity['person_name'],
+                'bill_to_company_name' => $billToIdentity['company_name'],
                 'user_id' => $lockedQuote->user_id,
                 'subject' => $lockedQuote->subject,
                 'description' => $lockedQuote->description,
@@ -347,6 +352,10 @@ class FlexibleQuoteBillingService
 
             $protected = [
                 'quote_id',
+                'person_id',
+                'bill_to_display_mode',
+                'bill_to_person_name',
+                'bill_to_company_name',
                 'discount_percent',
                 'discount_amount',
                 'tax_amount',
@@ -448,6 +457,38 @@ class FlexibleQuoteBillingService
             '0',
             STR_PAD_LEFT
         );
+    }
+
+    /**
+     * Copy the selected Quote Bill To presentation into the Invoice.
+     */
+    private function resolveQuoteBillToIdentity(Quote $quote): array
+    {
+        $personName = trim((string) (
+            $quote->bill_to_person_name
+            ?: $quote->person?->name
+            ?: ''
+        ));
+        $companyName = trim((string) (
+            $quote->bill_to_company_name
+            ?: $quote->person?->organization?->name
+            ?: ''
+        ));
+        $mode = (string) ($quote->bill_to_display_mode ?: 'person');
+
+        if (! in_array($mode, ['person', 'company', 'both'], true)) {
+            $mode = 'person';
+        }
+
+        if ($mode !== 'person' && $companyName === '') {
+            $mode = 'person';
+        }
+
+        return [
+            'mode' => $mode,
+            'person_name' => $personName ?: null,
+            'company_name' => $companyName ?: null,
+        ];
     }
 
     private function copyFullItems(Invoice $invoice, Quote $quote): void

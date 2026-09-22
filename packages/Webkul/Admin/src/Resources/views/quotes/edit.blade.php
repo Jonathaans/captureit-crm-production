@@ -39,17 +39,44 @@
         </button>
 
         <!-- Save Quote -->
-        <button
-            type="submit"
-            class="primary-button"
-        >
-            @lang('admin::app.quotes.edit.save-btn')
-        </button>
+        @if ($archiveReason)
+            <button
+                type="button"
+                class="primary-button"
+                onclick="this.form.submit()"
+            >
+                Save Bill To
+            </button>
+        @else
+            <button
+                type="submit"
+                class="primary-button"
+            >
+                @lang('admin::app.quotes.edit.save-btn')
+            </button>
+        @endif
 
         {!! view_render_event('admin.contacts.quotes.edit.save_button.after', ['quote' => $quote]) !!}
     </div>
 </div>
             </div>
+
+            @if ($archiveReason)
+                <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                    <p class="font-semibold">Quotation lama bersifat read-only.</p>
+                    <p class="mt-1">
+                        {{ $archiveReason }} Tombol Save Quote hanya akan menyimpan pilihan Bill To,
+                        nama contact/company, dan identitas penandatangan. Nilai, item, alamat, serta
+                        tanggal quotation tetap tidak berubah.
+                    </p>
+                </div>
+            @endif
+
+            @if ($errors->has('archive'))
+                <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+                    {{ $errors->first('archive') }}
+                </div>
+            @endif
 
             <v-quote :errors="errors">
                 <x-admin::shimmer.quotes />
@@ -319,23 +346,31 @@
 </x-admin::form.control-group>
                             </div>
 
-                            <div class="flex gap-4">
-                                <x-admin::attributes
-                                    :custom-attributes="app('Webkul\Attribute\Repositories\AttributeRepository')->findWhere([
-                                        'entity_type' => 'quotes',
-                                        ['code', 'IN', ['person_id']],
-                                    ])->sortBy('sort_order')"
-                                    :custom-validations="[
-                                        'expired_at' => [
-                                            'required',
-                                            'date_format:yyyy-MM-dd',
-                                            'after:' .  \Carbon\Carbon::yesterday()->format('Y-m-d')
-                                        ],
-                                    ]"
-                                    :entity="$quote"
-                                />
+                            <div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
+                                <!-- Bill To / Client -->
+                                <x-admin::form.control-group class="w-full">
+                                    <x-admin::form.control-group.label class="required">
+                                        Bill To
+                                    </x-admin::form.control-group.label>
 
-                                <x-admin::attributes.edit.lookup />
+                                    <v-lookup-component
+                                        :key="personLookupKey"
+                                        :attribute="{
+                                            code: 'person_id',
+                                            name: 'Bill To',
+                                            lookup_type: 'persons'
+                                        }"
+                                        :value="personEntity"
+                                        search-url="{{ route('admin.quotes.bill_to_people') }}"
+                                        lookup-entity-url="{{ route('admin.quotes.bill_to_person') }}"
+                                        @lookup-added="setPersonEntity"
+                                        @lookup-removed="setPersonEntity"
+                                    ></v-lookup-component>
+
+                                    <x-admin::form.control-group.error control-name="person_id" />
+
+                                    @include('admin::quotes.partials.bill-to-identity-fields')
+                                </x-admin::form.control-group>
 
                                 <x-admin::form.control-group class="w-full">
                                     <x-admin::form.control-group.label>
@@ -352,6 +387,8 @@
                                     ></v-lookup-component>
                                 </x-admin::form.control-group>
                             </div>
+
+                            <x-admin::attributes.edit.lookup />
 
                             <!-- Custom Attributes -->
                             <x-admin::attributes
@@ -755,6 +792,29 @@
             </x-admin::table.thead.tr>
         </script>
 
+        @php
+            $initialBillToDisplayMode = old(
+                'bill_to_display_mode',
+                $quote->bill_to_person_name
+                    ? ($quote->bill_to_display_mode ?: 'person')
+                    : (! empty($personLookUpEntityData['company_name']) ? 'both' : 'person')
+            );
+
+            $initialClientSignerName = old(
+                'client_signer_name',
+                $quote->bill_to_person_name
+                    ? ($quote->client_signer_name ?: $quote->bill_to_person_name)
+                    : ($personLookUpEntityData['person_name'] ?? '')
+            );
+
+            $initialClientSignerCompany = old(
+                'client_signer_company',
+                $quote->bill_to_person_name
+                    ? ($quote->client_signer_company ?? '')
+                    : ($personLookUpEntityData['company_name'] ?? '')
+            );
+        @endphp
+
         <script type="module">
             app.component('v-quote', {
                 template: '#v-quote-template',
@@ -772,6 +832,20 @@
                         ],
 
                         leadEntity: @json($lookUpEntityData ?? []),
+
+                        personEntity: @json($personLookUpEntityData ?? []),
+
+                        personLookupKey: 0,
+
+                        personName: @json($personLookUpEntityData['person_name'] ?? ''),
+
+                        personCompanyName: @json($personLookUpEntityData['company_name'] ?? ''),
+
+                        billToDisplayMode: @json($initialBillToDisplayMode),
+
+                        clientSignerName: @json($initialClientSignerName),
+
+                        clientSignerCompany: @json($initialClientSignerCompany),
 
                     };
                 },
@@ -871,6 +945,40 @@
 
                     setLeadEntity($event) {
                         this.leadEntity = $event ?? { id: '', name: '' };
+                    },
+
+                    setPersonEntity($event) {
+                        this.applyPersonEntity($event);
+                    },
+
+                    applyPersonEntity(person) {
+                        if (! person?.id) {
+                            this.personEntity = { id: '', name: '' };
+                            this.personName = '';
+                            this.personCompanyName = '';
+                            this.billToDisplayMode = 'person';
+                            this.clientSignerName = '';
+                            this.clientSignerCompany = '';
+
+                            return;
+                        }
+
+                        const personName = person.person_name || person.name || '';
+                        const companyName = person.company_name || person.organization?.name || '';
+
+                        this.personEntity = {
+                            ...person,
+                            name: companyName
+                                ? `${personName} — ${companyName}`
+                                : personName,
+                            person_name: personName,
+                            company_name: companyName,
+                        };
+                        this.personName = personName;
+                        this.personCompanyName = companyName;
+                        this.billToDisplayMode = companyName ? 'both' : 'person';
+                        this.clientSignerName = personName;
+                        this.clientSignerCompany = companyName;
                     },
                 },
             });

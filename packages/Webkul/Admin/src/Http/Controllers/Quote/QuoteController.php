@@ -16,7 +16,9 @@ use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
+use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
 use Webkul\Attribute\Repositories\AttributeRepository;
+use Webkul\Contact\Repositories\PersonRepository;
 use Webkul\Core\Support\BusinessUnit;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Lead\Repositories\LeadRepository;
@@ -34,7 +36,9 @@ class QuoteController extends Controller
     public function __construct(
         protected QuoteRepository $quoteRepository,
         protected LeadRepository $leadRepository,
-        protected AttributeRepository $attributeRepository
+        protected AttributeRepository $attributeRepository,
+        protected PersonRepository $personRepository,
+        protected CrmReadOnlyArchivePolicyService $archivePolicy,
     ) {
         request()->request->add(['entity_type' => 'quotes']);
     }
@@ -83,7 +87,7 @@ class QuoteController extends Controller
         $personId = old('person_id') ?: $quote->person_id;
 
         $personLookUpEntityData = $personId
-            ? $this->attributeRepository->getLookUpEntity('persons', $personId)
+            ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
             : [];
 
         return view(
@@ -110,42 +114,52 @@ class QuoteController extends Controller
             $this->validateSalesOwnerSelection();
         }
 
-$this->syncShippingAddressWithBilling($request);
+        $this->syncShippingAddressWithBilling($request);
 
-Event::dispatch('quote.create.before');
+        Event::dispatch('quote.create.before');
 
-/*
- * Generate Project Code otomatis.
- *
- * Contoh:
- * PRJ-2026-00001
- * PRJ-2026-00002
- */
-$data = $request->all();
+        /*
+         * Generate Project Code otomatis.
+         *
+         * Contoh:
+         * PRJ-2026-00001
+         * PRJ-2026-00002
+         */
+        $data = $this->prepareBillToIdentity($request->all());
 
-/*
- * Generate Project Code.
- *
- * Example:
- * PRJ-2026-00001
- */
-$data['project_code'] = app(
-    \Webkul\Quote\Services\ProjectCodeService::class
-)->generate();
+        /*
+         * Generate Project Code.
+         *
+         * Example:
+         * PRJ-2026-00001
+         */
+        $data['project_code'] = app(
+            \Webkul\Quote\Services\ProjectCodeService::class
+        )->generate();
 
-/*
- * Generate Quotation Number.
- *
- * Example:
- * QT 2608-0001
- */
-$data['quote_number'] = app(
-    \Webkul\Quote\Services\QuoteNumberService::class
-)->generate();
+        /*
+         * Generate Quotation Number.
+         *
+         * Example:
+         * QT 2608-0001
+         */
+        $data['quote_number'] = app(
+            \Webkul\Quote\Services\QuoteNumberService::class
+        )->generate();
 
-$quote = $this->quoteRepository->create($data);
+        $quote = $this->quoteRepository->create($data);
 
-$leadId = request('lead_id');
+        /*
+         * Keep the Bill To snapshot reliable on the create flow as well.
+         *
+         * Some installations extend the Quote model and may still use an
+         * older fillable list. forceFill is intentionally limited to these
+         * five server-prepared fields, and saveQuietly prevents an artificial
+         * quote.update workflow immediately after quote.create.
+         */
+        $this->persistCreatedBillToIdentity($quote, $data);
+
+        $leadId = request('lead_id');
 
         if ($leadId) {
             $lead = $this->leadRepository->find($leadId);
@@ -190,7 +204,25 @@ $leadId = request('lead_id');
 
         $lookUpEntityData = $this->attributeRepository->getLookUpEntity('leads', $leadId);
 
-        return view('admin::quotes.edit', compact('quote', 'linkedLead', 'initialQuoteItems', 'lookUpEntityData'));
+        $personId = old('person_id') ?: $quote->person_id;
+
+        $personLookUpEntityData = $personId
+            ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
+            : [];
+
+        $archiveReason = $this->archivePolicy->archiveReason($quote);
+
+        return view(
+            'admin::quotes.edit',
+            compact(
+                'quote',
+                'linkedLead',
+                'initialQuoteItems',
+                'lookUpEntityData',
+                'personLookUpEntityData',
+                'archiveReason'
+            )
+        );
     }
 
     /**
@@ -198,7 +230,22 @@ $leadId = request('lead_id');
      */
     public function update(AttributeForm $request, int $id): RedirectResponse
     {
-        $this->preventUnauthorizedAccess($this->quoteRepository->findOrFail($id)->user_id);
+        $currentQuote = $this->quoteRepository->findOrFail($id);
+
+        $this->preventUnauthorizedAccess($currentQuote->user_id);
+
+        /*
+         * A converted or expired quotation remains commercially read-only,
+         * but its display identity may need a clerical correction. Persist
+         * only Bill To fields here; totals, items, addresses and dates remain
+         * protected by the archive policy.
+         */
+        if ($this->archivePolicy->archiveReason($currentQuote) !== null) {
+            return $this->updateArchivedBillToIdentity(
+                $request,
+                $currentQuote
+            );
+        }
 
         $this->additionalValidation();
 
@@ -215,7 +262,12 @@ $leadId = request('lead_id');
 
         Event::dispatch('quote.update.before', $id);
 
-        $quote = $this->quoteRepository->update($request->all(), $id);
+        $quote = $this->quoteRepository->update(
+            $this->prepareBillToIdentity($request->all()),
+            $id
+        );
+
+        $quote->refresh();
 
         $quote->leads()->detach();
 
@@ -258,6 +310,62 @@ $leadId = request('lead_id');
         return response()->json([
             'data' => $this->getLeadProductsForQuote($lead),
         ]);
+    }
+
+    /**
+     * Return contacts for the Bill To lookup, including their company name.
+     */
+    public function billToPeople(): JsonResponse
+    {
+        $searchTerm = trim((string) request()->query('query', ''));
+        $limit = min(max((int) request()->query('limit', 20), 1), 50);
+
+        $query = $this->personRepository
+            ->getModel()
+            ->newQuery()
+            ->with('organization')
+            ->when($searchTerm !== '', function ($query) use ($searchTerm) {
+                $query->where(function ($query) use ($searchTerm) {
+                    $query->where('name', 'like', '%'.$searchTerm.'%')
+                        ->orWhereHas('organization', function ($query) use ($searchTerm) {
+                            $query->where('name', 'like', '%'.$searchTerm.'%');
+                        });
+                });
+            });
+
+        $authorizedUserIds = bouncer()->getAuthorizedUserIds();
+
+        if ($authorizedUserIds) {
+            $query->whereIn('user_id', $authorizedUserIds);
+        }
+
+        $people = $query
+            ->orderBy('name')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($person) => $this->formatBillToPerson($person))
+            ->values();
+
+        return response()->json($people);
+    }
+
+    /**
+     * Return one contact for the Bill To lookup.
+     */
+    public function billToPerson(): JsonResponse
+    {
+        $person = $this->personRepository->findOrFail(
+            (int) request()->query('query')
+        );
+
+        if (
+            ($authorizedUserIds = bouncer()->getAuthorizedUserIds())
+            && ! in_array($person->user_id, $authorizedUserIds)
+        ) {
+            abort(401, trans('admin::app.errors.unauthorized'));
+        }
+
+        return response()->json($this->formatBillToPerson($person));
     }
 
     /**
@@ -339,7 +447,7 @@ $leadId = request('lead_id');
         }
     }
 
-        /**
+    /**
      * QUOTE SALES OWNER ROLE VALIDATION
      *
      * New owner must be Sales Admin or Sales User.
@@ -374,21 +482,165 @@ $leadId = request('lead_id');
         }
     }
 
-/**
+    /**
      * Additional validation for quote product items.
      */
     private function additionalValidation(): void
     {
-        $this->validate(request(), [
-            'items' => 'required|array',
-            'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|numeric|min:0',
-            'items.*.price' => 'required|numeric|min:0',
-            'items.*.total' => 'required|numeric|min:0',
-            'items.*.discount_amount' => 'required|numeric|min:0',
-            'items.*.tax_amount' => 'required|numeric|min:0',
-            'items.*.final_total' => 'required|numeric|min:0',
-        ]);
+        $this->validate(request(), array_merge(
+            $this->billToValidationRules(),
+            [
+                'items' => 'required|array',
+                'items.*.product_id' => 'required|exists:products,id',
+                'items.*.quantity' => 'required|numeric|min:0',
+                'items.*.price' => 'required|numeric|min:0',
+                'items.*.total' => 'required|numeric|min:0',
+                'items.*.discount_amount' => 'required|numeric|min:0',
+                'items.*.tax_amount' => 'required|numeric|min:0',
+                'items.*.final_total' => 'required|numeric|min:0',
+            ]
+        ));
+    }
+
+    /**
+     * Validation shared by normal and archived Bill To updates.
+     */
+    private function billToValidationRules(): array
+    {
+        return [
+            'person_id' => 'required|exists:persons,id',
+            'bill_to_display_mode' => ['nullable', Rule::in(['person', 'company', 'both'])],
+            'client_signer_name' => 'nullable|string|max:255',
+            'client_signer_company' => 'nullable|string|max:255',
+        ];
+    }
+
+    /**
+     * Correct Bill To identity without reopening an archived quotation.
+     */
+    private function updateArchivedBillToIdentity(
+        AttributeForm $request,
+        $quote
+    ): RedirectResponse {
+        $this->validate($request, $this->billToValidationRules());
+
+        $data = $this->prepareBillToIdentity($request->all());
+        $fields = [
+            'person_id',
+            'bill_to_display_mode',
+            'bill_to_person_name',
+            'bill_to_company_name',
+            'client_signer_name',
+            'client_signer_company',
+        ];
+
+        Event::dispatch('quote.update.before', $quote->id);
+
+        $quote->forceFill(
+            array_intersect_key($data, array_flip($fields))
+        );
+
+        if ($quote->isDirty()) {
+            $quote->save();
+        }
+
+        $quote->refresh();
+
+        Event::dispatch('quote.update.after', $quote);
+
+        session()->flash(
+            'success',
+            'Bill To berhasil diperbarui. Nilai dan item quotation lama tetap terkunci.'
+        );
+
+        return redirect()->route('admin.quotes.index');
+    }
+
+    /**
+     * Store immutable Bill To labels with the quotation.
+     */
+    private function prepareBillToIdentity(array $data): array
+    {
+        $personId = (int) ($data['person_id'] ?? 0);
+
+        if (! $personId) {
+            return $data;
+        }
+
+        $person = $this->personRepository->findOrFail($personId);
+        $personName = trim((string) $person->name);
+        $companyName = trim((string) ($person->organization?->name ?? ''));
+        $displayMode = $data['bill_to_display_mode'] ?? ($companyName !== '' ? 'both' : 'person');
+
+        if (! in_array($displayMode, ['person', 'company', 'both'], true)) {
+            $displayMode = $companyName !== '' ? 'both' : 'person';
+        }
+
+        if (
+            in_array($displayMode, ['company', 'both'], true)
+            && $companyName === ''
+        ) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'bill_to_display_mode' => 'Contact yang dipilih belum memiliki Company.',
+            ]);
+        }
+
+        $data['bill_to_display_mode'] = $displayMode;
+        $data['bill_to_person_name'] = $personName;
+        $data['bill_to_company_name'] = $companyName ?: null;
+        $data['client_signer_name'] = trim((string) ($data['client_signer_name'] ?? '')) ?: $personName;
+
+        if (array_key_exists('client_signer_company', $data)) {
+            $data['client_signer_company'] = trim((string) $data['client_signer_company']) ?: null;
+        } else {
+            $data['client_signer_company'] = $companyName ?: null;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Guarantee that a newly created quote contains its Bill To snapshot.
+     */
+    private function persistCreatedBillToIdentity($quote, array $data): void
+    {
+        $fields = [
+            'bill_to_display_mode',
+            'bill_to_person_name',
+            'bill_to_company_name',
+            'client_signer_name',
+            'client_signer_company',
+        ];
+
+        $identity = array_intersect_key($data, array_flip($fields));
+
+        if ($identity === []) {
+            return;
+        }
+
+        $quote->forceFill($identity);
+
+        if ($quote->isDirty()) {
+            $quote->saveQuietly();
+        }
+    }
+
+    /**
+     * Format a contact consistently for the Bill To lookup and form preview.
+     */
+    private function formatBillToPerson($person): array
+    {
+        $personName = trim((string) $person->name);
+        $companyName = trim((string) ($person->organization?->name ?? ''));
+
+        return [
+            'id' => $person->id,
+            'name' => $companyName !== ''
+                ? $personName.' — '.$companyName
+                : $personName,
+            'person_name' => $personName,
+            'company_name' => $companyName,
+        ];
     }
 
     /**

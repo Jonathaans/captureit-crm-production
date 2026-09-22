@@ -14,6 +14,10 @@ class CrmReadOnlyArchivePolicyService
     {
         $table = $model->getTable();
 
+        if ($this->isQuoteIdentityCorrection($model, $operation)) {
+            return;
+        }
+
         if (
             $operation === 'create'
             && $table === 'inventory_stock_movements'
@@ -58,6 +62,36 @@ class CrmReadOnlyArchivePolicyService
                 $reason
             ),
         ]);
+    }
+
+    /**
+     * Permit clerical Bill To corrections without reopening commercial data.
+     */
+    private function isQuoteIdentityCorrection(
+        Model $model,
+        string $operation
+    ): bool {
+        if ($operation !== 'update' || $model->getTable() !== 'quotes') {
+            return false;
+        }
+
+        $dirtyFields = array_keys($model->getDirty());
+
+        if ($dirtyFields === []) {
+            return false;
+        }
+
+        $allowedFields = [
+            'person_id',
+            'bill_to_display_mode',
+            'bill_to_person_name',
+            'bill_to_company_name',
+            'client_signer_name',
+            'client_signer_company',
+            'updated_at',
+        ];
+
+        return array_diff($dirtyFields, $allowedFields) === [];
     }
 
     public function archiveReason(Model $model): ?string

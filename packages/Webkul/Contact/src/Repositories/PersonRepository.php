@@ -55,6 +55,8 @@ class PersonRepository extends Repository
      */
     public function create(array $data)
     {
+        $data['emails'] ??= [];
+
         $data = $this->sanitizeRequestedPersonData($data);
 
         if (! empty($data['organization_name'])) {
@@ -165,18 +167,39 @@ class PersonRepository extends Repository
             $data['organization_id'] = null;
         }
 
+        if (array_key_exists('emails', $data)) {
+            $data['emails'] = collect($data['emails'])
+                ->filter(fn ($email) => filled($email['value'] ?? null))
+                ->values()
+                ->all();
+        }
+
+        if (array_key_exists('contact_numbers', $data)) {
+            $data['contact_numbers'] = collect($data['contact_numbers'])
+                ->filter(fn ($number) => filled($number['value'] ?? null))
+                ->values()
+                ->all();
+        }
+
+        $email = $data['emails'][0]['value'] ?? null;
+        $contactNumber = $data['contact_numbers'][0]['value'] ?? null;
+
+        if (! filled($email) && ! filled($contactNumber)) {
+            $data['unique_id'] = null;
+
+            return $data;
+        }
+
         $uniqueIdParts = array_filter([
             $data['user_id'] ?? null,
             $data['organization_id'] ?? null,
-            $data['emails'][0]['value'] ?? null,
+            $email,
         ]);
 
         $data['unique_id'] = implode('|', $uniqueIdParts);
 
-        if (isset($data['contact_numbers'])) {
-            $data['contact_numbers'] = collect($data['contact_numbers'])->filter(fn ($number) => ! is_null($number['value']))->toArray();
-
-            $data['unique_id'] .= '|'.$data['contact_numbers'][0]['value'];
+        if (filled($contactNumber)) {
+            $data['unique_id'] .= '|'.$contactNumber;
         }
 
         return $data;

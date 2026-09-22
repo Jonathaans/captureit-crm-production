@@ -40,7 +40,7 @@
 
         <!-- Person Email -->
         <x-admin::form.control-group>
-            <x-admin::form.control-group.label class="required">
+            <x-admin::form.control-group.label>
                 @lang('admin::app.leads.common.contact.email')
             </x-admin::form.control-group.label>
 
@@ -48,7 +48,6 @@
 
             <v-email-component
                 :attribute="{'id': person?.id, 'code': 'person[emails]', 'name': 'Email'}"
-                validations="required"
                 :value="person.emails"
                 :is-disabled="person?.id ? true : false"
             ></v-email-component>
@@ -92,7 +91,16 @@
                 :value="person.organization"
                 :is-disabled="person?.id ? true : false"
                 can-add-new="true"
+                @lookup-added="setOrganizationName"
+                @lookup-removed="setOrganizationName"
             ></v-lookup-component>
+
+            <x-admin::form.control-group.control
+                type="hidden"
+                name="person[organization_name]"
+                v-model="organizationName"
+                v-if="organizationName"
+            />
         </x-admin::form.control-group>
     </script>
 
@@ -109,6 +117,8 @@
                     person: this.data ? this.data : {
                         'name': ''
                     },
+
+                    organizationName: '',
 
                     persons: [],
                 }
@@ -135,6 +145,14 @@
             methods: {
                 addPerson (person) {
                     this.person = person;
+
+                    this.organizationName = '';
+                },
+
+                setOrganizationName (organization) {
+                    this.organizationName = organization?.id
+                        ? ''
+                        : (organization?.name || '').trim();
                 },
             }
         });

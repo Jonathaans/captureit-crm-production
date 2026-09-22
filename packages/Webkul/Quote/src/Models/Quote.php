@@ -42,6 +42,11 @@ class Quote extends Model implements QuoteContract
         'expired_at',
         'user_id',
         'person_id',
+        'bill_to_display_mode',
+        'bill_to_person_name',
+        'bill_to_company_name',
+        'client_signer_name',
+        'client_signer_company',
     ];
 
     public function items()
