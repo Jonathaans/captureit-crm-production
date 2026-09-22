@@ -17,6 +17,7 @@ use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
 use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
+use Webkul\Admin\Services\QuoteSalesOwnerService;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Contact\Repositories\PersonRepository;
 use Webkul\Core\Support\BusinessUnit;
@@ -39,6 +40,7 @@ class QuoteController extends Controller
         protected AttributeRepository $attributeRepository,
         protected PersonRepository $personRepository,
         protected CrmReadOnlyArchivePolicyService $archivePolicy,
+        protected QuoteSalesOwnerService $quoteSalesOwnerService,
     ) {
         request()->request->add(['entity_type' => 'quotes']);
     }
@@ -90,6 +92,12 @@ class QuoteController extends Controller
             ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
             : [];
 
+        $selectedSalesOwnerId = (int) old('user_id', $quote->user_id);
+
+        $salesOwnerLookUpData = $this->quoteSalesOwnerService->initialSelection(
+            $selectedSalesOwnerId ?: null
+        );
+
         return view(
             'admin::quotes.create',
             compact(
@@ -97,7 +105,8 @@ class QuoteController extends Controller
                 'quote',
                 'leadProducts',
                 'lookUpEntityData',
-                'personLookUpEntityData'
+                'personLookUpEntityData',
+                'salesOwnerLookUpData'
             )
         );
     }
@@ -210,6 +219,13 @@ class QuoteController extends Controller
             ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
             : [];
 
+        $selectedSalesOwnerId = (int) old('user_id', $quote->user_id);
+
+        $salesOwnerLookUpData = $this->quoteSalesOwnerService->initialSelection(
+            $selectedSalesOwnerId ?: null,
+            (int) $quote->user_id
+        );
+
         $archiveReason = $this->archivePolicy->archiveReason($quote);
 
         return view(
@@ -220,6 +236,7 @@ class QuoteController extends Controller
                 'initialQuoteItems',
                 'lookUpEntityData',
                 'personLookUpEntityData',
+                'salesOwnerLookUpData',
                 'archiveReason'
             )
         );
@@ -369,6 +386,22 @@ class QuoteController extends Controller
     }
 
     /**
+     * Search active users eligible to become a Quote Sales Owner.
+     */
+    public function salesOwners(): JsonResponse
+    {
+        $searchTerm = trim((string) request()->query('query', ''));
+        $limit = min(
+            max((int) request()->query('limit', QuoteSalesOwnerService::SEARCH_LIMIT), 1),
+            QuoteSalesOwnerService::SEARCH_LIMIT
+        );
+
+        return response()->json(
+            $this->quoteSalesOwnerService->search($searchTerm, $limit)
+        );
+    }
+
+    /**
      * Remove the specified resource from storage.
      */
     public function destroy(int $id): JsonResponse
@@ -450,7 +483,7 @@ class QuoteController extends Controller
     /**
      * QUOTE SALES OWNER ROLE VALIDATION
      *
-     * New owner must be Sales Admin or Sales User.
+     * New owner must be an active user with an allowed Sales Owner role.
      * Existing legacy owner may stay unchanged on old Quotes.
      */
     private function validateSalesOwnerSelection(
@@ -469,15 +502,11 @@ class QuoteController extends Controller
         }
 
         if (
-            ! app(
-                \Webkul\Admin\Services\QuoteSalesOwnerService::class
-            )->isEligible(
-                $selectedOwnerId
-            )
+            ! $this->quoteSalesOwnerService->isEligible($selectedOwnerId)
         ) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'user_id' =>
-                    'Sales Owner harus memiliki role Sales Admin atau Sales User.',
+                    'Sales Owner harus aktif dan memiliki role Administrator, Sales Admin, SuperAdministrator, atau Sales User.',
             ]);
         }
     }

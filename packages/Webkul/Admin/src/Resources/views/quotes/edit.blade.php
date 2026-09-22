@@ -96,6 +96,8 @@
     {!! view_render_event('admin.contacts.quotes.edit.form_controls.after', ['quote' => $quote]) !!}
 
     @pushOnce('scripts')
+        @include('admin::quotes.partials.sales-owner-lookup')
+
         <script
             type="text/x-template"
             id="v-quote-template"
@@ -286,64 +288,19 @@
                                     ]"
                                     :entity="$quote"
                                 />
-                            <!-- QUOTE SALES OWNER ROLE FILTER EDIT V1.1 -->
-                            <?php
-                                $quoteSalesOwnerCurrentId = old(
-                                    'user_id',
-                                    $quote->user_id
-                                );
+                                <x-admin::form.control-group class="w-full">
+                                    <x-admin::form.control-group.label class="required">
+                                        Sales Owner
+                                    </x-admin::form.control-group.label>
 
-                                $quoteSalesOwners = app(
-                                    \Webkul\Admin\Services\QuoteSalesOwnerService::class
-                                )->options(
-                                    true
-                                        ? (int) ($quoteSalesOwnerCurrentId ?: 0)
-                                        : null
-                                );
-                            ?>
+                                    <v-quote-sales-owner-lookup
+                                        :initial-owner='@json($salesOwnerLookUpData ?? [])'
+                                        search-url="{{ route('admin.quotes.sales_owners') }}"
+                                        :disabled="@json((bool) $archiveReason)"
+                                    ></v-quote-sales-owner-lookup>
 
-                            <!-- QUOTE SALES OWNER ROLE FILTER EDIT V1.3 -->
-<?php
-    $quoteSalesOwnerCurrentId = old(
-        'user_id',
-        $quote->user_id
-    );
-
-    $quoteSalesOwners = app(
-        \Webkul\Admin\Services\QuoteSalesOwnerService::class
-    )->options(
-        true
-            ? (int) ($quoteSalesOwnerCurrentId ?: 0)
-            : null
-    );
-?>
-
-<x-admin::form.control-group class="w-full">
-    <x-admin::form.control-group.label class="required">
-        Sales Owner
-    </x-admin::form.control-group.label>
-
-    <select
-        name="user_id"
-        class="w-full rounded-md border border-gray-300 px-3 py-2 dark:border-gray-800 dark:bg-gray-950"
-        required
-    >
-        <option value="">Select Sales Owner</option>
-
-        <?php foreach ($quoteSalesOwners as $salesOwner): ?>
-            <option
-                value="{{ $salesOwner->id }}"
-                {{ (string) $quoteSalesOwnerCurrentId === (string) $salesOwner->id ? 'selected' : '' }}
-            >
-                {{ $salesOwner->name }}
-                ({{ $salesOwner->role_name ?: 'Current Owner' }})
-                {{ $salesOwner->is_legacy_current ? ' - Current Owner' : '' }}
-            </option>
-        <?php endforeach; ?>
-    </select>
-
-    <x-admin::form.control-group.error control-name="user_id" />
-</x-admin::form.control-group>
+                                    <x-admin::form.control-group.error control-name="user_id" />
+                                </x-admin::form.control-group>
                             </div>
 
                             <div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
