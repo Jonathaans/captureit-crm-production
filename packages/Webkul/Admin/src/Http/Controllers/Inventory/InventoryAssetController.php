@@ -72,10 +72,17 @@ class InventoryAssetController extends Controller
         }
 
         $assets = $query->get();
+        $inventoryItems = InventoryItem::query()
+            ->where('tracking_type', 'serialized')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+        $selectedItemId = $request->filled('inventory_item_id')
+            ? $request->integer('inventory_item_id')
+            : null;
 
         return view(
             'admin::inventory.assets.qr-labels',
-            compact('assets')
+            compact('assets', 'inventoryItems', 'selectedItemId')
         );
     }
 

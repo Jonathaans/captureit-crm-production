@@ -53,6 +53,23 @@
             font-weight: 700;
         }
 
+        .item-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .item-filter select {
+            max-width: 320px;
+            min-height: 34px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #111827;
+            background: white;
+            font-size: 13px;
+        }
+
         .toolbar a,
         .toolbar button {
             border: 1px solid #c79a19;
@@ -194,9 +211,39 @@
 <body>
     <div class="toolbar">
         <div class="toolbar-left">
-            <a href="{{ route('admin.inventory.assets.index') }}">
+            <a href="{{ route(
+                'admin.inventory.assets.index',
+                $selectedItemId ? ['inventory_item_id' => $selectedItemId] : []
+            ) }}">
                 &larr; Back to Assets
             </a>
+
+            <form
+                method="GET"
+                action="{{ route('admin.inventory.assets.qr-labels.index') }}"
+                class="item-filter"
+            >
+                <label for="inventory-item-filter" class="toolbar-info">
+                    Inventory Item
+                </label>
+
+                <select
+                    id="inventory-item-filter"
+                    name="inventory_item_id"
+                    onchange="this.form.submit()"
+                >
+                    <option value="">All serialized items</option>
+
+                    @foreach ($inventoryItems as $item)
+                        <option
+                            value="{{ $item->id }}"
+                            @selected((int) $selectedItemId === (int) $item->id)
+                        >
+                            {{ $item->code }} — {{ $item->name }}
+                        </option>
+                    @endforeach
+                </select>
+            </form>
 
             <span class="toolbar-info">
                 {{ $assets->count() }} label

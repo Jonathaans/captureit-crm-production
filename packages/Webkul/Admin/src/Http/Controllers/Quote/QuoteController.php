@@ -521,6 +521,7 @@ class QuoteController extends Controller
             [
                 'items' => 'required|array',
                 'items.*.product_id' => 'required|exists:products,id',
+                'items.*.day' => 'required|integer|min:1',
                 'items.*.quantity' => 'required|numeric|min:0',
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.total' => 'required|numeric|min:0',
@@ -690,8 +691,9 @@ class QuoteController extends Controller
                     'id' => null,
                     'product_id' => $product->product_id,
                     'name' => $product->name,
+                    'day' => max(1, (int) ($product->day ?? 1)),
                     'quantity' => $quantity,
-                    'total' => $price * $quantity,
+                    'total' => $price * $quantity * max(1, (int) ($product->day ?? 1)),
                     'price' => $price,
                     'discount_amount' => 0,
                     'tax_amount' => 0,

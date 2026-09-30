@@ -25,6 +25,10 @@
                             </x-admin::table.th>
 
                             <x-admin::table.th class="ltr:text-left rtl:text-right">
+                                Day
+                            </x-admin::table.th>
+
+                            <x-admin::table.th class="ltr:text-left rtl:text-right">
                                 @lang('admin::app.leads.view.products.quantity')
                             </x-admin::table.th>
 
@@ -143,6 +147,27 @@
                 </v-form>
             </x-admin::table.td>
 
+            <!-- Product Day -->
+            <x-admin::table.td class="!px-4 ltr:text-right rtl:text-left">
+                <v-form v-slot="{ errors }" @keydown.enter.prevent>
+                    <x-admin::form.control-group class="!mb-0">
+                        <x-admin::form.control-group.control
+                            type="inline"
+                            ::name="'day'"
+                            ::value="product.day || 1"
+                            rules="required|integer|min:1"
+                            label="Day"
+                            placeholder="Day"
+                            @on-change="handleDayChange"
+                            ::url="url(product)"
+                            ::params="{product_id: product.product_id, price: product.price, quantity: product.quantity}"
+                            position="left"
+                            ::errors="errors"
+                        />
+                    </x-admin::form.control-group>
+                </v-form>
+            </x-admin::table.td>
+
             <!-- Product Quantity -->
             <x-admin::table.td class="!px-4 ltr:text-right rtl:text-left">
                 <v-form v-slot="{ errors }" @keydown.enter.prevent>
@@ -156,7 +181,7 @@
                             :placeholder="trans('admin::app.leads.view.products.quantity')"
                             @on-change="handleQuantityChange"
                             ::url="url(product)"
-                            ::params="{product_id: product.product_id, price: product.price}"
+                            ::params="{product_id: product.product_id, price: product.price, day: product.day || 1}"
                             position="left"
                             ::errors="errors"
                         />
@@ -177,7 +202,7 @@
                             :placeholder="trans('admin::app.leads.view.products.price')"
                             @on-change="handlePriceChange"
                             ::url="url(product)"
-                            ::params="{product_id: product.product_id, quantity: product.quantity}"
+                            ::params="{product_id: product.product_id, quantity: product.quantity, day: product.day || 1}"
                             position="left"
                             ::value-label="$admin.formatPrice(product.price)"
                             ::errors="errors"
@@ -193,14 +218,14 @@
                         <x-admin::form.control-group.control
                             type="inline"
                             ::name="'amount'"
-                            ::value="product.price * product.quantity"
+                            ::value="product.price * product.quantity * (product.day || 1)"
                             rules="required|decimal:4"
                             :label="trans('admin::app.leads.view.products.total')"
                             :placeholder="trans('admin::app.leads.view.products.total')"
                             :allowEdit="false"
                             ::url="url(product)"
                             position="left"
-                            ::value-label="$admin.formatPrice(product.price * product.quantity)"
+                            ::value-label="$admin.formatPrice(product.price * product.quantity * (product.day || 1))"
                             ::errors="errors"
                         />
                     </x-admin::form.control-group>
@@ -253,6 +278,7 @@
                         product_id: null,
                         name: '',
                         quantity: 0,
+                        day: 1,
                         price: 0,
                         amount: 0,
                     })
@@ -315,6 +341,8 @@
 
                     this.product.quantity = 1;
 
+                    this.product.day = this.product.day || 1;
+
                     this.setProductAmount();
 
                     if (this.product.is_new) {
@@ -347,6 +375,18 @@
                 },
 
                 /**
+                 * Handle day updates and keep amount in sync.
+                 *
+                 * @param {Object} event
+                 * @return {void}
+                 */
+                handleDayChange(event) {
+                    this.product.day = event.value;
+
+                    this.setProductAmount();
+                },
+
+                /**
                  * Recalculate amount from price and quantity.
                  *
                  * @return {void}
@@ -354,8 +394,9 @@
                 setProductAmount() {
                     const price = parseFloat(this.product.price) || 0;
                     const quantity = parseFloat(this.product.quantity) || 0;
+                    const day = parseInt(this.product.day, 10) || 1;
 
-                    this.product.amount = price * quantity;
+                    this.product.amount = price * quantity * day;
                 },
 
                 /**
@@ -372,19 +413,24 @@
 
                     const quantity = parseFloat(product.quantity) || 1;
 
-                    const amount = price * quantity;
+                    const day = parseInt(product.day, 10) || 1;
+
+                    const amount = price * quantity * day;
 
                     this.$axios.post('{{ route('admin.leads.product.add', $lead->id) }}', {
                         _method: 'PUT',
                         ...product,
                         price,
                         quantity,
+                        day,
                         amount,
                     })
                         .then(response => {
                             this.product.id = response.data.data.id;
 
                             this.product.quantity = quantity;
+
+                            this.product.day = day;
 
                             this.product.price = price;
 

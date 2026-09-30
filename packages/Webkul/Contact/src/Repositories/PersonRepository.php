@@ -57,10 +57,20 @@ class PersonRepository extends Repository
     {
         $data['emails'] ??= [];
 
+        $organizationAddress = is_array($data['organization_address'] ?? null)
+            ? $data['organization_address']
+            : [];
+
+        unset($data['organization_address']);
+
         $data = $this->sanitizeRequestedPersonData($data);
 
         if (! empty($data['organization_name'])) {
-            $organization = $this->fetchOrCreateOrganizationByName($data['organization_name']);
+            $organization = $this->fetchOrCreateOrganizationByName(
+                $data['organization_name'],
+                $organizationAddress,
+                isset($data['user_id']) ? (int) $data['user_id'] : null
+            );
 
             $data['organization_id'] = $organization->id;
         }
@@ -85,12 +95,22 @@ class PersonRepository extends Repository
      */
     public function update(array $data, $id, $attributes = [])
     {
+        $organizationAddress = is_array($data['organization_address'] ?? null)
+            ? $data['organization_address']
+            : [];
+
+        unset($data['organization_address']);
+
         $data = $this->sanitizeRequestedPersonData($data);
 
         $data['user_id'] = empty($data['user_id']) ? null : $data['user_id'];
 
         if (! empty($data['organization_name'])) {
-            $organization = $this->fetchOrCreateOrganizationByName($data['organization_name']);
+            $organization = $this->fetchOrCreateOrganizationByName(
+                $data['organization_name'],
+                $organizationAddress,
+                isset($data['user_id']) ? (int) $data['user_id'] : null
+            );
 
             $data['organization_id'] = $organization->id;
 
@@ -143,16 +163,46 @@ class PersonRepository extends Repository
     /**
      * Fetch or create an organization.
      */
-    public function fetchOrCreateOrganizationByName(string $organizationName)
+    public function fetchOrCreateOrganizationByName(
+        string $organizationName,
+        array $address = [],
+        ?int $userId = null
+    )
     {
+        $organizationName = trim($organizationName);
+
         $organization = $this->organizationRepository->findOneWhere([
             'name' => $organizationName,
         ]);
 
-        return $organization ?: $this->organizationRepository->create([
+        if ($organization) {
+            return $organization;
+        }
+
+        $address = array_intersect_key($address, array_flip([
+            'address',
+            'country',
+            'state',
+            'city',
+            'postcode',
+        ]));
+
+        $address = array_filter(
+            $address,
+            fn ($value) => filled($value)
+        );
+
+        $organizationData = [
             'entity_type' => 'organizations',
             'name' => $organizationName,
-        ]);
+            'user_id' => $userId ?: auth()->guard('user')->id(),
+        ];
+
+        if ($address !== []) {
+            $organizationData['address'] = $address;
+        }
+
+        return $this->organizationRepository->create($organizationData);
     }
 
     /**

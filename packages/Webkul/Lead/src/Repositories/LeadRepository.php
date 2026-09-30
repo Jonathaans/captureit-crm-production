@@ -120,9 +120,7 @@ class LeadRepository extends Repository
             if (! empty($data['person']['id'])) {
                 $person = $this->personRepository->findOrFail($data['person']['id']);
             } else {
-                $person = $this->personRepository->create(array_merge($data['person'], [
-                    'entity_type' => 'persons',
-                ]));
+                $person = $this->createPersonForCurrentSalesOwner($data['person']);
             }
 
             $data['person_id'] = $person->id;
@@ -143,9 +141,12 @@ class LeadRepository extends Repository
 
         if (isset($data['products'])) {
             foreach ($data['products'] as $product) {
+                $day = max(1, (int) ($product['day'] ?? 1));
+
                 $this->productRepository->create(array_merge($product, [
                     'lead_id' => $lead->id,
-                    'amount' => $product['price'] * $product['quantity'],
+                    'day' => $day,
+                    'amount' => $product['price'] * $product['quantity'] * $day,
                 ]));
             }
         }
@@ -171,9 +172,7 @@ class LeadRepository extends Repository
             if (! empty($data['person']['id'])) {
                 $person = $this->personRepository->findOrFail($data['person']['id']);
             } else {
-                $person = $this->personRepository->create(array_merge($data['person'], [
-                    'entity_type' => 'persons',
-                ]));
+                $person = $this->createPersonForCurrentSalesOwner($data['person']);
             }
 
             $data['person_id'] = $person->id;
@@ -232,6 +231,10 @@ class LeadRepository extends Repository
 
         if (isset($data['products'])) {
             foreach ($data['products'] as $productId => $productInputs) {
+                $day = max(1, (int) ($productInputs['day'] ?? 1));
+                $productInputs['day'] = $day;
+                $productInputs['amount'] = $productInputs['price'] * $productInputs['quantity'] * $day;
+
                 if (Str::contains($productId, 'product_')) {
                     $this->productRepository->create(array_merge([
                         'lead_id' => $lead->id,
@@ -251,5 +254,19 @@ class LeadRepository extends Repository
         }
 
         return $lead;
+    }
+
+    /**
+     * Create a contact added from a lead and assign it to the signed-in user.
+     */
+    private function createPersonForCurrentSalesOwner(array $personData)
+    {
+        $personData['entity_type'] = 'persons';
+
+        if ($userId = auth()->guard('user')->id()) {
+            $personData['user_id'] = $userId;
+        }
+
+        return $this->personRepository->create($personData);
     }
 }

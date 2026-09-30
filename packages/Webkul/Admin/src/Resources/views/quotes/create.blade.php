@@ -768,7 +768,7 @@
                             type="inline"
                             ::name="`${inputName}[day]`"
                             ::value="product.day"
-                            rules="required|numeric|min:1"
+                            rules="required|integer|min:1"
                             :label="'Day'"
                             :placeholder="'Day'"
                             @on-change="(event) => product.day = event.value"

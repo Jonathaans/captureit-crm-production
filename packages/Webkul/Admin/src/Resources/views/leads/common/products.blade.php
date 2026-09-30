@@ -21,6 +21,10 @@
                             </x-admin::table.th>
 
                             <x-admin::table.th class="text-center">
+                                Day
+                            </x-admin::table.th>
+
+                            <x-admin::table.th class="text-center">
                                 @lang('admin::app.leads.common.products.quantity')
                             </x-admin::table.th>
 
@@ -106,6 +110,22 @@
                 </x-admin::form.control-group>
             </x-admin::table.td>
 
+            <!-- Product Day -->
+            <x-admin::table.td class="text-right">
+                <x-admin::form.control-group>
+                    <x-admin::form.control-group.control
+                        type="inline"
+                        ::name="`${inputName}[day]`"
+                        ::value="product.day || 1"
+                        rules="required|integer|min:1"
+                        label="Day"
+                        placeholder="Day"
+                        @on-change="(event) => product.day = event.value"
+                        position="center"
+                    />
+                </x-admin::form.control-group>
+            </x-admin::table.td>
+
             <!-- Product Quantity -->
             <x-admin::table.td class="text-right">
                 <x-admin::form.control-group>
@@ -145,11 +165,11 @@
                     <x-admin::form.control-group.control
                         type="inline"
                         ::name="`${inputName}[amount]`"
-                        ::value="product.price * product.quantity"
+                        ::value="product.price * product.quantity * (product.day || 1)"
                         rules="required|decimal:4"
                         :label="trans('admin::app.leads.common.products.total')"
                         :placeholder="trans('admin::app.leads.common.products.total')"
-                        ::value-label="$admin.formatPrice((Number(product.price) || 0) * (Number(product.quantity) || 0))"
+                        ::value-label="$admin.formatPrice((Number(product.price) || 0) * (Number(product.quantity) || 0) * (Number(product.day) || 1))"
                         :allowEdit="false"
                         position="center"
                     />
@@ -194,6 +214,7 @@
                         product_id: null,
                         name: '',
                         quantity: 0,
+                        day: 1,
                         price: 0,
                         amount: null,
                     })
@@ -255,6 +276,8 @@
                     this.product.price = result.price;
 
                     this.product.quantity = result.quantity ?? 1;
+
+                    this.product.day = this.product.day || 1;
                 },
 
                 /**
