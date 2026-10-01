@@ -469,6 +469,10 @@
                                 </x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
+                                    Day
+                                </x-admin::table.th>
+
+                                <x-admin::table.th class="text-center">
                                     @lang('admin::app.quotes.create.quantity')
                                 </x-admin::table.th>
 
@@ -623,6 +627,23 @@
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
+                <!-- Day -->
+                <x-admin::table.td class="!px-2 text-center">
+                    <x-admin::form.control-group class="!mb-0">
+                        <x-admin::form.control-group.control
+                            type="inline"
+                            ::name="`${inputName}[day]`"
+                            ::value="product.day || 1"
+                            rules="required|integer|min:1"
+                            :label="'Day'"
+                            :placeholder="'Day'"
+                            @on-change="(event) => product.day = event.value"
+                        />
+                        <x-admin::form.control-group.error ::name="`items.${product.id}.day`"/>
+                        <x-admin::form.control-group.error ::name="`${inputName}[day]`"/>
+                    </x-admin::form.control-group>
+                </x-admin::table.td>
+
                 <!-- Quantity -->
                 <x-admin::table.td class="!px-2 ltr:text-right rtl:text-left">
                     <x-admin::form.control-group class="!mb-0">
@@ -667,14 +688,14 @@
                         <x-admin::form.control-group.control
                             type="inline"
                             ::name="`${inputName}[total]`"
-                            ::value="(product.price * product.quantity) ?? 0"
+                            ::value="(product.price * product.quantity * (product.day || 1)) ?? 0"
                             rules="required|decimal:4"
                             ::errors="errors"
                             :label="trans('admin::app.quotes.create.total')"
                             :placeholder="trans('admin::app.quotes.create.total')"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(product.price * product.quantity)"
+                            ::value-label="$admin.formatPrice(product.price * product.quantity * (product.day || 1))"
                         />
                         <x-admin::form.control-group.error name="`items.${product.id}.total`"/>
                         <x-admin::form.control-group.error ::name="`${inputName}[total]`"/>
@@ -726,10 +747,10 @@
                             type="inline"
                             ::name="`${inputName}[final_total]`"
                             ::errors="errors"
-                            ::value="parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount)"
+                            ::value="parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount)"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount))"
+                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount))"
                         />
                     </x-admin::form.control-group>
                 </x-admin::table.td>
@@ -1059,7 +1080,9 @@
                      * @returns {Number}
                      */
                     getProductBaseTotal(product) {
-                        return this.parseDecimal(product.price) * this.parseDecimal(product.quantity);
+                        return this.parseDecimal(product.price)
+                            * this.parseDecimal(product.quantity)
+                            * (this.parseDecimal(product.day) || 1);
                     },
 
                     /**
@@ -1113,6 +1136,7 @@
                             id: null,
                             product_id: null,
                             name: '',
+                            day: 1,
                             quantity: 1,
                             total: '0.0000',
                             price: '0.0000',
@@ -1134,6 +1158,7 @@
                                         id: null,
                                         product_id: null,
                                         name: '',
+                                        day: 1,
                                         quantity: null,
                                         total: 0,
                                         price: null,

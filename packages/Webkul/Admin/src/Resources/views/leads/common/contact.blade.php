@@ -1,5 +1,17 @@
 {!! view_render_event('admin.leads.create.contact_person.form_controls.before') !!}
 
+@php
+    $organizationAddressAttribute = app('Webkul\\Attribute\\Repositories\\AttributeRepository')->findOneWhere([
+        'entity_type' => 'organizations',
+        'code' => 'address',
+    ]);
+
+    if ($organizationAddressAttribute) {
+        $organizationAddressAttribute->code = 'person[organization_address]';
+        $organizationAddressAttribute->is_required = false;
+    }
+@endphp
+
 <v-contact-component :data="person"></v-contact-component>
 
 {!! view_render_event('admin.leads.create.contact_person.form_controls.after') !!}
@@ -101,6 +113,20 @@
                 v-model="organizationName"
                 v-if="organizationName"
             />
+
+            <template v-if="organizationName">
+                <p class="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                    Company Address (Optional)
+                </p>
+
+                @if ($organizationAddressAttribute)
+                    <x-admin::attributes.edit.address
+                        :attribute="$organizationAddressAttribute"
+                        :validations="'max:100'"
+                        :value="old('person.organization_address', [])"
+                    />
+                @endif
+            </template>
         </x-admin::form.control-group>
     </script>
 

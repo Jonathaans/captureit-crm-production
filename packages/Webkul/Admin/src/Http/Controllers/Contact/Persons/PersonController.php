@@ -57,8 +57,8 @@ class PersonController extends Controller
 
         $data = $request->all();
 
-        if (request()->has('quick_add') && empty($data['user_id'])) {
-            $data['user_id'] = auth()->guard('user')->user()->id;
+        if (request()->has('quick_add')) {
+            $data['user_id'] = auth()->guard('user')->id();
         }
 
         $person = $this->personRepository->create($data);

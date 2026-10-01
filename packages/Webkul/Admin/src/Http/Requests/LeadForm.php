@@ -136,11 +136,18 @@ class LeadForm extends FormRequest
         return [
             ...$this->rules,
             'person.organization_name' => ['nullable', 'string', 'max:255'],
+            'person.organization_address' => ['nullable', 'array'],
+            'person.organization_address.address' => ['nullable', 'string', 'max:100'],
+            'person.organization_address.country' => ['nullable', 'string', 'max:2'],
+            'person.organization_address.state' => ['nullable', 'string', 'max:100'],
+            'person.organization_address.city' => ['nullable', 'string', 'max:100'],
+            'person.organization_address.postcode' => ['nullable', 'string', 'max:20'],
             'products' => 'array',
             'products.*.product_id' => 'sometimes|required|exists:products,id',
             'products.*.name' => 'required_with:products.*.product_id',
             'products.*.price' => 'required_with:products.*.product_id',
             'products.*.quantity' => 'required_with:products.*.product_id',
+            'products.*.day' => 'nullable|integer|min:1',
         ];
     }
 

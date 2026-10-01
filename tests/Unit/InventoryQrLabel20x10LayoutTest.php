@@ -19,3 +19,21 @@ it('keeps each printed inventory label at exactly 20 by 10 millimetres', functio
         ->toContain('height: 10mm')
         ->toContain('$assets->chunk(225)');
 });
+
+it('filters printed asset labels by the selected inventory item code', function (): void {
+    $view = file_get_contents(
+        base_path('packages/Webkul/Admin/src/Resources/views/inventory/assets/qr-labels.blade.php')
+    );
+    $controller = file_get_contents(
+        base_path('packages/Webkul/Admin/src/Http/Controllers/Inventory/InventoryAssetController.php')
+    );
+
+    expect($view)
+        ->toContain('name="inventory_item_id"')
+        ->toContain('{{ $item->code }} — {{ $item->name }}')
+        ->toContain("route('admin.inventory.assets.qr-labels.index')");
+
+    expect($controller)
+        ->toContain("\$request->integer('inventory_item_id')")
+        ->toContain("'inventory_item_id',");
+});
