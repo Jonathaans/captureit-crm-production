@@ -18,6 +18,8 @@ class InvoiceItem extends Model implements InvoiceItemContract
     'name',
     'description',
     'day',
+        'unit',
+        'equipment_quantity',
 
     'quantity',
     'price',

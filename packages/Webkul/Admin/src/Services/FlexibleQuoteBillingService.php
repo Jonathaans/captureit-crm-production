@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Quote\Models\Quote;
 
@@ -335,14 +336,34 @@ class FlexibleQuoteBillingService
     }
 
     /**
-     * Allow payment/status metadata, but lock all commercial values and lines.
+     * Allow payment/status metadata, and optionally allow commercial edits
+     * while an invoice is still unpaid/partial.
      */
     public function assertMutable(Model $model, string $operation): void
     {
         $table = $model->getTable();
+        $allowLockedEdits = (bool) config(
+            'crm-hardening.allow_edit_locked_invoices'
+        );
 
         if ($table === 'invoices') {
             if (! $model->getRawOriginal('billing_locked_at')) {
+                return;
+            }
+
+            $status = (string) $model->getRawOriginal('status');
+            $eventStatus = (string) $model->getRawOriginal('event_status');
+
+            if (
+                $operation !== 'delete'
+                && $allowLockedEdits
+                && in_array($status, ['unpaid', 'partial'], true)
+                && ! in_array(
+                    $eventStatus,
+                    ['cancel', 'cancelled', 'canceled'],
+                    true
+                )
+            ) {
                 return;
             }
 
@@ -387,15 +408,100 @@ class FlexibleQuoteBillingService
             ?: $model->getAttribute('invoice_id')
         );
 
-        if (
-            $invoiceId > 0
-            && DB::table('invoices')
-                ->where('id', $invoiceId)
-                ->whereNotNull('billing_locked_at')
-                ->exists()
-        ) {
-            $this->throwLocked();
+        if ($invoiceId <= 0) {
+            return;
         }
+
+        $invoice = DB::table('invoices')
+            ->select(['status', 'event_status'])
+            ->where('id', $invoiceId)
+            ->whereNotNull('billing_locked_at')
+            ->first();
+
+        if (! $invoice) {
+            return;
+        }
+
+        if (
+            $allowLockedEdits
+            && in_array($invoice->status, ['unpaid', 'partial'], true)
+            && ! in_array(
+                $invoice->event_status,
+                ['cancel', 'cancelled', 'canceled'],
+                true
+            )
+        ) {
+            return;
+        }
+
+        $this->throwLocked();
+    }
+
+    /**
+     * Keep billing snapshots consistent after a manual invoice edit.
+     */
+    public function syncAfterManualUpdate(Invoice $invoice): void
+    {
+        if (! $invoice->billing_locked_at || ! $invoice->quote_id) {
+            return;
+        }
+
+        $quoteTotal = round(
+            (float) ($invoice->quote_total_snapshot ?? 0),
+            self::SCALE
+        );
+
+        if ($quoteTotal <= 0) {
+            $quoteTotal = round(
+                (float) Quote::query()
+                    ->whereKey($invoice->quote_id)
+                    ->value('grand_total'),
+                self::SCALE
+            );
+        }
+
+        if ($quoteTotal <= 0) {
+            return;
+        }
+
+        $otherInvoicesTotal = Invoice::query()
+            ->where('quote_id', $invoice->quote_id)
+            ->where('id', '<>', $invoice->id)
+            ->where(function ($query) {
+                $query
+                    ->whereNull('event_status')
+                    ->orWhereNotIn('event_status', [
+                        'cancel',
+                        'cancelled',
+                        'canceled',
+                    ]);
+            })
+            ->sum('grand_total');
+
+        $grandTotal = round(
+            (float) $invoice->grand_total,
+            self::SCALE
+        );
+
+        $billingPercentage = $invoice->billing_type
+            === self::TYPE_DOWN_PAYMENT
+            ? round(($grandTotal / $quoteTotal) * 100, 4)
+            : $invoice->billing_percentage;
+
+        $invoice->forceFill([
+            'quote_total_snapshot' => $quoteTotal,
+            'billing_amount' => $grandTotal,
+            'billing_percentage' => $billingPercentage,
+            'remaining_amount_snapshot' => round(
+                max(
+                    0,
+                    $quoteTotal
+                    - (float) $otherInvoicesTotal
+                    - $grandTotal
+                ),
+                self::SCALE
+            ),
+        ])->saveQuietly();
     }
 
     public function sumUnbilledForQuoteIds(iterable $quoteIds): float
@@ -500,6 +606,8 @@ class FlexibleQuoteBillingService
                 'name' => $item->name,
                 'description' => $item->description ?? null,
                 'day' => $item->day ?? 1,
+                'unit' => $item->unit,
+                'equipment_quantity' => $item->equipment_quantity,
                 'quantity' => $item->quantity,
                 'price' => $item->price,
                 'coupon_code' => $item->coupon_code,
@@ -527,6 +635,8 @@ class FlexibleQuoteBillingService
                 'description' => 'Tagihan '.$this->typeLabel($type)
                     .' untuk '.$quote->quote_number.'.',
                 'day' => 1,
+                'unit' => 'pcs',
+                'equipment_quantity' => 0,
                 'quantity' => 1,
                 'price' => $amount,
                 'discount_percent' => 0,
@@ -567,7 +677,8 @@ class FlexibleQuoteBillingService
                 );
 
             $allocated = round($allocated + $lineAmount, self::SCALE);
-            $quantity = max(1, (float) ($item->quantity ?: 1));
+            $billing = SalesLineItem::display($item->getAttributes());
+            $quantity = max(1, (float) $billing['quantity']);
             $linePercentage = $percentage !== null
                 ? rtrim(rtrim(number_format($percentage, 4, '.', ''), '0'), '.').'%'
                 : null;
@@ -584,7 +695,9 @@ class FlexibleQuoteBillingService
                 'name' => $item->name,
                 'description' => $prefix
                     .($description !== '' ? ' - '.$description : ''),
-                'day' => $item->day ?? 1,
+                'day' => 1,
+                'unit' => $billing['unit'],
+                'equipment_quantity' => SalesLineItem::physicalQuantity($item->getAttributes()),
                 'quantity' => $quantity,
                 'price' => round($lineAmount / $quantity, self::SCALE),
                 'coupon_code' => null,

@@ -2,6 +2,7 @@
 
 namespace Webkul\Admin\Http\Controllers\Quote;
 
+use Webkul\Core\Support\SalesLineItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -205,7 +206,7 @@ class QuoteController extends Controller
 
         $linkedLead = $leadId ? $this->leadRepository->find($leadId) : null;
 
-        $initialQuoteItems = $quote->items;
+        $initialQuoteItems = $quote->items->map(fn ($item) => SalesLineItem::display($item->toArray()));
 
         if ($initialQuoteItems->isEmpty() && $linkedLead?->products?->isNotEmpty()) {
             $initialQuoteItems = collect($this->getLeadProductsForQuote($linkedLead));
@@ -462,12 +463,45 @@ class QuoteController extends Controller
 
         $this->preventUnauthorizedAccess($quote->user_id);
 
+        $quote->loadMissing(['person.organization']);
+
+        $documentNumber = preg_replace(
+            '/^\s*QT[\s-]*/i',
+            '',
+            (string) $quote->quote_number
+        ) ?: '';
+
+        $clientName = $quote->bill_to_company_name
+            ?: $quote->bill_to_person_name
+            ?: $quote->person?->organization?->name
+            ?: $quote->person?->name
+            ?: 'client';
+
+        $fileName = 'QT-'
+            .$this->pdfFileSegment($documentNumber, 'quotation')
+            .'-'.$this->pdfFileSegment($quote->subject, 'event')
+            .'-'.$this->pdfFileSegment($clientName, 'client');
+
         return $this->downloadPDF(
             view('admin::quotes.pdf', compact('quote'))->render(),
-            'Quote_'.$quote->subject.'_'.$quote->created_at->format('d-m-Y')
+            $fileName
         );
     }
 
+    private function pdfFileSegment(
+        ?string $value,
+        string $fallback
+    ): string {
+        $value = preg_replace(
+            '/[^\pL\pN]+/u',
+            '-',
+            trim((string) $value)
+        ) ?: '';
+
+        $value = trim($value, '-');
+
+        return $value !== '' ? mb_substr($value, 0, 80) : $fallback;
+    }
     /**
      * Mirror the billing address into the shipping address when "same as billing" is enabled.
      */
@@ -521,8 +555,8 @@ class QuoteController extends Controller
             [
                 'items' => 'required|array',
                 'items.*.product_id' => 'required|exists:products,id',
-                'items.*.day' => 'required|integer|min:1',
-                'items.*.quantity' => 'required|numeric|min:0',
+                'items.*.unit' => 'required|in:pcs,day',
+                'items.*.quantity' => 'required|integer|min:1',
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.total' => 'required|numeric|min:0',
                 'items.*.discount_amount' => 'required|numeric|min:0',
@@ -684,20 +718,14 @@ class QuoteController extends Controller
 
         return $lead->products
             ->map(function ($product) {
-                $quantity = (float) ($product->quantity ?: 1);
-                $price = (float) ($product->price ?: 0);
+                $item = SalesLineItem::display($product->toArray());
 
-                return [
+                return array_merge($item, [
                     'id' => null,
-                    'product_id' => $product->product_id,
-                    'name' => $product->name,
-                    'day' => max(1, (int) ($product->day ?? 1)),
-                    'quantity' => $quantity,
-                    'total' => $price * $quantity * max(1, (int) ($product->day ?? 1)),
-                    'price' => $price,
+                    'total' => (float) $item['price'] * (float) $item['quantity'],
                     'discount_amount' => 0,
                     'tax_amount' => 0,
-                ];
+                ]);
             })
             ->values()
             ->toArray();

@@ -564,11 +564,11 @@
                                 </th>
 
                                 <th class="px-6 py-3 text-center text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                                    Day
+                                    Quantity
                                 </th>
 
                                 <th class="px-6 py-3 text-center text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-                                    Qty
+                                    Unit
                                 </th>
 
                                 <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -583,6 +583,9 @@
 
                         <tbody>
                             @forelse ($invoice->items as $item)
+                                @php
+                                    $billingLine = \Webkul\Core\Support\SalesLineItem::invoiceDisplay($item->getAttributes());
+                                @endphp
                                 <tr class="border-b border-gray-100 dark:border-gray-800">
                                     <td class="px-6 py-4">
                                         <p class="font-medium text-gray-800 dark:text-white">
@@ -601,19 +604,19 @@
                                     </td>
 
                                     <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300">
-                                        {{ $item->day ?? 1 }}
+                                        {{ $billingLine['quantity'] }}
                                     </td>
 
                                     <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300">
-                                        {{ $item->quantity }}
+                                        {{ $billingLine['unit'] === 'day' ? 'Day' : 'Pcs' }}
                                     </td>
 
                                     <td class="px-6 py-4 text-right text-gray-700 dark:text-gray-300">
-                                        Rp {{ number_format((float) $item->price, 0, ',', '.') }}
+                                        Rp {{ number_format((float) $billingLine['price'], 0, ',', '.') }}
                                     </td>
 
                                     <td class="px-6 py-4 text-right font-semibold text-gray-800 dark:text-white">
-                                        Rp {{ number_format((float) $item->total, 0, ',', '.') }}
+                                        Rp {{ number_format(\Webkul\Core\Support\SalesLineItem::invoiceBase($item->getAttributes()) + (float) $item->tax_amount - (float) $item->discount_amount, 0, ',', '.') }}
                                     </td>
                                 </tr>
                             @empty

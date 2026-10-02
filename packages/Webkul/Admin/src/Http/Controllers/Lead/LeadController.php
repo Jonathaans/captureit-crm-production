@@ -478,23 +478,16 @@ class LeadController extends Controller
     {
         $this->preventUnauthorizedAccess($this->leadRepository->findOrFail($leadId)->user_id);
 
-        $day = max(1, (int) request()->input('day', 1));
-        $quantity = (float) request()->input('quantity', 1);
-        $price = (float) request()->input('price', 0);
+        $data = request()->validate([
+            'product_id' => 'required|integer|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+            'unit' => 'required|in:pcs,day',
+            'price' => 'required|numeric|min:0',
+        ]);
 
         $product = $this->productRepository->updateOrCreate(
-            [
-                'lead_id' => $leadId,
-                'product_id' => request()->input('product_id'),
-            ],
-            array_merge(
-                request()->all(),
-                [
-                    'lead_id' => $leadId,
-                    'day' => $day,
-                    'amount' => $price * $quantity * $day,
-                ],
-            )
+            ['lead_id' => $leadId, 'product_id' => $data['product_id']],
+            $data
         );
 
         return response()->json([

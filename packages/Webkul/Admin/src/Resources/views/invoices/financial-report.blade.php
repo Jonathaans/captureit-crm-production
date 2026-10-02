@@ -325,7 +325,7 @@
                                 </td>
                                 <td class="px-6 py-4 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $topProduct['deal_count'] }}</td>
                                 <td class="px-6 py-4 text-right align-top text-gray-700 dark:text-gray-300">
-                                    {{ rtrim(rtrim(number_format((float) $topProduct['quantity'], 2, ',', '.'), '0'), ',') }}
+                                    {{ $topProduct['quantity_label'] }}
                                 </td>
                                 <td class="px-6 py-4 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $rupiah($topProduct['sales_value']) }}</td>
                                 <td class="px-6 py-4 text-right align-top font-semibold text-green-600 dark:text-green-400">{{ $rupiah($topProduct['received_allocated']) }}</td>

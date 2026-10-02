@@ -348,7 +348,7 @@
             width: 25%;
         }
 
-        .items-table .day,
+        .items-table .unit,
         .items-table .qty {
             width: 7%;
             text-align: center;
@@ -710,8 +710,8 @@
                 <th class="no">No.</th>
                 <th class="package">Package</th>
                 <th class="description">Description</th>
-                <th class="day">Day</th>
                 <th class="qty">Qty</th>
+                <th class="unit">Unit</th>
                 <th class="price">Unit Price</th>
                 <th class="total">Total</th>
             </tr>
@@ -719,6 +719,9 @@
 
         <tbody>
             @forelse ($items as $index => $item)
+                @php
+                    $billingLine = \Webkul\Core\Support\SalesLineItem::invoiceDisplay($item->getAttributes());
+                @endphp
                 <tr>
                     <td class="no">
                         {{ $index + 1 }}
@@ -740,21 +743,21 @@
                         {{ $item->description ?? '-' }}
                     </td>
 
-                    <td class="day">
-                        {{ $item->day ?? 1 }}
+                    <td class="qty">
+                        {{ rtrim(rtrim(number_format((float) $billingLine['quantity'], 2, '.', ''), '0'), '.') }}
                     </td>
 
-                    <td class="qty">
-                        {{ rtrim(rtrim(number_format((float) $item->quantity, 2, '.', ''), '0'), '.') }}
+                    <td class="unit">
+                        {{ $billingLine['unit'] === 'day' ? 'Day' : 'Pcs' }}
                     </td>
 
                     <td class="price">
-                        Rp {{ number_format((float) $item->price, 0, ',', '.') }}
+                        Rp {{ number_format((float) $billingLine['price'], 0, ',', '.') }}
                     </td>
 
                     <td class="total">
                         Rp {{ number_format(
-                            (float) $item->total
+                            \Webkul\Core\Support\SalesLineItem::invoiceBase($item->getAttributes())
                             + (float) $item->tax_amount
                             - (float) $item->discount_amount,
                             0,

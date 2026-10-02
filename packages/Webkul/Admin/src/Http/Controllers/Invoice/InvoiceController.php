@@ -2,6 +2,7 @@
 
 namespace Webkul\Admin\Http\Controllers\Invoice;
 
+use Webkul\Core\Support\SalesLineItem;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
@@ -13,6 +14,7 @@ use Illuminate\View\View;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Invoice\Services\DeliveryOrderService;
 use Webkul\Invoice\Models\Expense;
@@ -33,6 +35,7 @@ class InvoiceController extends Controller
             protected InvoiceService $invoiceService,
             protected PaymentService $paymentService,
             protected ExpenseService $expenseService,
+            protected FlexibleQuoteBillingService $flexibleBillingService,
             protected DeliveryOrderService $deliveryOrderService
         ) {
         }
@@ -1438,15 +1441,11 @@ if ($request->input('person_id') === '__new__') {
             'string',
         ],
 
-        'items.*.day' => [
-            'required',
-            'integer',
-            'min:1',
-        ],
+        'items.*.unit' => ['required', 'in:pcs,day'],
 
         'items.*.quantity' => [
             'required',
-            'numeric',
+            'integer',
             'min:1',
         ],
 
@@ -1471,9 +1470,12 @@ if ($request->input('person_id') === '__new__') {
         ],
     ]);
 
+    $flexibleBillingService = $this->flexibleBillingService;
+
     DB::transaction(function () use (
         $invoice,
-        $validated
+        $validated,
+        $flexibleBillingService
     ) {
         /*
         |--------------------------------------------------------------------------
@@ -1520,6 +1522,7 @@ if ($request->input('person_id') === '__new__') {
         |
         */
 
+        $originalItems = $invoice->items->keyBy('id');
         $invoice->items()->delete();
 
         /*
@@ -1532,64 +1535,25 @@ if ($request->input('person_id') === '__new__') {
         $discount = 0;
         $tax = 0;
 
-        foreach ($validated['items'] as $item) {
+        foreach ($validated['items'] as $itemId => $item) {
+            $original = $originalItems->get($itemId);
+            if (! $original) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'items' => 'Item does not belong to this invoice.',
+                ]);
+            }
 
-            $day = (float) $item['day'];
-            $quantity = (float) $item['quantity'];
-            $price = (float) $item['price'];
-
-            $discountPercent =
-                (float) ($item['discount_percent'] ?? 0);
-
-            $taxPercent =
-                (float) ($item['tax_percent'] ?? 0);
-
-            /*
-            |--------------------------------------------------------------------------
-            | BASE AMOUNT
-            |--------------------------------------------------------------------------
-            */
-
-            $amount =
-                $day
-                * $quantity
-                * $price;
-
-            /*
-            |--------------------------------------------------------------------------
-            | DISCOUNT
-            |--------------------------------------------------------------------------
-            */
-
-            $discountAmount =
-                $amount
-                * ($discountPercent / 100);
-
-            /*
-            |--------------------------------------------------------------------------
-            | TAX
-            |--------------------------------------------------------------------------
-            */
-
-            $taxable =
-                max(
-                    $amount - $discountAmount,
-                    0
-                );
-
-            $taxAmount =
-                $taxable
-                * ($taxPercent / 100);
-
-            /*
-            |--------------------------------------------------------------------------
-            | ITEM TOTAL
-            |--------------------------------------------------------------------------
-            */
-
-            $total =
-                $taxable
-                + $taxAmount;
+            $item = SalesLineItem::prepare($item, $original->getAttributes());
+            $quantity = $item['quantity'];
+            $price = $item['price'];
+            $discountPercent = (float) ($item['discount_percent'] ?? 0);
+            $taxPercent = (float) ($item['tax_percent'] ?? 0);
+            $item['discount_percent'] = $discountPercent;
+            $item['tax_percent'] = $taxPercent;
+            $amounts = SalesLineItem::invoiceAmounts($item, $original->getAttributes());
+            $amount = $amounts['base'];
+            $discountAmount = $amounts['discount'];
+            $taxAmount = $amounts['tax'];
 
             /*
             |--------------------------------------------------------------------------
@@ -1604,8 +1568,11 @@ if ($request->input('person_id') === '__new__') {
                 'description' =>
                     $item['description'] ?? null,
 
-                'day' =>
-                    $day,
+                'day' => 1,
+                'unit' => $item['unit'],
+                'equipment_quantity' => $item['equipment_quantity'],
+                'product_id' => $original->product_id,
+                'sku' => $original->sku,
 
                 'quantity' =>
                     $quantity,
@@ -1626,7 +1593,7 @@ if ($request->input('person_id') === '__new__') {
                     $taxAmount,
 
                 'total' =>
-                    $total,
+                    $amount,
             ]);
 
             $subTotal += $amount;
@@ -1700,6 +1667,8 @@ if ($request->input('person_id') === '__new__') {
             'balance_due' =>
                 $balanceDue,
         ]);
+
+        $flexibleBillingService->syncAfterManualUpdate($invoice);
     });
 
     return redirect()
@@ -2342,6 +2311,23 @@ public function generateDeliveryOrder(
             $id
         );
 
+        $documentNumber = preg_replace(
+            '/^\s*INV[\s-]*/i',
+            '',
+            (string) $invoice->invoice_number
+        ) ?: '';
+
+        $clientName = $invoice->bill_to_company_name
+            ?: $invoice->bill_to_person_name
+            ?: $invoice->person?->organization?->name
+            ?: $invoice->person?->name
+            ?: 'client';
+
+        $fileName = 'INV-'
+            .$this->pdfFileSegment($documentNumber, 'invoice')
+            .'-'.$this->pdfFileSegment($invoice->subject, 'event')
+            .'-'.$this->pdfFileSegment($clientName, 'client');
+
         return $this->downloadPDF(
             view(
                 'admin::invoices.pdf',
@@ -2349,12 +2335,24 @@ public function generateDeliveryOrder(
                     'invoice'
                 )
             )->render(),
-
-            'Invoice_'
-            .$invoice->invoice_number
+            $fileName
         );
     }
 
+    private function pdfFileSegment(
+        ?string $value,
+        string $fallback
+    ): string {
+        $value = preg_replace(
+            '/[^\pL\pN]+/u',
+            '-',
+            trim((string) $value)
+        ) ?: '';
+
+        $value = trim($value, '-');
+
+        return $value !== '' ? mb_substr($value, 0, 80) : $fallback;
+    }
     /**
      * ============================================================
      * FINANCIAL SUMMARY HELPER

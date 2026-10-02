@@ -902,7 +902,7 @@
                 <div class="mb-5">
                     <h2 class="text-base font-semibold text-gray-800 dark:text-white">Invoice Items</h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Package, description, day, quantity, price, discount and tax can be edited.
+                        Package, description, quantity, unit, price, discount and tax can be edited.
                     </p>
                 </div>
 
@@ -912,8 +912,8 @@
                             <tr class="border-b border-gray-200 dark:border-gray-700">
                                 <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Package</th>
                                 <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Description</th>
-                                <th class="w-24 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Day</th>
-                                <th class="w-24 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Qty</th>
+                                <th class="w-24 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Quantity</th>
+                                <th class="w-24 px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Unit</th>
                                 <th class="w-40 px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Unit Price</th>
                                 <th class="w-32 px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Discount %</th>
                                 <th class="w-32 px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Tax %</th>
@@ -923,6 +923,9 @@
 
                         <tbody>
                             @forelse ($invoice->items as $item)
+                                @php
+                                    $billingLine = \Webkul\Core\Support\SalesLineItem::invoiceDisplay($item->getAttributes());
+                                @endphp
                                 <tr class="invoice-item-row border-b border-gray-100 align-top last:border-0 dark:border-gray-800">
                                     <td class="px-3 py-4">
                                         <input
@@ -945,29 +948,30 @@
                                         <input
                                             type="number"
                                             min="1"
-                                            name="items[{{ $item->id }}][day]"
-                                            value="{{ old("items.{$item->id}.day", $item->day ?: 1) }}"
-                                            class="item-day w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                                            step="1"
+                                            name="items[{{ $item->id }}][quantity]"
+                                            value="{{ old("items.{$item->id}.quantity", $billingLine['quantity']) }}"
+                                            class="item-quantity w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                         >
                                     </td>
-
                                     <td class="px-3 py-4">
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            name="items[{{ $item->id }}][quantity]"
-                                            value="{{ old("items.{$item->id}.quantity", $item->quantity ?: 1) }}"
-                                            class="item-quantity w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-center text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                                        <select
+                                            name="items[{{ $item->id }}][unit]"
+                                            aria-label="Unit"
+                                            class="item-unit w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                         >
+                                            <option value="pcs" @selected(old("items.{$item->id}.unit", $billingLine['unit']) === 'pcs')>Pcs</option>
+                                            <option value="day" @selected(old("items.{$item->id}.unit", $billingLine['unit']) === 'day')>Day</option>
+                                        </select>
                                     </td>
 
                                     <td class="px-3 py-4">
                                         <input
                                             type="number"
                                             min="0"
-                                            step="0.01"
+                                            step="any"
                                             name="items[{{ $item->id }}][price]"
-                                            value="{{ old("items.{$item->id}.price", $item->price) }}"
+                                            value="{{ old("items.{$item->id}.price", $billingLine['price']) }}"
                                             class="item-price w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                         >
                                     </td>
@@ -976,9 +980,9 @@
                                         <input
                                             type="number"
                                             min="0"
-                                            step="0.01"
+                                            step="any"
                                             name="items[{{ $item->id }}][discount_percent]"
-                                            value="{{ old("items.{$item->id}.discount_percent", $item->discount_percent ?: 0) }}"
+                                            value="{{ old("items.{$item->id}.discount_percent", $billingLine['discount_percent']) }}"
                                             class="item-discount w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                         >
                                     </td>
@@ -987,9 +991,9 @@
                                         <input
                                             type="number"
                                             min="0"
-                                            step="0.01"
+                                            step="any"
                                             name="items[{{ $item->id }}][tax_percent]"
-                                            value="{{ old("items.{$item->id}.tax_percent", $item->tax_percent ?: 0) }}"
+                                            value="{{ old("items.{$item->id}.tax_percent", $billingLine['tax_percent']) }}"
                                             class="item-tax w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-right text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                                         >
                                     </td>
@@ -1325,11 +1329,6 @@
                 let tax = 0;
 
                 rows.forEach((row) => {
-                    const day = Math.max(
-                        Number(row.querySelector('.item-day')?.value) || 0,
-                        0
-                    );
-
                     const quantity = Math.max(
                         Number(row.querySelector('.item-quantity')?.value) || 0,
                         0
@@ -1350,7 +1349,7 @@
                         0
                     );
 
-                    const base = day * quantity * price;
+                    const base = quantity * price;
                     const itemDiscount = base * (discountPercent / 100);
                     const taxable = Math.max(base - itemDiscount, 0);
                     const itemTax = taxable * (taxPercent / 100);
@@ -1430,7 +1429,7 @@
             }
 
             document.querySelectorAll(
-                '.item-day, .item-quantity, .item-price, .item-discount, .item-tax'
+                '.item-unit, .item-quantity, .item-price, .item-discount, .item-tax'
             ).forEach((input) => {
                 input.addEventListener('input', recalculate);
                 input.addEventListener('change', recalculate);

@@ -7,8 +7,29 @@ use Webkul\Admin\Services\TopProductReportService;
 
 uses(TestCase::class);
 
+it('shows pcs and day quantities separately for the same product', function (): void {
+    $rows = (new TopProductReportService)->rankDeals([
+        [
+            'deal_key' => 'quote:units',
+            'deal_date' => '2026-10-01',
+            'business_unit' => 'photobooth',
+            'deal_value' => 2500000,
+            'received' => 0,
+            'items' => [
+                ['product_id' => 1, 'name' => 'Rental', 'unit' => 'pcs', 'quantity' => 2, 'billing_quantity' => 2, 'total' => 1000000],
+                ['product_id' => 1, 'name' => 'Rental', 'unit' => 'day', 'quantity' => 1, 'billing_quantity' => 3, 'total' => 1500000],
+            ],
+        ],
+    ], ['year' => 2026, 'month' => 10, 'business_unit' => 'photobooth', 'event_status' => 'confirm', 'product' => null]);
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]['quantity_units'])->toBe(['pcs' => 2.0, 'day' => 3.0])
+        ->and($rows[0]['quantity_label'])->toBe('2 Pcs / 3 Day')
+        ->and($rows[0]['sales_value'])->toBe(2500000.0);
+});
+
 it('ranks products by confirmed deals without duplicating a staged invoice deal', function (): void {
-    $rows = (new TopProductReportService())->rankDeals([
+    $rows = (new TopProductReportService)->rankDeals([
         [
             'deal_key' => 'quote:10',
             'deal_date' => '2026-09-05',
@@ -70,7 +91,7 @@ it('ranks products by confirmed deals without duplicating a staged invoice deal'
 });
 
 it('allocates deal value and payments proportionally to its product lines', function (): void {
-    $rows = (new TopProductReportService())->rankDeals([
+    $rows = (new TopProductReportService)->rankDeals([
         [
             'deal_key' => 'quote:20',
             'deal_date' => '2026-09-16',
@@ -111,7 +132,7 @@ it('allocates deal value and payments proportionally to its product lines', func
 });
 
 it('follows the financial report period product and confirmed-status filters', function (): void {
-    $service = new TopProductReportService();
+    $service = new TopProductReportService;
     $deals = [
         [
             'deal_key' => 'invoice:30',
