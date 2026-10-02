@@ -144,6 +144,9 @@ class InvoiceService
                     'day' =>
                         $item->day ?? 1,
 
+                    'unit' => $item->unit,
+                    'equipment_quantity' => $item->equipment_quantity,
+
                     'quantity' =>
                         $item->quantity,
 

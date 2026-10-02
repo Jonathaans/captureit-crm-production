@@ -13,11 +13,15 @@
     
             <!-- Attributes Listing -->
             <div>
+                <dl class="mb-4 grid grid-cols-2 gap-2 text-sm">
+                    <dt>Category</dt><dd>{{ $product->category ?: '—' }}</dd>
+                    <dt>Unit</dt><dd>{{ $product->unit === 'day' ? 'Day' : 'Pcs' }}</dd>
+                </dl>
                 <!-- Default Attributes --> 
                 <x-admin::attributes.view
                     :custom-attributes="app('Webkul\Attribute\Repositories\AttributeRepository')->findWhere([
                         'entity_type' => 'products',
-                        ['code', 'IN', ['SKU', 'price', 'quantity', 'status']]
+                        ['code', 'IN', ['SKU', 'price', 'status']]
                     ])->sortBy('sort_order')"
                     :entity="$product"
                     :url="route('admin.products.update', $product->id)"   
@@ -28,7 +32,7 @@
                 <x-admin::attributes.view
                     :custom-attributes="app('Webkul\Attribute\Repositories\AttributeRepository')->findWhere([
                         'entity_type' => 'products',
-                        ['code', 'NOTIN', ['SKU', 'price', 'quantity', 'status']]
+                        ['code', 'NOTIN', ['SKU', 'price', 'quantity', 'status', 'unit', 'category']]
                     ])->sortBy('sort_order')"
                     :entity="$product"
                     :url="route('admin.products.update', $product->id)"   

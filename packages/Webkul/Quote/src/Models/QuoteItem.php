@@ -19,6 +19,8 @@ class QuoteItem extends Model implements QuoteItemContract
         'name',
         'description',
         'day',
+        'unit',
+        'equipment_quantity',
         'quantity',
         'price',
         'coupon_code',

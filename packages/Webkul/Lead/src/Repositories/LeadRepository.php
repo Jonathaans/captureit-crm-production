@@ -141,12 +141,8 @@ class LeadRepository extends Repository
 
         if (isset($data['products'])) {
             foreach ($data['products'] as $product) {
-                $day = max(1, (int) ($product['day'] ?? 1));
-
                 $this->productRepository->create(array_merge($product, [
                     'lead_id' => $lead->id,
-                    'day' => $day,
-                    'amount' => $product['price'] * $product['quantity'] * $day,
                 ]));
             }
         }
@@ -231,10 +227,6 @@ class LeadRepository extends Repository
 
         if (isset($data['products'])) {
             foreach ($data['products'] as $productId => $productInputs) {
-                $day = max(1, (int) ($productInputs['day'] ?? 1));
-                $productInputs['day'] = $day;
-                $productInputs['amount'] = $productInputs['price'] * $productInputs['quantity'] * $day;
-
                 if (Str::contains($productId, 'product_')) {
                     $this->productRepository->create(array_merge([
                         'lead_id' => $lead->id,

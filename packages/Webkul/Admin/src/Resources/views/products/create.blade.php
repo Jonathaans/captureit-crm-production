@@ -58,9 +58,11 @@
                         <x-admin::attributes
                             :custom-attributes="app('Webkul\Attribute\Repositories\AttributeRepository')->findWhere([
                                 'entity_type' => 'products',
-                                ['code', 'NOTIN', ['price', 'quantity']],
+                                ['code', 'NOTIN', ['price', 'quantity', 'unit', 'category']],
                             ])"
                         />
+
+                        @include('admin::products.partials.sales-catalog-fields')
 
                         {!! view_render_event('admin.products.create.attributes.after') !!}
                     </div>
@@ -89,7 +91,7 @@
                             <x-admin::attributes
                                 :custom-attributes="app('Webkul\Attribute\Repositories\AttributeRepository')->findWhere([
                                     'entity_type' => 'products',
-                                    ['code', 'IN', ['price', 'quantity']],
+                                    ['code', 'IN', ['price']],
                                 ])"
                             />
 

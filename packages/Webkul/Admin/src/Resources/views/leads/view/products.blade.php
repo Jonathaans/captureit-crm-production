@@ -1,3 +1,5 @@
+@include('admin::partials.sales-line-units')
+
 {!! view_render_event('admin.leads.view.products.before', ['lead' => $lead]) !!}
 
 <v-lead-products></v-lead-products>
@@ -25,11 +27,11 @@
                             </x-admin::table.th>
 
                             <x-admin::table.th class="ltr:text-left rtl:text-right">
-                                Day
+                                @lang('admin::app.leads.view.products.quantity')
                             </x-admin::table.th>
 
                             <x-admin::table.th class="ltr:text-left rtl:text-right">
-                                @lang('admin::app.leads.view.products.quantity')
+                                Unit
                             </x-admin::table.th>
 
                             <x-admin::table.th class="ltr:text-left rtl:text-right">
@@ -147,26 +149,6 @@
                 </v-form>
             </x-admin::table.td>
 
-            <!-- Product Day -->
-            <x-admin::table.td class="!px-4 ltr:text-right rtl:text-left">
-                <v-form v-slot="{ errors }" @keydown.enter.prevent>
-                    <x-admin::form.control-group class="!mb-0">
-                        <x-admin::form.control-group.control
-                            type="inline"
-                            ::name="'day'"
-                            ::value="product.day || 1"
-                            rules="required|integer|min:1"
-                            label="Day"
-                            placeholder="Day"
-                            @on-change="handleDayChange"
-                            ::url="url(product)"
-                            ::params="{product_id: product.product_id, price: product.price, quantity: product.quantity}"
-                            position="left"
-                            ::errors="errors"
-                        />
-                    </x-admin::form.control-group>
-                </v-form>
-            </x-admin::table.td>
 
             <!-- Product Quantity -->
             <x-admin::table.td class="!px-4 ltr:text-right rtl:text-left">
@@ -176,17 +158,30 @@
                             type="inline"
                             ::name="'quantity'"
                             ::value="product.quantity"
-                            rules="required|decimal:4"
+                            rules="required|integer|min:1"
                             :label="trans('admin::app.leads.view.products.quantity')"
                             :placeholder="trans('admin::app.leads.view.products.quantity')"
                             @on-change="handleQuantityChange"
                             ::url="url(product)"
-                            ::params="{product_id: product.product_id, price: product.price, day: product.day || 1}"
+                            ::params="{product_id: product.product_id, price: product.price, unit: product.unit}"
                             position="left"
                             ::errors="errors"
                         />
                     </x-admin::form.control-group>
                 </v-form>
+            </x-admin::table.td>
+
+            <!-- Product Unit -->
+            <x-admin::table.td class="!px-4">
+                <select
+                    :value="product.unit"
+                    aria-label="Unit"
+                    class="rounded border border-gray-300 bg-white px-2 py-2 dark:border-gray-700 dark:bg-gray-900"
+                    @change="changeUnit($event.target.value)"
+                >
+                    <option value="pcs">Pcs</option>
+                    <option value="day">Day</option>
+                </select>
             </x-admin::table.td>
 
             <!-- Price -->
@@ -202,7 +197,7 @@
                             :placeholder="trans('admin::app.leads.view.products.price')"
                             @on-change="handlePriceChange"
                             ::url="url(product)"
-                            ::params="{product_id: product.product_id, quantity: product.quantity, day: product.day || 1}"
+                            ::params="{product_id: product.product_id, quantity: product.quantity, unit: product.unit}"
                             position="left"
                             ::value-label="$admin.formatPrice(product.price)"
                             ::errors="errors"
@@ -218,14 +213,14 @@
                         <x-admin::form.control-group.control
                             type="inline"
                             ::name="'amount'"
-                            ::value="product.price * product.quantity * (product.day || 1)"
+                            ::value="product.price * product.quantity"
                             rules="required|decimal:4"
                             :label="trans('admin::app.leads.view.products.total')"
                             :placeholder="trans('admin::app.leads.view.products.total')"
                             :allowEdit="false"
                             ::url="url(product)"
                             position="left"
-                            ::value-label="$admin.formatPrice(product.price * product.quantity * (product.day || 1))"
+                            ::value-label="$admin.formatPrice(product.price * product.quantity)"
                             ::errors="errors"
                         />
                     </x-admin::form.control-group>
@@ -252,7 +247,7 @@
 
             data: function () {
                 return {
-                    products: @json($lead->products),
+                    products: (@json($lead->products)).map(window.normalizeSalesLineItem),
                 }
             },
 
@@ -277,8 +272,8 @@
                         id: null,
                         product_id: null,
                         name: '',
-                        quantity: 0,
-                        day: 1,
+                        quantity: 1,
+                        unit: 'pcs',
                         price: 0,
                         amount: 0,
                     })
@@ -341,7 +336,7 @@
 
                     this.product.quantity = 1;
 
-                    this.product.day = this.product.day || 1;
+                    this.product.unit = result.unit || 'pcs';
 
                     this.setProductAmount();
 
@@ -375,15 +370,15 @@
                 },
 
                 /**
-                 * Handle day updates and keep amount in sync.
+                 * Save the selected billing unit.
                  *
                  * @param {Object} event
                  * @return {void}
                  */
-                handleDayChange(event) {
-                    this.product.day = event.value;
-
-                    this.setProductAmount();
+                changeUnit(unit) {
+                    const previous = this.product.unit;
+                    this.product.unit = unit;
+                    this.attachProduct(this.product, () => { this.product.unit = previous; });
                 },
 
                 /**
@@ -394,9 +389,8 @@
                 setProductAmount() {
                     const price = parseFloat(this.product.price) || 0;
                     const quantity = parseFloat(this.product.quantity) || 0;
-                    const day = parseInt(this.product.day, 10) || 1;
 
-                    this.product.amount = price * quantity * day;
+                    this.product.amount = price * quantity;
                 },
 
                 /**
@@ -404,7 +398,7 @@
                  *
                  * @return {void}
                  */
-                attachProduct(product) {
+                attachProduct(product, onError = null) {
                     if (! product.product_id) {
                         return;
                     }
@@ -413,16 +407,16 @@
 
                     const quantity = parseFloat(product.quantity) || 1;
 
-                    const day = parseInt(product.day, 10) || 1;
+                    const unit = product.unit || 'pcs';
 
-                    const amount = price * quantity * day;
+                    const amount = price * quantity;
 
                     this.$axios.post('{{ route('admin.leads.product.add', $lead->id) }}', {
                         _method: 'PUT',
                         ...product,
                         price,
                         quantity,
-                        day,
+                        unit,
                         amount,
                     })
                         .then(response => {
@@ -430,7 +424,7 @@
 
                             this.product.quantity = quantity;
 
-                            this.product.day = day;
+                            this.product.unit = response.data.data.unit || unit;
 
                             this.product.price = price;
 
@@ -440,7 +434,13 @@
 
                             this.$emitter.emit('add-flash', { type: 'success', message: response.data.message });
                         })
-                        .catch(error => {});
+                        .catch(error => {
+                            if (onError) onError();
+                            this.$emitter.emit('add-flash', {
+                                type: 'error',
+                                message: error?.response?.data?.message || 'Unable to save product.',
+                            });
+                        });
                 },
 
                 /**
@@ -466,7 +466,12 @@
 
                                     this.$emitter.emit('add-flash', { type: 'success', message: response.data.message });
                                 })
-                                .catch(error => {});
+                                .catch(error => {
+                                    this.$emitter.emit('add-flash', {
+                                        type: 'error',
+                                        message: error?.response?.data?.message || 'Unable to remove product.',
+                                    });
+                                });
                         },
                     });
                 },

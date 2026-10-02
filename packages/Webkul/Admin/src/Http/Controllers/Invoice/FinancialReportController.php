@@ -393,7 +393,7 @@ class FinancialReportController extends Controller
                         $row['product_name'],
                         $row['sku'],
                         $row['deal_count'],
-                        $row['quantity'],
+                        $row['quantity_label'],
                         $row['sales_value'],
                         $row['received_allocated'],
                         $row['collection_rate'],

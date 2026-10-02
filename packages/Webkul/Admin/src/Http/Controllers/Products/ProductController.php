@@ -54,6 +54,11 @@ class ProductController extends Controller
      */
     public function store(AttributeForm $request)
     {
+        $request->validate([
+            'unit' => 'sometimes|required|in:pcs,day',
+            'category' => 'nullable|string|max:255',
+        ]);
+
         Event::dispatch('product.create.before');
 
         $product = $this->productRepository->create($request->all());
@@ -128,6 +133,8 @@ class ProductController extends Controller
     */
 
     $request->validate([
+        'unit' => 'sometimes|required|in:pcs,day',
+        'category' => 'nullable|string|max:255',
         'equipment_template_name' => [
             'nullable',
             'string',

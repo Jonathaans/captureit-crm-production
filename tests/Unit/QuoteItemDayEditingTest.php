@@ -1,51 +1,23 @@
 <?php
 
-declare(strict_types=1);
+use Webkul\Core\Support\SalesLineItem;
 
-use Tests\TestCase;
+it('bills quantity once for either unit and ignores an obsolete day multiplier', function (string $unit) {
+    $item = SalesLineItem::prepare(['quantity' => 3, 'unit' => $unit, 'day' => 7, 'price' => 500000]);
 
-uses(TestCase::class);
+    expect($item['amount'])->toBe(1500000.0)
+        ->and($item['day'])->toBe(1)
+        ->and($item['equipment_quantity'])->toBe($unit === 'day' ? 1.0 : 3.0);
+})->with(['pcs', 'day']);
 
-it('lets users edit quote item days and recalculates line and quote totals', function (): void {
-    $view = file_get_contents(
-        base_path('packages/Webkul/Admin/src/Resources/views/quotes/edit.blade.php')
-    );
-    $createView = file_get_contents(
-        base_path('packages/Webkul/Admin/src/Resources/views/quotes/create.blade.php')
-    );
-    $controller = file_get_contents(
-        base_path('packages/Webkul/Admin/src/Http/Controllers/Quote/QuoteController.php')
-    );
-    $itemModel = file_get_contents(
-        base_path('packages/Webkul/Quote/src/Models/QuoteItem.php')
-    );
-    $invoiceService = file_get_contents(
-        base_path('packages/Webkul/Invoice/src/Services/InvoiceService.php')
-    );
-    $migration = file_get_contents(
-        base_path('database/migrations/2026_08_24_153223_add_description_and_day_to_quote_and_invoice_items_tables.php')
-    );
+it('preserves fixed discounts tax and allocated rounding when reopening invoices', function () {
+    $source = ['unit' => 'day', 'quantity' => 3, 'price' => 33.3333, 'total' => 100, 'discount_amount' => 7, 'tax_amount' => 10.23];
+    $saved = SalesLineItem::prepare(SalesLineItem::invoiceDisplay($source), $source);
 
-    expect($view)
-        ->toContain("::name=\"`\${inputName}[day]`\"")
-        ->toContain('rules="required|integer|min:1"')
-        ->toContain('product.price * product.quantity * (product.day || 1)')
-        ->toContain('(this.parseDecimal(product.day) || 1)');
-
-    expect($controller)
-        ->toContain("'items.*.day' => 'required|integer|min:1'")
-        ->toContain("'day' => max(1, (int) (\$product->day ?? 1)),");
-
-    expect($createView)
-        ->toContain('Day')
-        ->toContain('rules="required|integer|min:1"');
-
-    expect($itemModel)->toContain("'day'");
-
-    expect($invoiceService)
-        ->toContain("'day' =>\n                        \$item->day ?? 1,");
-
-    expect($migration)
-        ->toContain("unsignedInteger('day')")
-        ->toContain('->default(1)');
+    expect(SalesLineItem::invoiceAmounts($saved, $source))
+        ->toBe(['base' => 100.0, 'discount' => 7.0, 'tax' => 10.23]);
 });
+
+it('rejects unknown billing units', function () {
+    SalesLineItem::prepare(['quantity' => 1, 'price' => 100, 'unit' => 'week']);
+})->throws(InvalidArgumentException::class);

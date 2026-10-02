@@ -2,6 +2,7 @@
 
 namespace Webkul\Admin\Http\Controllers\Quote;
 
+use Webkul\Core\Support\SalesLineItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -205,7 +206,7 @@ class QuoteController extends Controller
 
         $linkedLead = $leadId ? $this->leadRepository->find($leadId) : null;
 
-        $initialQuoteItems = $quote->items;
+        $initialQuoteItems = $quote->items->map(fn ($item) => SalesLineItem::display($item->toArray()));
 
         if ($initialQuoteItems->isEmpty() && $linkedLead?->products?->isNotEmpty()) {
             $initialQuoteItems = collect($this->getLeadProductsForQuote($linkedLead));
@@ -554,8 +555,8 @@ class QuoteController extends Controller
             [
                 'items' => 'required|array',
                 'items.*.product_id' => 'required|exists:products,id',
-                'items.*.day' => 'required|integer|min:1',
-                'items.*.quantity' => 'required|numeric|min:0',
+                'items.*.unit' => 'required|in:pcs,day',
+                'items.*.quantity' => 'required|integer|min:1',
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.total' => 'required|numeric|min:0',
                 'items.*.discount_amount' => 'required|numeric|min:0',
@@ -717,20 +718,14 @@ class QuoteController extends Controller
 
         return $lead->products
             ->map(function ($product) {
-                $quantity = (float) ($product->quantity ?: 1);
-                $price = (float) ($product->price ?: 0);
+                $item = SalesLineItem::display($product->toArray());
 
-                return [
+                return array_merge($item, [
                     'id' => null,
-                    'product_id' => $product->product_id,
-                    'name' => $product->name,
-                    'day' => max(1, (int) ($product->day ?? 1)),
-                    'quantity' => $quantity,
-                    'total' => $price * $quantity * max(1, (int) ($product->day ?? 1)),
-                    'price' => $price,
+                    'total' => (float) $item['price'] * (float) $item['quantity'],
                     'discount_amount' => 0,
                     'tax_amount' => 0,
-                ];
+                ]);
             })
             ->values()
             ->toArray();

@@ -2,6 +2,7 @@
 
 namespace Webkul\Invoice\Services;
 
+use Webkul\Core\Support\SalesLineItem;
 use Illuminate\Support\Facades\DB;
 use Webkul\Invoice\Models\DeliveryOrder;
 use Webkul\Invoice\Models\DeliveryOrderItem;
@@ -323,13 +324,7 @@ class DeliveryOrderService
             |
             */
 
-            $productQuantity = is_numeric($invoiceItem->quantity)
-                ? (float) $invoiceItem->quantity
-                : 1.0;
-
-            if ($productQuantity <= 0) {
-                $productQuantity = 1.0;
-            }
+            $productQuantity = SalesLineItem::physicalQuantity($invoiceItem->getAttributes());
 
             foreach ($template->items as $templateItem) {
                 $name = trim((string) $templateItem->name);

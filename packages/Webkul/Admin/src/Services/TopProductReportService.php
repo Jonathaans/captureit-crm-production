@@ -6,6 +6,7 @@ namespace Webkul\Admin\Services;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
 
 /**
@@ -173,6 +174,7 @@ class TopProductReportService
                         'product_name' => $item['product_name'],
                         'deal_count' => 0,
                         'quantity' => 0.0,
+                        'quantity_units' => ['pcs' => 0.0, 'day' => 0.0],
                         'sales_value' => 0.0,
                         'received_allocated' => 0.0,
                     ];
@@ -196,6 +198,9 @@ class TopProductReportService
 
                 $products[$key]['deal_count']++;
                 $products[$key]['quantity'] += $item['quantity'];
+                foreach (SalesLineItem::UNITS as $unit) {
+                    $products[$key]['quantity_units'][$unit] += $item['quantity_units'][$unit];
+                }
                 $products[$key]['sales_value'] += $allocatedSalesValue;
 
                 if ($weight > 0) {
@@ -207,6 +212,13 @@ class TopProductReportService
         return collect(array_values($products))
             ->map(function (array $row): array {
                 $row['quantity'] = round((float) $row['quantity'], 2);
+                $labels = [];
+                foreach ($row['quantity_units'] as $unit => $quantity) {
+                    if ($quantity > 0) {
+                        $labels[] = rtrim(rtrim(number_format($quantity, 2, '.', ''), '0'), '.').' '.ucfirst($unit);
+                    }
+                }
+                $row['quantity_label'] = implode(' / ', $labels) ?: '0';
                 $row['sales_value'] = round((float) $row['sales_value'], 2);
                 $row['received_allocated'] = round((float) $row['received_allocated'], 2);
                 $row['collection_rate'] = $row['sales_value'] > 0
@@ -310,7 +322,9 @@ class TopProductReportService
             'product_id' => $item->product_id ? (int) $item->product_id : null,
             'sku' => trim((string) ($item->sku ?? '')),
             'name' => trim((string) ($item->name ?? '')),
-            'quantity' => max(0.0, (float) ($item->quantity ?? 0)),
+            'quantity' => SalesLineItem::physicalQuantity($item->getAttributes()),
+            'billing_quantity' => SalesLineItem::display($item->getAttributes())['quantity'],
+            'unit' => SalesLineItem::display($item->getAttributes())['unit'],
             'total' => max(0.0, (float) ($item->total ?? 0)),
         ])->all();
     }
@@ -345,11 +359,14 @@ class TopProductReportService
                     'sku' => trim((string) ($item['sku'] ?? '')),
                     'product_name' => $name,
                     'quantity' => 0.0,
+                    'quantity_units' => ['pcs' => 0.0, 'day' => 0.0],
                     'sales_value' => 0.0,
                 ];
             }
 
             $grouped[$key]['quantity'] += max(0.0, (float) ($item['quantity'] ?? 0));
+            $unit = in_array($item['unit'] ?? null, SalesLineItem::UNITS, true) ? $item['unit'] : 'pcs';
+            $grouped[$key]['quantity_units'][$unit] += max(0.0, (float) ($item['billing_quantity'] ?? $item['quantity'] ?? 0));
             $grouped[$key]['sales_value'] += max(0.0, (float) ($item['total'] ?? 0));
         }
 

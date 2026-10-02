@@ -145,9 +145,9 @@ class LeadForm extends FormRequest
             'products' => 'array',
             'products.*.product_id' => 'sometimes|required|exists:products,id',
             'products.*.name' => 'required_with:products.*.product_id',
-            'products.*.price' => 'required_with:products.*.product_id',
-            'products.*.quantity' => 'required_with:products.*.product_id',
-            'products.*.day' => 'nullable|integer|min:1',
+            'products.*.price' => 'required_with:products.*.product_id|numeric|min:0',
+            'products.*.quantity' => 'required_with:products.*.product_id|integer|min:1',
+            'products.*.unit' => 'required_with:products.*.product_id|in:pcs,day',
         ];
     }
 

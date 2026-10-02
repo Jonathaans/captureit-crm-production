@@ -1,3 +1,5 @@
+@include('admin::partials.sales-line-units')
+
 <x-admin::layouts>
     <x-slot:title>
         @lang('admin::app.quotes.edit.title')
@@ -468,12 +470,14 @@
                                     @lang('admin::app.quotes.create.product-name')
                                 </x-admin::table.th>
 
-                                <x-admin::table.th class="text-center">
-                                    Day
-                                </x-admin::table.th>
+                                <x-admin::table.th>Description</x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
                                     @lang('admin::app.quotes.create.quantity')
+                                </x-admin::table.th>
+
+                                <x-admin::table.th class="text-center">
+                                    Unit
                                 </x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
@@ -627,21 +631,15 @@
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
-                <!-- Day -->
-                <x-admin::table.td class="!px-2 text-center">
-                    <x-admin::form.control-group class="!mb-0">
-                        <x-admin::form.control-group.control
-                            type="inline"
-                            ::name="`${inputName}[day]`"
-                            ::value="product.day || 1"
-                            rules="required|integer|min:1"
-                            :label="'Day'"
-                            :placeholder="'Day'"
-                            @on-change="(event) => product.day = event.value"
-                        />
-                        <x-admin::form.control-group.error ::name="`items.${product.id}.day`"/>
-                        <x-admin::form.control-group.error ::name="`${inputName}[day]`"/>
-                    </x-admin::form.control-group>
+
+                <x-admin::table.td>
+                    <x-admin::form.control-group.control
+                        type="text"
+                        ::name="`${inputName}[description]`"
+                        ::value="product.description || ''"
+                        label="Description"
+                        @input="product.description = $event.target.value"
+                    />
                 </x-admin::table.td>
 
                 <!-- Quantity -->
@@ -659,6 +657,24 @@
                             position="center"
                         />
                         <x-admin::form.control-group.error ::name="`items.${product.id}.quantity`"/>
+                    </x-admin::form.control-group>
+                </x-admin::table.td>
+
+                <!-- Unit -->
+                <x-admin::table.td class="!px-2">
+                    <x-admin::form.control-group class="!mb-0">
+                        <x-admin::form.control-group.control
+                            type="select"
+                            ::name="`${inputName}[unit]`"
+                            ::value="product.unit"
+                            rules="required"
+                            label="Unit"
+                            @change="product.unit = $event.target.value"
+                        >
+                            <option value="pcs">Pcs</option>
+                            <option value="day">Day</option>
+                        </x-admin::form.control-group.control>
+                        <x-admin::form.control-group.error ::name="`${inputName}[unit]`" />
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
@@ -688,14 +704,14 @@
                         <x-admin::form.control-group.control
                             type="inline"
                             ::name="`${inputName}[total]`"
-                            ::value="(product.price * product.quantity * (product.day || 1)) ?? 0"
+                            ::value="(product.price * product.quantity) ?? 0"
                             rules="required|decimal:4"
                             ::errors="errors"
                             :label="trans('admin::app.quotes.create.total')"
                             :placeholder="trans('admin::app.quotes.create.total')"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(product.price * product.quantity * (product.day || 1))"
+                            ::value-label="$admin.formatPrice(product.price * product.quantity)"
                         />
                         <x-admin::form.control-group.error name="`items.${product.id}.total`"/>
                         <x-admin::form.control-group.error ::name="`${inputName}[total]`"/>
@@ -747,10 +763,10 @@
                             type="inline"
                             ::name="`${inputName}[final_total]`"
                             ::errors="errors"
-                            ::value="parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount)"
+                            ::value="parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount)"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount))"
+                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount) - parseFloat(product.discount_amount))"
                         />
                     </x-admin::form.control-group>
                 </x-admin::table.td>
@@ -968,9 +984,9 @@
 
                 data() {
                     return {
-                        adjustmentAmount: '0.0000',
+                        adjustmentAmount: @json((string) old('adjustment_amount', $quote->adjustment_amount ?? 0)),
 
-                        products: @json($initialQuoteItems),
+                        products: (@json($initialQuoteItems)).map(window.normalizeSalesLineItem),
                     }
                 },
 
@@ -1081,8 +1097,7 @@
                      */
                     getProductBaseTotal(product) {
                         return this.parseDecimal(product.price)
-                            * this.parseDecimal(product.quantity)
-                            * (this.parseDecimal(product.day) || 1);
+                            * this.parseDecimal(product.quantity);
                     },
 
                     /**
@@ -1136,7 +1151,7 @@
                             id: null,
                             product_id: null,
                             name: '',
-                            day: 1,
+                            unit: 'pcs',
                             quantity: 1,
                             total: '0.0000',
                             price: '0.0000',
@@ -1158,7 +1173,7 @@
                                         id: null,
                                         product_id: null,
                                         name: '',
-                                        day: 1,
+                                        unit: 'pcs',
                                         quantity: null,
                                         total: 0,
                                         price: null,
@@ -1234,8 +1249,10 @@
                     addProduct(result) {
                         this.product.product_id = result.id;
                         this.product.name = result.name;
+                        this.product.description = result.description || '';
                         this.product.price = result.price ?? 0;
-                        this.product.quantity = result.quantity ?? 1;
+                        this.product.unit = result.unit || 'pcs';
+                        this.product.quantity = 1;
                         this.product.discount_amount = 0;
                         this.product.tax_amount = 0;
                     },

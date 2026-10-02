@@ -331,7 +331,7 @@
             width: 28%;
         }
 
-        .items-table .day,
+        .items-table .unit,
         .items-table .qty {
             width: 8%;
             text-align: center;
@@ -736,8 +736,8 @@
                 <th>No.</th>
                 <th>Package</th>
                 <th>Description</th>
-                <th>Day</th>
                 <th>Qty</th>
+                <th>Unit</th>
                 <th>Unit Price</th>
                 <th>Total</th>
             </tr>
@@ -745,6 +745,9 @@
 
         <tbody>
             @forelse ($quote->items as $index => $item)
+                @php
+                    $billingLine = \Webkul\Core\Support\SalesLineItem::display($item->getAttributes());
+                @endphp
                 <tr>
                     <td class="no">
                         {{ $index + 1 }}
@@ -766,12 +769,12 @@
                         {{ $item->description ?? '-' }}
                     </td>
 
-                    <td class="day">
-                        {{ $item->day ?? 1 }}
+                    <td class="qty">
+                        {{ rtrim(rtrim(number_format((float) $billingLine['quantity'], 2, '.', ''), '0'), '.') }}
                     </td>
 
-                    <td class="qty">
-                        {{ rtrim(rtrim(number_format((float) $item->quantity, 2, '.', ''), '0'), '.') }}
+                    <td class="unit">
+                        {{ $billingLine['unit'] === 'day' ? 'Day' : 'Pcs' }}
                     </td>
 
                     <td class="price">

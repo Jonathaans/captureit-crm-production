@@ -25,6 +25,8 @@ class Product extends Model implements ProductContract
     protected $fillable = [
         'name',
         'sku',
+        'category',
+        'unit',
         'description',
         'quantity',
         'price',

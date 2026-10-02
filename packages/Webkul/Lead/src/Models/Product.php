@@ -18,6 +18,8 @@ class Product extends Model implements ProductContract
     protected $fillable = [
         'quantity',
         'day',
+        'unit',
+        'equipment_quantity',
         'price',
         'amount',
         'product_id',

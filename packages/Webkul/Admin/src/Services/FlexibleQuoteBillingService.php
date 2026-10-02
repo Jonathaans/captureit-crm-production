@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Quote\Models\Quote;
 
@@ -605,6 +606,8 @@ class FlexibleQuoteBillingService
                 'name' => $item->name,
                 'description' => $item->description ?? null,
                 'day' => $item->day ?? 1,
+                'unit' => $item->unit,
+                'equipment_quantity' => $item->equipment_quantity,
                 'quantity' => $item->quantity,
                 'price' => $item->price,
                 'coupon_code' => $item->coupon_code,
@@ -632,6 +635,8 @@ class FlexibleQuoteBillingService
                 'description' => 'Tagihan '.$this->typeLabel($type)
                     .' untuk '.$quote->quote_number.'.',
                 'day' => 1,
+                'unit' => 'pcs',
+                'equipment_quantity' => 0,
                 'quantity' => 1,
                 'price' => $amount,
                 'discount_percent' => 0,
@@ -672,7 +677,8 @@ class FlexibleQuoteBillingService
                 );
 
             $allocated = round($allocated + $lineAmount, self::SCALE);
-            $quantity = max(1, (float) ($item->quantity ?: 1));
+            $billing = SalesLineItem::display($item->getAttributes());
+            $quantity = max(1, (float) $billing['quantity']);
             $linePercentage = $percentage !== null
                 ? rtrim(rtrim(number_format($percentage, 4, '.', ''), '0'), '.').'%'
                 : null;
@@ -689,7 +695,9 @@ class FlexibleQuoteBillingService
                 'name' => $item->name,
                 'description' => $prefix
                     .($description !== '' ? ' - '.$description : ''),
-                'day' => $item->day ?? 1,
+                'day' => 1,
+                'unit' => $billing['unit'],
+                'equipment_quantity' => SalesLineItem::physicalQuantity($item->getAttributes()),
                 'quantity' => $quantity,
                 'price' => round($lineAmount / $quantity, self::SCALE),
                 'coupon_code' => null,

@@ -25,6 +25,8 @@ class ProductDataGrid extends DataGrid
                 'products.sku',
                 'products.name',
                 'products.price',
+                'products.category',
+                'products.unit',
                 'tags.name as tag_name',
             )
             ->addSelect(DB::raw('SUM('.$tablePrefix.'product_inventories.in_stock) as total_in_stock'))
@@ -40,6 +42,8 @@ class ProductDataGrid extends DataGrid
         $this->addFilter('sku', 'products.sku');
         $this->addFilter('name', 'products.name');
         $this->addFilter('price', 'products.price');
+        $this->addFilter('category', 'products.category');
+        $this->addFilter('unit', 'products.unit');
         $this->addFilter('total_in_stock', DB::raw('SUM('.$tablePrefix.'product_inventories.in_stock'));
         $this->addFilter('total_allocated', DB::raw('SUM('.$tablePrefix.'product_inventories.allocated'));
         $this->addFilter('total_on_hand', DB::raw('SUM('.$tablePrefix.'product_inventories.in_stock - '.$tablePrefix.'product_inventories.allocated'));
@@ -84,25 +88,47 @@ class ProductDataGrid extends DataGrid
         ]);
 
         $this->addColumn([
-            'index' => 'total_in_stock',
-            'label' => trans('admin::app.products.index.datagrid.in-stock'),
+            'index' => 'category',
+            'label' => 'Category',
             'type' => 'string',
             'sortable' => true,
+            'searchable' => true,
+            'filterable' => true,
         ]);
 
         $this->addColumn([
-            'index' => 'total_allocated',
-            'label' => trans('admin::app.products.index.datagrid.allocated'),
+            'index' => 'unit',
+            'label' => 'Unit',
             'type' => 'string',
             'sortable' => true,
+            'filterable' => true,
+            'closure' => fn ($row) => $row->unit === 'day' ? 'Day' : 'Pcs',
         ]);
 
-        $this->addColumn([
-            'index' => 'total_on_hand',
-            'label' => trans('admin::app.products.index.datagrid.on-hand'),
-            'type' => 'string',
-            'sortable' => true,
-        ]);
+        // The warehouse view can still inspect its physical stock.
+        if (request()->route('id')) {
+            $this->addColumn([
+                'index' => 'total_in_stock',
+                'label' => trans('admin::app.products.index.datagrid.in-stock'),
+                'type' => 'string',
+                'sortable' => true,
+            ]);
+
+            $this->addColumn([
+                'index' => 'total_allocated',
+                'label' => trans('admin::app.products.index.datagrid.allocated'),
+                'type' => 'string',
+                'sortable' => true,
+            ]);
+
+            $this->addColumn([
+                'index' => 'total_on_hand',
+                'label' => trans('admin::app.products.index.datagrid.on-hand'),
+                'type' => 'string',
+                'sortable' => true,
+            ]);
+
+        }
 
         $this->addColumn([
             'index' => 'tag_name',

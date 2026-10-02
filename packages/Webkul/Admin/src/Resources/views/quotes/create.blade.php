@@ -1,3 +1,5 @@
+@include('admin::partials.sales-line-units')
+
 <x-admin::layouts>
     <x-slot:title>
         @lang('admin::app.quotes.create.title')
@@ -587,11 +589,11 @@
                                 </x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
-                                    Day
+                                    Qty
                                 </x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
-                                    Qty
+                                    Unit
                                 </x-admin::table.th>
 
                                 <x-admin::table.th class="text-center">
@@ -756,25 +758,11 @@
                             ::value="product.description"
                             :label="'Description'"
                             :placeholder="'Description'"
-                            @on-change="(event) => product.description = event.value"
+                            @input="product.description = $event.target.value"
                         />
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
-                <!-- Day -->
-                <x-admin::table.td class="!px-2 text-center">
-                    <x-admin::form.control-group class="!mb-0">
-                        <x-admin::form.control-group.control
-                            type="inline"
-                            ::name="`${inputName}[day]`"
-                            ::value="product.day"
-                            rules="required|integer|min:1"
-                            :label="'Day'"
-                            :placeholder="'Day'"
-                            @on-change="(event) => product.day = event.value"
-                        />
-                    </x-admin::form.control-group>
-                </x-admin::table.td>
 
                 <!-- Quantity -->
                 <x-admin::table.td class="!px-2 ltr:text-right rtl:text-left">
@@ -784,7 +772,7 @@
                             type="inline"
                             ::name="`${inputName}[quantity]`"
                             ::value="product.quantity"
-                            rules="required|numeric|min:1"
+                            rules="required|integer|min:1"
                             ::errors="errors"
                             :label="trans('admin::app.quotes.create.quantity')"
                             :placeholder="trans('admin::app.quotes.create.quantity')"
@@ -792,6 +780,24 @@
                             position="center"
                         />
                         <x-admin::form.control-group.error name="items.item_0.quantity"/>
+                    </x-admin::form.control-group>
+                </x-admin::table.td>
+
+                <!-- Unit -->
+                <x-admin::table.td class="!px-2">
+                    <x-admin::form.control-group class="!mb-0">
+                        <x-admin::form.control-group.control
+                            type="select"
+                            ::name="`${inputName}[unit]`"
+                            ::value="product.unit"
+                            rules="required"
+                            label="Unit"
+                            @change="product.unit = $event.target.value"
+                        >
+                            <option value="pcs">Pcs</option>
+                            <option value="day">Day</option>
+                        </x-admin::form.control-group.control>
+                        <x-admin::form.control-group.error ::name="`${inputName}[unit]`" />
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
@@ -820,14 +826,14 @@
                         <x-admin::form.control-group.control
                             type="inline"
                             ::name="`${inputName}[total]`"
-                            ::value="product.price * product.quantity * (product.day || 1)"
+                            ::value="product.price * product.quantity"
                             rules="required|decimal:4"
                             ::errors="errors"
                             :label="trans('admin::app.quotes.create.total')"
                             :placeholder="trans('admin::app.quotes.create.total')"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(product.price * product.quantity * (product.day || 1))"
+                            ::value-label="$admin.formatPrice(product.price * product.quantity)"
                         />
                         <x-admin::form.control-group.error name="items.item_0.total"/>
                     </x-admin::form.control-group>
@@ -878,10 +884,10 @@
                             type="inline"
                             ::name="`${inputName}[final_total]`"
                             ::errors="errors"
-                            ::value="parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount || 0) - parseFloat(product.discount_amount || 0)"
+                            ::value="parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount || 0) - parseFloat(product.discount_amount || 0)"
                             :allowEdit="false"
                             position="center"
-                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity * (product.day || 1)) + parseFloat(product.tax_amount || 0) - parseFloat(product.discount_amount || 0))"
+                            ::value-label="$admin.formatPrice(parseFloat(product.price * product.quantity) + parseFloat(product.tax_amount || 0) - parseFloat(product.discount_amount || 0))"
                         />
                         <x-admin::form.control-group.error name="items.item_0.final_total"/>
                     </x-admin::form.control-group>
@@ -1321,7 +1327,7 @@
                      *
                      * Lead products do not always carry all Quote-only numeric
                      * fields. Normalize them before the item row renders so
-                     * day/discount/tax never become undefined -> NaN.
+                     * unit, discount and tax have consistent initial values.
                      */
                     this.products = this.normalizeLeadProducts(this.products);
 
@@ -1436,7 +1442,7 @@
                      * @returns {Number}
                      */
                     getProductBaseTotal(product) {
-                        return this.parseDecimal(product.price) * this.parseDecimal(product.quantity) * this.parseDecimal(product.day ?? 1);
+                        return this.parseDecimal(product.price) * this.parseDecimal(product.quantity);
                     },
 
                     /**
@@ -1460,42 +1466,13 @@
                      */
                     normalizeLeadProducts(products) {
                         return (Array.isArray(products) ? products : []).map((product) => {
+                            const line = window.normalizeSalesLineItem(product);
                             return {
-                                ...product,
-
-                                day:
-                                    this.parseDecimal(product?.day) > 0
-                                        ? this.parseDecimal(product.day)
-                                        : 1,
-
-                                quantity:
-                                    this.parseDecimal(product?.quantity) > 0
-                                        ? this.parseDecimal(product.quantity)
-                                        : 1,
-
-                                price:
-                                    this.formatDecimal(product?.price),
-
-                                discount_amount:
-                                    this.formatDecimal(product?.discount_amount),
-
-                                tax_amount:
-                                    this.formatDecimal(product?.tax_amount),
-
-                                total:
-                                    this.formatDecimal(
-                                        this.parseDecimal(product?.price)
-                                        * (
-                                            this.parseDecimal(product?.quantity) > 0
-                                                ? this.parseDecimal(product.quantity)
-                                                : 1
-                                        )
-                                        * (
-                                            this.parseDecimal(product?.day) > 0
-                                                ? this.parseDecimal(product.day)
-                                                : 1
-                                        )
-                                    ),
+                                ...line,
+                                price: this.formatDecimal(line.price),
+                                discount_amount: this.formatDecimal(line.discount_amount),
+                                tax_amount: this.formatDecimal(line.tax_amount),
+                                total: this.formatDecimal(this.getProductBaseTotal(line)),
                             };
                         });
                     },
@@ -1540,7 +1517,7 @@
                             product_id: null,
                             name: '',
                             description: '',
-                            day: 1,
+                            unit: 'pcs',
                             quantity: 1,
                             total: '0.0000',
                             price: '0.0000',
@@ -1562,7 +1539,8 @@
                                         id: null,
                                         product_id: null,
                                         name: '',
-                                        quantity: null,
+                                        unit: 'pcs',
+                                        quantity: 1,
                                         total: 0,
                                         price: null,
                                         discount_amount: null,
@@ -1628,9 +1606,9 @@
                         this.product.product_id = result.id ?? null;
                         this.product.name = result.name ?? '';
                         this.product.description = result.description ?? '';
-                        this.product.day = 1;
+                        this.product.unit = result.unit || 'pcs';
                         this.product.price = result.price ?? 0;
-                        this.product.quantity = result.quantity ?? 1;
+                        this.product.quantity = 1;
                         this.product.discount_amount = 0;
                         this.product.tax_amount = 0;
                     },
