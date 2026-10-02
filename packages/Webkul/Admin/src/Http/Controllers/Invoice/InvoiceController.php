@@ -13,6 +13,7 @@ use Illuminate\View\View;
 use InvalidArgumentException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Invoice\Services\DeliveryOrderService;
 use Webkul\Invoice\Models\Expense;
@@ -33,6 +34,7 @@ class InvoiceController extends Controller
             protected InvoiceService $invoiceService,
             protected PaymentService $paymentService,
             protected ExpenseService $expenseService,
+            protected FlexibleQuoteBillingService $flexibleBillingService,
             protected DeliveryOrderService $deliveryOrderService
         ) {
         }
@@ -1471,9 +1473,12 @@ if ($request->input('person_id') === '__new__') {
         ],
     ]);
 
+    $flexibleBillingService = $this->flexibleBillingService;
+
     DB::transaction(function () use (
         $invoice,
-        $validated
+        $validated,
+        $flexibleBillingService
     ) {
         /*
         |--------------------------------------------------------------------------
@@ -1700,6 +1705,8 @@ if ($request->input('person_id') === '__new__') {
             'balance_due' =>
                 $balanceDue,
         ]);
+
+        $flexibleBillingService->syncAfterManualUpdate($invoice);
     });
 
     return redirect()
@@ -2342,6 +2349,23 @@ public function generateDeliveryOrder(
             $id
         );
 
+        $documentNumber = preg_replace(
+            '/^\s*INV[\s-]*/i',
+            '',
+            (string) $invoice->invoice_number
+        ) ?: '';
+
+        $clientName = $invoice->bill_to_company_name
+            ?: $invoice->bill_to_person_name
+            ?: $invoice->person?->organization?->name
+            ?: $invoice->person?->name
+            ?: 'client';
+
+        $fileName = 'INV-'
+            .$this->pdfFileSegment($documentNumber, 'invoice')
+            .'-'.$this->pdfFileSegment($invoice->subject, 'event')
+            .'-'.$this->pdfFileSegment($clientName, 'client');
+
         return $this->downloadPDF(
             view(
                 'admin::invoices.pdf',
@@ -2349,12 +2373,24 @@ public function generateDeliveryOrder(
                     'invoice'
                 )
             )->render(),
-
-            'Invoice_'
-            .$invoice->invoice_number
+            $fileName
         );
     }
 
+    private function pdfFileSegment(
+        ?string $value,
+        string $fallback
+    ): string {
+        $value = preg_replace(
+            '/[^\pL\pN]+/u',
+            '-',
+            trim((string) $value)
+        ) ?: '';
+
+        $value = trim($value, '-');
+
+        return $value !== '' ? mb_substr($value, 0, 80) : $fallback;
+    }
     /**
      * ============================================================
      * FINANCIAL SUMMARY HELPER

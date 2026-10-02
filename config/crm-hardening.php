@@ -1,6 +1,12 @@
 <?php
 
 return [
+    // Allow commercial edits for locked invoices that are still unpaid/partial.
+    'allow_edit_locked_invoices' => filter_var(
+        env('CRM_ALLOW_EDIT_LOCKED_INVOICES', true),
+        FILTER_VALIDATE_BOOL
+    ),
+
     'audited_tables' => [
         'persons',
         'organizations',

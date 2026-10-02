@@ -462,12 +462,45 @@ class QuoteController extends Controller
 
         $this->preventUnauthorizedAccess($quote->user_id);
 
+        $quote->loadMissing(['person.organization']);
+
+        $documentNumber = preg_replace(
+            '/^\s*QT[\s-]*/i',
+            '',
+            (string) $quote->quote_number
+        ) ?: '';
+
+        $clientName = $quote->bill_to_company_name
+            ?: $quote->bill_to_person_name
+            ?: $quote->person?->organization?->name
+            ?: $quote->person?->name
+            ?: 'client';
+
+        $fileName = 'QT-'
+            .$this->pdfFileSegment($documentNumber, 'quotation')
+            .'-'.$this->pdfFileSegment($quote->subject, 'event')
+            .'-'.$this->pdfFileSegment($clientName, 'client');
+
         return $this->downloadPDF(
             view('admin::quotes.pdf', compact('quote'))->render(),
-            'Quote_'.$quote->subject.'_'.$quote->created_at->format('d-m-Y')
+            $fileName
         );
     }
 
+    private function pdfFileSegment(
+        ?string $value,
+        string $fallback
+    ): string {
+        $value = preg_replace(
+            '/[^\pL\pN]+/u',
+            '-',
+            trim((string) $value)
+        ) ?: '';
+
+        $value = trim($value, '-');
+
+        return $value !== '' ? mb_substr($value, 0, 80) : $fallback;
+    }
     /**
      * Mirror the billing address into the shipping address when "same as billing" is enabled.
      */

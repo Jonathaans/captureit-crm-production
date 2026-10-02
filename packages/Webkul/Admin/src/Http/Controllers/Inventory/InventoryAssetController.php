@@ -43,17 +43,67 @@ class InventoryAssetController extends Controller
      */
     public function qrLabels(Request $request): View
     {
+        $inventoryItems = InventoryItem::query()
+            ->where('tracking_type', 'serialized')
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+
+        $requestedItemIds = $request->input('inventory_item_ids', []);
+
+        if (! is_array($requestedItemIds)) {
+            $requestedItemIds = explode(
+                ',',
+                (string) $requestedItemIds
+            );
+        }
+
+        $hasItemFilter = $request->boolean('inventory_item_filter')
+            || $request->filled('inventory_item_id')
+            || $request->has('inventory_item_ids');
+
+        $selectedItemIds = collect($requestedItemIds)
+            ->merge(
+                $request->filled('inventory_item_id')
+                    ? [$request->integer('inventory_item_id')]
+                    : []
+            )
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        /*
+         * Initial page keeps the existing behaviour: all serialized items
+         * are selected. Once the checklist is submitted, only checked items
+         * are queried.
+         */
+        if (! $hasItemFilter && ! $request->filled('ids')) {
+            $selectedItemIds = $inventoryItems
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+        }
+
         $query = InventoryAsset::query()
             ->with('item')
             ->orderBy('asset_code');
 
-        if ($request->filled('inventory_item_id')) {
-            $query->where(
+        if ($selectedItemIds->isNotEmpty()) {
+            $query->whereIn(
                 'inventory_item_id',
-                $request->integer('inventory_item_id')
+                $selectedItemIds->all()
             );
+        } elseif ($hasItemFilter) {
+            /*
+             * Explicitly selecting nothing should print nothing, not all
+             * assets.
+             */
+            $query->whereRaw('1 = 0');
         }
 
+        /*
+         * Keep the bulk-create flow compatible with its asset ID list.
+         */
         if ($request->filled('ids')) {
             $ids = collect(
                 explode(
@@ -72,17 +122,27 @@ class InventoryAssetController extends Controller
         }
 
         $assets = $query->get();
-        $inventoryItems = InventoryItem::query()
-            ->where('tracking_type', 'serialized')
-            ->orderBy('code')
-            ->get(['id', 'code', 'name']);
-        $selectedItemId = $request->filled('inventory_item_id')
-            ? $request->integer('inventory_item_id')
+
+        if ($selectedItemIds->isEmpty() && $assets->isNotEmpty()) {
+            $selectedItemIds = $assets
+                ->pluck('inventory_item_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+        }
+
+        $selectedItemId = $selectedItemIds->count() === 1
+            ? $selectedItemIds->first()
             : null;
 
         return view(
             'admin::inventory.assets.qr-labels',
-            compact('assets', 'inventoryItems', 'selectedItemId')
+            compact(
+                'assets',
+                'inventoryItems',
+                'selectedItemId',
+                'selectedItemIds'
+            )
         );
     }
 
