@@ -8,16 +8,19 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Event;
-use Illuminate\View\View;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 use Prettus\Repository\Criteria\RequestCriteria;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Webkul\Admin\DataGrids\Quote\QuoteDataGrid;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
 use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
+use Webkul\Admin\Services\QuoteDeletionService;
 use Webkul\Admin\Services\QuoteSalesOwnerService;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Contact\Repositories\PersonRepository;
@@ -407,50 +410,42 @@ class QuoteController extends Controller
      */
     public function destroy(int $id): JsonResponse
     {
-        $this->preventUnauthorizedAccess($this->quoteRepository->findOrFail($id)->user_id);
-
-        try {
-            Event::dispatch('quote.delete.before', $id);
-
-            $this->quoteRepository->delete($id);
-
-            Event::dispatch('quote.delete.after', $id);
-
-            return response()->json([
-                'message' => trans('admin::app.quotes.index.delete-success'),
-            ], 200);
-        } catch (\Exception $exception) {
-            return response()->json([
-                'message' => trans('admin::app.quotes.index.delete-failed'),
-            ], 400);
-        }
+        return $this->deleteQuotes([$id]);
     }
 
     /**
-     * Mass Delete the specified resources.
+     * Delete the entire selection atomically, or leave every quote unchanged.
      */
     public function massDestroy(MassDestroyRequest $massDestroyRequest): JsonResponse
     {
-        $quotes = $this->filterAuthorizedRecords(
-            $this->quoteRepository->findWhereIn('id', $massDestroyRequest->input('indices'))
-        );
+        return $this->deleteQuotes($massDestroyRequest->validated('indices'));
+    }
 
+    private function deleteQuotes(array $ids): JsonResponse
+    {
         try {
-            foreach ($quotes as $quotes) {
-                Event::dispatch('quote.delete.before', $quotes->id);
-
-                $this->quoteRepository->delete($quotes->id);
-
-                Event::dispatch('quote.delete.after', $quotes->id);
-            }
+            app(QuoteDeletionService::class)->delete(
+                $ids,
+                fn ($quote) => $this->preventUnauthorizedAccess($quote->user_id)
+            );
 
             return response()->json([
                 'message' => trans('admin::app.quotes.index.delete-success'),
             ]);
-        } catch (\Exception $exception) {
+        } catch (ValidationException $exception) {
+            return response()->json([
+                'message' => collect($exception->errors())->flatten()->first(),
+                'errors' => $exception->errors(),
+            ], 422);
+        } catch (HttpExceptionInterface $exception) {
+            // Keep ownership/permission errors intact; never bypass the ACL.
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
             return response()->json([
                 'message' => trans('admin::app.quotes.index.delete-failed'),
-            ], 400);
+            ], 500);
         }
     }
 

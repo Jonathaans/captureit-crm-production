@@ -3,6 +3,7 @@
 namespace Webkul\Admin\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Webkul\Admin\Support\OptionalSalesAddress;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Attribute\Repositories\AttributeValueRepository;
 use Webkul\Core\Contracts\Validations\Decimal;
@@ -73,17 +74,7 @@ class LeadForm extends FormRequest
                 if ($attribute->type == 'boolean') {
                     continue;
                 } elseif ($attribute->type == 'address') {
-                    if (! $isRequired) {
-                        continue;
-                    }
-
-                    $validations = [
-                        $attribute->code.'.address' => 'required',
-                        $attribute->code.'.country' => 'required',
-                        $attribute->code.'.state' => 'required',
-                        $attribute->code.'.city' => 'required',
-                        $attribute->code.'.postcode' => 'required',
-                    ];
+                    $validations = OptionalSalesAddress::rules($attribute->code);
                 } elseif ($attribute->type == 'email') {
                     $validations = [
                         $attribute->code => [$isRequired ? 'required' : 'nullable'],

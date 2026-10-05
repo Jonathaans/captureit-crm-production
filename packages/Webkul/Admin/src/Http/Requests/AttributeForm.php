@@ -3,6 +3,7 @@
 namespace Webkul\Admin\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Webkul\Admin\Support\OptionalSalesAddress;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Attribute\Repositories\AttributeValueRepository;
 use Webkul\Core\Contracts\Validations\Decimal;
@@ -58,6 +59,12 @@ class AttributeForm extends FormRequest
             if ($attribute->type == 'boolean') {
                 continue;
             } elseif ($attribute->type == 'address') {
+                if (OptionalSalesAddress::appliesTo($attribute->entity_type)) {
+                    $this->rules = array_merge($this->rules, OptionalSalesAddress::rules($attribute->code));
+
+                    continue;
+                }
+
                 if (! $attribute->is_required) {
                     continue;
                 }
