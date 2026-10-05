@@ -126,6 +126,19 @@ try {
     $check(count($byKey($sourceItems, 'inventory')->getChildren()) === 3, 'Cached source menu is not mutated');
     $check($keys($service->getItems()) === $keys($items), 'Rendering desktop and mobile does not duplicate dashboards');
 
+    $groups = $service->getGroups();
+    $groupKeys = fn (Collection $groups): array => $groups->pluck('key')->all();
+    $groupItems = fn (Collection $groups, string $key): Collection => $groups->firstWhere('key', $key)['items'] ?? collect();
+    $flattened = $groups->pluck('items')->flatten(1);
+    $check($groupKeys($groups) === ['overview', 'sales', 'finance', 'operations'], 'Only nonempty permitted categories are displayed');
+    $check($keys($groupItems($groups, 'overview')) === ['dashboard', 'inventory-dashboard', 'sales-dashboard'], 'Dashboards share the overview category');
+    $check($keys($groupItems($groups, 'sales')) === ['leads'], 'Leads belongs to Sales');
+    $check($keys($groupItems($groups, 'finance')) === ['invoices'], 'Invoices belongs to Finance');
+    $check($keys($groupItems($groups, 'operations')) === ['inventory'], 'Inventory belongs to Operations');
+    $check($flattened->count() === $items->count() && $flattened->map(fn ($item) => $item->getKey())->unique()->count() === $items->count(), 'Grouping preserves every permitted menu exactly once');
+    $check($keys($service->getItems()) === $keys($items), 'Grouping leaves the login landing order unchanged');
+    $check($keys($groupItems($groups, 'operations')->first()->getChildren()) === ['inventory.items', 'inventory.assets'], 'Grouping preserves permitted submenu entries');
+
     $setRequest('admin.inventory.dashboard', '?period=month');
     $check($activeKeys($items) === ['inventory-dashboard'], 'Inventory dashboard alone is active, including query parameters');
     $setRequest('admin.inventory.items.index');
@@ -156,6 +169,14 @@ try {
     $restricted = $service->getItems();
     $check($keys($restricted) === ['inventory'], 'Inventory access alone does not grant dashboard access');
     $check($byKey($restricted, 'inventory')->getRoute() === 'admin.inventory.assets.index', 'Restricted Inventory parent uses the allowed Assets page');
+    $check($groupKeys($service->getGroups()) === ['operations'], 'Restricted role has no empty or unauthorized categories');
+
+    $setContext(collect([$makeItem('custom-extension', 'admin.leads.index', 200)]), []);
+    $check($groupKeys($service->getGroups()) === ['other'], 'Permitted extension menu gets a fallback category');
+    $check($keys($groupItems($service->getGroups(), 'other')) === ['custom-extension'], 'Unknown extension stays reachable');
+
+    $setContext(collect(), []);
+    $check($service->getGroups()->isEmpty(), 'No categories appear when no menus are permitted');
 
     $setContext(collect([
         $makeItem('inventory', 'admin.inventory.items.index', 70),

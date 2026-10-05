@@ -8,6 +8,39 @@ use Webkul\Core\Menu\MenuItem;
 
 class SidebarNavigationService
 {
+    /**
+     * Group permitted entries for presentation; keep login landing order intact.
+     */
+    public function getGroups(): Collection
+    {
+        $items = $this->getItems();
+        $definitions = [
+            ['key' => 'overview', 'label' => 'Ringkasan', 'items' => ['dashboard', 'inventory-dashboard', 'sales-dashboard', 'operations-dashboard']],
+            ['key' => 'sales', 'label' => 'Penjualan', 'items' => ['leads', 'quotes', 'activities']],
+            ['key' => 'finance', 'label' => 'Keuangan', 'items' => ['invoices', 'purchase-orders', 'financial-report']],
+            ['key' => 'operations', 'label' => 'Operasional', 'items' => ['work-orders', 'delivery-orders', 'inventory']],
+            ['key' => 'master', 'label' => 'Data Master', 'items' => ['contacts', 'products']],
+            ['key' => 'communication', 'label' => 'Komunikasi', 'items' => ['my-email', 'mail']],
+            ['key' => 'system', 'label' => 'Sistem', 'items' => ['settings', 'configuration', 'internal-chat-audit', 'help']],
+        ];
+
+        $groups = collect($definitions)->map(fn (array $group): array => [
+            'key' => $group['key'],
+            'label' => $group['label'],
+            'items' => $items->filter(fn (MenuItem $item) => in_array($item->getKey(), $group['items'], true))->values(),
+        ]);
+
+        // Keep permitted extension menus reachable without changing their ACL.
+        $knownKeys = collect($definitions)->pluck('items')->flatten()->all();
+        $groups->push([
+            'key' => 'other',
+            'label' => 'Lainnya',
+            'items' => $items->reject(fn (MenuItem $item) => in_array($item->getKey(), $knownKeys, true))->values(),
+        ]);
+
+        return $groups->filter(fn (array $group) => $group['items']->isNotEmpty())->values();
+    }
+
     public function getItems(): Collection
     {
         $items = menu()->getItems('admin')
