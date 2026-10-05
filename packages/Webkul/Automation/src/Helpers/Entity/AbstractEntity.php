@@ -101,6 +101,11 @@ abstract class AbstractEntity
     public function replacePlaceholders(mixed $entity, string $content): string
     {
         foreach ($this->getAttributes($this->entityType, []) as $attribute) {
+            if (! str_contains($content, '{%'.$this->entityType.'.'.$attribute['id'].'%}')
+                && ! str_contains($content, '{% '.$this->entityType.'.'.$attribute['id'].' %}')) {
+                continue;
+            }
+
             $value = '';
 
             switch ($attribute['type']) {
@@ -221,12 +226,29 @@ abstract class AbstractEntity
 
         $payload = [
             'method' => $webhook->method,
-            'query_params' => $this->replacePlaceholders($entity, json_encode($webhook->query_params)),
+            'query_params' => json_encode($this->replaceWebhookValues($entity, $webhook->query_params), JSON_THROW_ON_ERROR),
             'end_point' => $this->replacePlaceholders($entity, $webhook->end_point),
-            'payload' => $this->replacePlaceholders($entity, json_encode($webhook->payload)),
-            'headers' => $this->replacePlaceholders($entity, json_encode($webhook->headers)),
+            'payload' => json_encode($this->replaceWebhookValues($entity, $webhook->payload), JSON_THROW_ON_ERROR),
+            'headers' => json_encode($this->replaceWebhookValues($entity, $webhook->headers), JSON_THROW_ON_ERROR),
         ];
 
         $this->webhookService->triggerWebhook($payload);
+    }
+
+    /** Replace values before JSON encoding so quotes and newlines stay valid. */
+    private function replaceWebhookValues(mixed $entity, mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $result = [];
+
+            foreach ($value as $key => $item) {
+                $resolvedKey = is_string($key) ? $this->replacePlaceholders($entity, $key) : $key;
+                $result[$resolvedKey] = $this->replaceWebhookValues($entity, $item);
+            }
+
+            return $result;
+        }
+
+        return is_string($value) ? $this->replacePlaceholders($entity, $value) : $value;
     }
 }

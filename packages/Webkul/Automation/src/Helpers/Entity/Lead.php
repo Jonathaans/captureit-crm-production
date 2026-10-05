@@ -7,6 +7,7 @@ use Webkul\Activity\Repositories\ActivityRepository;
 use Webkul\Admin\Notifications\Common;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Automation\Repositories\WebhookRepository;
+use Webkul\Automation\Services\LeadProductSummary;
 use Webkul\Automation\Services\WebhookService;
 use Webkul\Contact\Repositories\PersonRepository;
 use Webkul\EmailTemplate\Repositories\EmailTemplateRepository;
@@ -97,7 +98,18 @@ class Lead extends AbstractEntity
         ];
     }
 
-       /**
+    public function getEmailTemplatePlaceholders(array $entity): array
+    {
+        $placeholders = parent::getEmailTemplatePlaceholders($entity);
+        $placeholders['menu'][] = [
+            'text' => 'Detail Produk Lead (Telegram HTML)',
+            'value' => '{%leads.products_detail%}',
+        ];
+
+        return $placeholders;
+    }
+
+    /**
      * Replace Lead placeholders and placeholders belonging
      * to the Contact attached to the Lead.
      */
@@ -105,16 +117,29 @@ class Lead extends AbstractEntity
     {
         $content = parent::replacePlaceholders($entity, $content);
 
+        if (str_contains($content, '{%leads.products_detail%}') || str_contains($content, '{% leads.products_detail %}')) {
+            $products = $entity->products()->with('product')->orderBy('id')->get()
+                ->map(fn ($row) => array_merge($row->getAttributes(), [
+                    'name' => $row->product?->name ?: 'Produk #'.$row->product_id,
+                ]));
+            $summary = app(LeadProductSummary::class)->format($products);
+            $content = strtr($content, [
+                '{%leads.products_detail%}' => $summary,
+                '{% leads.products_detail %}' => $summary,
+            ]);
+        }
+
         $person = $entity->person;
 
         if (! $person) {
             return $content;
         }
 
-        return app(\Webkul\Automation\Helpers\Entity\Person::class)
+        return app(Person::class)
             ->replacePlaceholders($person, $content);
     }
-  /**
+
+    /**
      * Execute workflow actions.
      */
     public function executeActions(mixed $workflow, mixed $lead): void
