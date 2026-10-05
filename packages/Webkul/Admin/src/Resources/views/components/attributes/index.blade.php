@@ -6,6 +6,11 @@
 
 @foreach ($customAttributes as $attribute)
     @php
+        if ($attribute->type === 'address' && \Webkul\Admin\Support\OptionalSalesAddress::appliesTo($attribute->entity_type)) {
+            $attribute = clone $attribute;
+            $attribute->is_required = false;
+        }
+
         $validations = [];
 
         if ($attribute->is_required) {
