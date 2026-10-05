@@ -169,6 +169,32 @@ return [
             ],
         ],
     ], [
+        'key' => 'general.settings.sidebar_colors',
+        'name' => 'admin::sidebar.colors.title',
+        'info' => 'admin::sidebar.colors.info',
+        'sort' => 4,
+        'fields' => [
+            [
+                'name' => 'background_color',
+                'title' => 'admin::sidebar.colors.background',
+                'type' => 'color',
+                'default' => '#385988',
+                'validation' => 'required',
+            ], [
+                'name' => 'active_color',
+                'title' => 'admin::sidebar.colors.active',
+                'type' => 'color',
+                'default' => '#39255d',
+                'validation' => 'required',
+            ], [
+                'name' => 'accent_color',
+                'title' => 'admin::sidebar.colors.accent',
+                'type' => 'color',
+                'default' => '#ffc21c',
+                'validation' => 'required',
+            ],
+        ],
+    ], [
         'key' => 'general.magic_ai',
         'name' => 'admin::app.configuration.index.magic-ai.title',
         'info' => 'admin::app.configuration.index.magic-ai.info',
