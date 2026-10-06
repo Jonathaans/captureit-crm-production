@@ -600,7 +600,7 @@
                                     </td>
 
                                     <td class="max-w-xs px-6 py-4 text-sm text-gray-600 dark:text-gray-300">
-                                        {{ $item->description ?: '-' }}
+                                        {{ \Webkul\Invoice\Support\BillingDescription::display($invoice->getAttributes(), $item->description) ?: '-' }}
                                     </td>
 
                                     <td class="px-6 py-4 text-center text-gray-700 dark:text-gray-300">
