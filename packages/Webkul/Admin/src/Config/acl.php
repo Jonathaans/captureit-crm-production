@@ -610,7 +610,9 @@ return [
     ], [
         'key' => 'products.create.quick-create',
         'name' => 'admin::app.acl.quick_add',
-        'route' => ['admin.products.create', 'admin.products.store'],
+        // Quick Add shares the store endpoint; Bouncer checks this permission
+        // only for quick_add requests so it cannot replace products.create.
+        'route' => [],
         'sort' => 1,
     ], [
         'key' => 'products.edit',

@@ -2,11 +2,11 @@
 
 namespace Webkul\Admin\Http\Controllers\Quote;
 
-use Webkul\Core\Support\SalesLineItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -20,14 +20,17 @@ use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
 use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
+use Webkul\Admin\Services\LeadQuotePrefillService;
 use Webkul\Admin\Services\QuoteDeletionService;
 use Webkul\Admin\Services\QuoteSalesOwnerService;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Contact\Repositories\PersonRepository;
-use Webkul\Core\Support\BusinessUnit;
+use Webkul\Core\Support\SalesLineItem;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Lead\Repositories\LeadRepository;
 use Webkul\Quote\Repositories\QuoteRepository;
+use Webkul\Quote\Services\ProjectCodeService;
+use Webkul\Quote\Services\QuoteNumberService;
 
 class QuoteController extends Controller
 {
@@ -66,22 +69,23 @@ class QuoteController extends Controller
      */
     public function create(): View
     {
-        $leadId = request('lead_id');
+        $leadId = old('lead_id', request('lead_id'));
 
-        $lead = $leadId ? $this->leadRepository->find($leadId) : null;
+        $lead = $leadId ? $this->leadRepository->findOrFail($leadId) : null;
 
         $quote = $this->quoteRepository->getModel();
 
         if ($lead) {
-            $quote->fill([
-                'person_id' => $lead->person_id,
-                'user_id' => $lead->user_id,
-                'billing_address' => $lead->person->organization?->address,
-                'expired_at' => $lead->expected_close_date ?? now()->toDateString(),
-            ]);
+            $this->preventUnauthorizedAccess($lead->user_id);
+            $quote->fill(app(LeadQuotePrefillService::class)->attributes($lead));
         }
 
-        $leadProducts = $this->getLeadProductsForQuote($lead);
+        // Generic attribute controls use the entity as a fallback. Preserve
+        // deliberately cleared values too when validation returns to this form.
+        $quote->fill(Arr::only(old() ?? [], ['subject', 'description']));
+
+        $leadProducts = old('items', $this->getLeadProductsForQuote($lead));
+        $leadProducts = is_array($leadProducts) ? array_values($leadProducts) : [];
 
         $lookUpEntityData = $this->attributeRepository->getLookUpEntity('leads', $leadId);
 
@@ -90,7 +94,7 @@ class QuoteController extends Controller
          *
          * Digunakan oleh lookup Bill To di create.blade.php.
          */
-        $personId = old('person_id') ?: $quote->person_id;
+        $personId = old('person_id', $quote->person_id);
 
         $personLookUpEntityData = $personId
             ? $this->formatBillToPerson($this->personRepository->findOrFail($personId))
@@ -147,7 +151,7 @@ class QuoteController extends Controller
          * PRJ-2026-00001
          */
         $data['project_code'] = app(
-            \Webkul\Quote\Services\ProjectCodeService::class
+            ProjectCodeService::class
         )->generate();
 
         /*
@@ -157,7 +161,7 @@ class QuoteController extends Controller
          * QT 2608-0001
          */
         $data['quote_number'] = app(
-            \Webkul\Quote\Services\QuoteNumberService::class
+            QuoteNumberService::class
         )->generate();
 
         $quote = $this->quoteRepository->create($data);
@@ -327,9 +331,13 @@ class QuoteController extends Controller
     public function leadProducts(int $leadId): JsonResponse
     {
         $lead = $this->leadRepository->findOrFail($leadId);
+        $this->preventUnauthorizedAccess($lead->user_id);
 
         return response()->json([
             'data' => $this->getLeadProductsForQuote($lead),
+            'quote' => app(LeadQuotePrefillService::class)->attributes($lead),
+            'person' => $lead->person ? $this->formatBillToPerson($lead->person) : [],
+            'sales_owner' => $this->quoteSalesOwnerService->initialSelection((int) $lead->user_id ?: null),
         ]);
     }
 
@@ -497,6 +505,7 @@ class QuoteController extends Controller
 
         return $value !== '' ? mb_substr($value, 0, 80) : $fallback;
     }
+
     /**
      * Mirror the billing address into the shipping address when "same as billing" is enabled.
      */
@@ -533,9 +542,8 @@ class QuoteController extends Controller
         if (
             ! $this->quoteSalesOwnerService->isEligible($selectedOwnerId)
         ) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'user_id' =>
-                    'Sales Owner harus aktif dan memiliki role Administrator, Sales Admin, SuperAdministrator, atau Sales User.',
+            throw ValidationException::withMessages([
+                'user_id' => 'Sales Owner harus aktif dan memiliki role Administrator, Sales Admin, SuperAdministrator, atau Sales User.',
             ]);
         }
     }
@@ -639,7 +647,7 @@ class QuoteController extends Controller
             in_array($displayMode, ['company', 'both'], true)
             && $companyName === ''
         ) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'bill_to_display_mode' => 'Contact yang dipilih belum memiliki Company.',
             ]);
         }
@@ -707,22 +715,6 @@ class QuoteController extends Controller
      */
     private function getLeadProductsForQuote($lead): array
     {
-        if (! $lead?->products?->isNotEmpty()) {
-            return [];
-        }
-
-        return $lead->products
-            ->map(function ($product) {
-                $item = SalesLineItem::display($product->toArray());
-
-                return array_merge($item, [
-                    'id' => null,
-                    'total' => (float) $item['price'] * (float) $item['quantity'],
-                    'discount_amount' => 0,
-                    'tax_amount' => 0,
-                ]);
-            })
-            ->values()
-            ->toArray();
+        return app(LeadQuotePrefillService::class)->products($lead);
     }
 }

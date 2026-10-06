@@ -42,7 +42,7 @@
                 </div>
             </div>
 
-            <v-quote :errors="errors">
+            <v-quote :errors="errors" :set-values="setValues">
                 <x-admin::shimmer.quotes />
             </v-quote>
         </div>
@@ -117,6 +117,7 @@
                                         'after:' .  \Carbon\Carbon::yesterday()->format('Y-m-d')
                                     ],
                                 ]"
+                                :entity="$quote"
                             />
                             <!-- Project Details -->
 <div class="grid grid-cols-2 gap-4 max-md:grid-cols-1">
@@ -130,7 +131,7 @@
         <x-admin::form.control-group.control
             type="date"
             name="event_date"
-            :value="old('event_date')"
+            :value="old('event_date', $quote->event_date?->format('Y-m-d'))"
             rules="required"
             label="Event Date"
         />
@@ -150,7 +151,7 @@
         <x-admin::form.control-group.control
             type="text"
             name="location"
-            :value="old('location')"
+            :value="old('location', $quote->location)"
             rules="required"
             label="Location"
             placeholder="Contoh: Hotel Mulia Jakarta"
@@ -171,7 +172,7 @@
         <x-admin::form.control-group.control
             type="select"
             name="business_unit"
-            :value="old('business_unit')"
+            :value="old('business_unit', $quote->business_unit)"
             rules="required"
             label="Business Unit"
         >
@@ -182,7 +183,7 @@
             @foreach (\Webkul\Core\Support\BusinessUnit::options() as $value => $label)
                 <option
                     value="{{ $value }}"
-                    @selected(old('business_unit') === $value)
+                    @selected(old('business_unit', $quote->business_unit) === $value)
                 >
                     {{ $label }}
                 </option>
@@ -204,7 +205,7 @@
         <x-admin::form.control-group.control
             type="select"
             name="payment_term"
-            :value="old('payment_term')"
+            :value="old('payment_term', $quote->payment_term)"
             rules="required"
             label="Payment Term"
         >
@@ -250,6 +251,7 @@
                                         'after:' .  \Carbon\Carbon::yesterday()->format('Y-m-d')
                                     ],
                                 ]"
+                                :entity="$quote"
                             />
 
                             <div class="flex gap-4">
@@ -273,7 +275,8 @@
                                     </x-admin::form.control-group.label>
 
                                     <v-quote-sales-owner-lookup
-                                        :initial-owner='@json($salesOwnerLookUpData ?? [])'
+                                        :key="salesOwnerLookupKey"
+                                        :initial-owner="salesOwnerEntity"
                                         search-url="{{ route('admin.quotes.sales_owners') }}"
                                     ></v-quote-sales-owner-lookup>
 
@@ -446,13 +449,14 @@
                                     </x-admin::form.control-group.label>
 
                                     <v-lookup-component
-                                        :key="leadEntity.id"
+                                        :key="leadLookupKey"
                                         :attribute="{'code': 'lead_id', 'name': 'Lead', 'lookup_type': 'leads'}"
                                         :value="leadEntity"
                                         can-add-new="true"
                                         @lookup-added="setLeadEntity"
                                         @lookup-removed="setLeadEntity"
                                     ></v-lookup-component>
+                                    <p v-if="isLoadingLead" class="mt-1 text-xs text-gray-500" role="status">Memuat data Lead…</p>
                                 </x-admin::form.control-group>
                             </div>
 
@@ -514,16 +518,24 @@
                                 });
                             @endphp
 
-                            <!-- Address -->
-                            <x-admin::attributes
-                                :custom-attributes="$billingAddressAttributes"
-                                :custom-validations="[
-                                    'billing_address' => [
-                                        'max:100',
-                                    ],
-                                ]"
-                                :entity="$quote"
-                            />
+                            <!-- Keep country/state controls in sync when another Lead is selected. -->
+                            @foreach ($billingAddressAttributes as $billingAttribute)
+                                @php
+                                    $billingAttribute = clone $billingAttribute;
+                                    $billingAttribute->is_required = false;
+                                @endphp
+                                <x-admin::form.control-group class="mb-2.5 w-full">
+                                    <x-admin::form.control-group.label>Address</x-admin::form.control-group.label>
+                                    <v-address-component
+                                        :key="billingAddressKey"
+                                        :attribute='@json($billingAttribute)'
+                                        :data="billingAddress"
+                                        validations="max:100"
+                                    ></v-address-component>
+                                    <x-admin::form.control-group.error control-name="billing_address" />
+                                </x-admin::form.control-group>
+                            @endforeach
+                            <x-admin::attributes.edit.address :attribute="null" />
 
                             <!-- Backend: shipping address otomatis mengikuti billing address -->
                             <input
@@ -558,7 +570,7 @@
                         <!-- Quote Item List Vue Component -->
                         <v-quote-item-list
                             :errors="errors"
-                            :lead-entity="leadEntity"
+                            :data="quoteProducts"
                         ></v-quote-item-list>
                     </div>
 
@@ -630,7 +642,7 @@
                             <!-- Quote Item Vue component -->
                             <template
                                 v-for='(product, index) in products'
-                                :key="index"
+                                :key="`${productListVersion}-${index}`"
                             >
                                 <v-quote-item
                                     :product="product"
@@ -746,6 +758,7 @@
 
                         <x-admin::form.control-group.error name="items.item_0.product_id"/>
                         <x-admin::form.control-group.error name="items[item_0][product_id]"/>
+                        <input type="hidden" :name="`${inputName}[name]`" :value="product.name">
                     </x-admin::form.control-group>
                 </x-admin::table.td>
 
@@ -935,7 +948,7 @@
             app.component('v-quote', {
                 template: '#v-quote-template',
 
-                props: ['errors'],
+                props: ['errors', 'setValues'],
 
                 data() {
                     return {
@@ -948,6 +961,14 @@
                         ],
 
                         leadEntity: @json($lookUpEntityData ?? []),
+                        leadLookupKey: 0,
+                        leadRequestSequence: 0,
+                        isLoadingLead: false,
+                        quoteProducts: @json($leadProducts ?? []),
+                        billingAddress: @json(old('billing_address', $quote->billing_address) ?? []),
+                        billingAddressKey: 0,
+                        salesOwnerEntity: @json($salesOwnerLookUpData ?? []),
+                        salesOwnerLookupKey: 0,
 
                         personEntity: @json($personLookUpEntityData ?? []),
 
@@ -986,6 +1007,15 @@
                 },
 
                 mounted() {
+                    this._quoteForm = this.$el.closest('form');
+                    this._preventIncompleteLeadImport = (event) => {
+                        if (this.isLoadingLead) {
+                            event.preventDefault();
+                            event.stopImmediatePropagation();
+                            this.$emitter.emit('add-flash', { type: 'info', message: 'Tunggu data Lead selesai dimuat sebelum menyimpan.' });
+                        }
+                    };
+                    this._quoteForm?.addEventListener('submit', this._preventIncompleteLeadImport, true);
                     this.$nextTick(() => {
                         this.applyQuoteLabelOverrides();
 
@@ -1005,6 +1035,8 @@
                 },
 
                 beforeUnmount() {
+                    this.leadRequestSequence++;
+                    this._quoteForm?.removeEventListener('submit', this._preventIncompleteLeadImport, true);
                     if (this._quoteLabelObserver) {
                         this._quoteLabelObserver.disconnect();
                     }
@@ -1078,8 +1110,52 @@
                         }
                     },
 
-                    setLeadEntity($event) {
-                        this.leadEntity = $event ?? { id: '', name: '' };
+                    async setLeadEntity(lead) {
+                        const sequence = ++this.leadRequestSequence;
+
+                        if (! lead?.id || String(lead.id) === String(this.leadEntity?.id)) {
+                            this.leadEntity = lead ?? { id: '', name: '' };
+                            this.isLoadingLead = false;
+                            return;
+                        }
+
+                        this.isLoadingLead = true;
+
+                        try {
+                            const response = await this.$axios.get(
+                                "{{ route('admin.quotes.lead_products', '__LEAD_ID__') }}".replace('__LEAD_ID__', encodeURIComponent(lead.id))
+                            );
+
+                            if (sequence !== this.leadRequestSequence) return;
+
+                            const payload = response.data;
+                            if (! payload?.quote || ! Array.isArray(payload.data)) {
+                                throw new Error('Invalid Lead response');
+                            }
+
+                            this.leadEntity = lead;
+                            this.quoteProducts = payload.data ?? [];
+                            this.billingAddress = payload.quote.billing_address ?? [];
+                            this.billingAddressKey++;
+                            this.applyPersonEntity(payload.person);
+                            this.personLookupKey++;
+                            this.salesOwnerEntity = payload.sales_owner ?? {};
+                            this.salesOwnerLookupKey++;
+
+                            await this.$nextTick();
+                            if (sequence !== this.leadRequestSequence) return;
+                            this.setValues(payload.quote);
+                        } catch (error) {
+                            if (sequence !== this.leadRequestSequence) return;
+                            // Keep the previously imported details and restore the lookup.
+                            this.leadLookupKey++;
+                            this.$emitter.emit('add-flash', {
+                                type: 'error',
+                                message: error?.response?.data?.message || 'Data Lead gagal dimuat. Silakan coba lagi.',
+                            });
+                        } finally {
+                            if (sequence === this.leadRequestSequence) this.isLoadingLead = false;
+                        }
                     },
 
                     setPersonEntity($event) {
@@ -1311,13 +1387,14 @@
             app.component('v-quote-item-list', {
                 template: '#v-quote-item-list-template',
 
-                props: ['data', 'errors', 'leadEntity'],
+                props: ['data', 'errors'],
 
                 data() {
                     return {
-                        adjustmentAmount: '0.0000',
+                        adjustmentAmount: @json(old('adjustment_amount', '0.0000')),
 
-                        products: @json($leadProducts ?? []),
+                        products: this.data ?? [],
+                        productListVersion: 0,
                     }
                 },
 
@@ -1337,18 +1414,12 @@
                 },
 
                 watch: {
-                    'leadEntity.id': function(newLeadId, oldLeadId) {
-                        if (newLeadId === oldLeadId) {
-                            return;
-                        }
-
-                        if (! newLeadId) {
-                            this.products = [];
-
-                            return;
-                        }
-
-                        this.fetchLeadProducts(newLeadId);
+                    data(products) {
+                        this.products = this.normalizeLeadProducts(products);
+                        // Product lookups keep their own selected item. Remount
+                        // imported rows so they cannot submit the previous Lead's IDs.
+                        this.productListVersion++;
+                        if (! this.products.length) this.addProduct();
                     },
                 },
 
@@ -1476,36 +1547,6 @@
                             };
                         });
                     },
-                    /**
-                     * Fetch and replace items with selected lead products.
-                     *
-                     * @param {Number|String} leadId
-                     *
-                     * @returns {void}
-                     */
-                    fetchLeadProducts(leadId) {
-                        this.$axios
-                            .get("{{ route('admin.quotes.lead_products', '__LEAD_ID__') }}".replace('__LEAD_ID__', leadId))
-                            .then((response) => {
-                                const leadProducts = this.normalizeLeadProducts(response.data?.data ?? []);
-
-                                this.products = leadProducts;
-
-                                this.$emitter.emit('add-flash', {
-                                    type: leadProducts.length ? 'success' : 'info',
-                                    message: leadProducts.length
-                                        ? 'Lead products assigned to quote. See items section.'
-                                        : 'No products found for selected lead.',
-                                });
-                            })
-                            .catch((error) => {
-                                this.$emitter.emit('add-flash', {
-                                    type: 'error',
-                                    message: error?.response?.data?.message || 'Unable to fetch lead products.',
-                                });
-                            });
-                    },
-
                     /**
                      * Add a new product.
                      *
