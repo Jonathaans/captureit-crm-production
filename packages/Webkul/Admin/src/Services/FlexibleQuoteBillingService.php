@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
+use Webkul\Invoice\Support\BillingDescription;
 use Webkul\Quote\Models\Quote;
 
 class FlexibleQuoteBillingService
@@ -298,8 +299,7 @@ class FlexibleQuoteBillingService
                     $invoice,
                     $lockedQuote,
                     $amount,
-                    $type,
-                    $percentage
+                    $type
                 );
             }
 
@@ -624,16 +624,18 @@ class FlexibleQuoteBillingService
         Invoice $invoice,
         Quote $quote,
         float $amount,
-        string $type,
-        ?float $percentage
+        string $type
     ): void {
         if ($quote->items->isEmpty()) {
             $invoice->items()->create([
                 'product_id' => null,
                 'sku' => $type === self::TYPE_DOWN_PAYMENT ? 'DP' : 'PELUNASAN',
                 'name' => $this->typeLabel($type),
-                'description' => 'Tagihan '.$this->typeLabel($type)
-                    .' untuk '.$quote->quote_number.'.',
+                'description' => BillingDescription::make(
+                    $type,
+                    (float) $quote->grand_total,
+                    'Referensi penawaran '.$quote->quote_number.'.'
+                ),
                 'day' => 1,
                 'unit' => 'pcs',
                 'equipment_quantity' => 0,
@@ -679,22 +681,16 @@ class FlexibleQuoteBillingService
             $allocated = round($allocated + $lineAmount, self::SCALE);
             $billing = SalesLineItem::display($item->getAttributes());
             $quantity = max(1, (float) $billing['quantity']);
-            $linePercentage = $percentage !== null
-                ? rtrim(rtrim(number_format($percentage, 4, '.', ''), '0'), '.').'%'
-                : null;
-
-            $prefix = $type === self::TYPE_DOWN_PAYMENT
-                ? 'Down Payment'.($linePercentage ? ' '.$linePercentage : '')
-                : 'Pelunasan';
-
-            $description = trim((string) ($item->description ?? ''));
 
             $invoice->items()->create([
                 'product_id' => $item->product_id,
                 'sku' => $item->sku,
                 'name' => $item->name,
-                'description' => $prefix
-                    .($description !== '' ? ' - '.$description : ''),
+                'description' => BillingDescription::make(
+                    $type,
+                    (float) $quote->grand_total,
+                    $item->description
+                ),
                 'day' => 1,
                 'unit' => $billing['unit'],
                 'equipment_quantity' => SalesLineItem::physicalQuantity($item->getAttributes()),

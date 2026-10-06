@@ -941,7 +941,7 @@
                                             name="items[{{ $item->id }}][description]"
                                             rows="2"
                                             class="w-full min-w-[220px] rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                                        >{{ old("items.{$item->id}.description", $item->description) }}</textarea>
+                                        >{{ old("items.{$item->id}.description", \Webkul\Invoice\Support\BillingDescription::display($invoice->getAttributes(), $item->description)) }}</textarea>
                                     </td>
 
                                     <td class="px-3 py-4">

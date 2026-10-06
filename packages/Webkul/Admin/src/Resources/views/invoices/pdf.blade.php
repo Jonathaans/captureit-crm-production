@@ -146,21 +146,6 @@
             $invoice->remaining_amount_snapshot
             ?? 0
         );
-
-        $billingPercentageLabel = $invoice->billing_percentage !== null
-            ? rtrim(
-                rtrim(
-                    number_format(
-                        (float) $invoice->billing_percentage,
-                        4,
-                        '.',
-                        ''
-                    ),
-                    '0'
-                ),
-                '.'
-            ).'%'
-            : null;
     @endphp
 
     <style>
@@ -598,14 +583,6 @@
         <div class="document-number">
             {{ $invoice->invoice_number }}
         </div>
-        @if ($invoice->billing_locked_at)
-            <div style="margin-top:5px; font-size:10px; font-weight:700; color:#1d4ed8;">
-                {{ $billingLabel }}
-                @if ($billingPercentageLabel)
-                    &middot; {{ $billingPercentageLabel }}
-                @endif
-            </div>
-        @endif
     </div>
 
     <!-- Customer + Project Details -->
@@ -740,7 +717,7 @@
                     </td>
 
                     <td class="description">
-                        {{ $item->description ?? '-' }}
+                        {{ \Webkul\Invoice\Support\BillingDescription::display($invoice->getAttributes(), $item->description) ?? '-' }}
                     </td>
 
                     <td class="qty">
