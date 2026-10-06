@@ -78,6 +78,14 @@ class Bouncer
      */
     public function checkIfAuthorized()
     {
+        if (
+            Route::currentRouteName() === 'admin.products.store'
+            && request()->has('quick_add')
+            && bouncer()->hasPermission('products.create.quick-create')
+        ) {
+            return;
+        }
+
         $roles = acl()->getRoles();
 
         if (isset($roles[Route::currentRouteName()])) {
