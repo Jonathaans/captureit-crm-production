@@ -25,17 +25,16 @@ return [
         'lantern' => ['name' => 'Softbox Lantern', 'aliases' => ['Softbox Lentern'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'ribbon_corporated' => ['name' => 'Ribbon Corporated', 'aliases' => ['Ribon Corporated'], 'tracking_type' => 'quantity', 'unit' => 'roll'],
         'tv_43' => ['name' => 'TV 43 inch', 'aliases' => ['TV 43"', 'TV43"'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
-        'tv_stand' => ['name' => 'Stand TV', 'tracking_type' => 'serialized', 'unit' => 'unit'],
+        'tv_stand' => ['name' => 'Stand TV', 'tracking_type' => 'serialized', 'unit' => 'unit', 'notes' => 'Default Tripod TV. Boleh ganti ke Stand TV Cart pada Surat Jalan sebelum alokasi.'],
         'cutter' => ['name' => 'Pemotong', 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'laminator' => ['name' => 'Mesin Laminating', 'tracking_type' => 'serialized', 'unit' => 'unit'],
         // Lenticular printing material, distinct from a reusable camera lens.
-        // Sheet usage per sale variant still needs confirmation before apply.
-        'hologram_lens' => ['name' => 'Lensa Hologram', 'aliases' => ['Lensa Lenticular', 'Lenticular'], 'tracking_type' => 'quantity', 'unit' => 'lembar'],
+        'hologram_lens' => ['name' => 'Lensa Hologram', 'aliases' => ['Lensa Lenticular', 'Lenticular'], 'tracking_type' => 'quantity', 'unit' => 'lembar', 'notes' => 'Satu lembar lenticular per hasil cetak. Jumlah kebutuhan mengikuti pesanan.'],
         'monopod' => ['name' => 'Monopod', 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'battery_700d' => ['name' => 'Baterai Cas 700D', 'aliases' => ['Baterai 700D'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'flash' => ['name' => 'Flash', 'aliases' => ['Flash YN 560 III'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'charger_700d' => ['name' => 'Casan Baterai 700D', 'aliases' => ['Charger Baterai 700D'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
-        'laptop' => ['name' => 'Device Laptop', 'aliases' => ['Laptop'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
+        'laptop' => ['name' => 'Device Laptop', 'aliases' => ['Laptop'], 'tracking_type' => 'serialized', 'unit' => 'unit', 'notes' => 'Pilih laptop tersedia pada Surat Jalan: Legion, LOQ, LOQ RRQ, HP, atau MSI; lalu pilih/scan unit QR saat alokasi.'],
         'ipad' => ['name' => 'iPad', 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'magic_clamp' => ['name' => 'Magic Clamp', 'aliases' => ['Clamp Kecil'], 'tracking_type' => 'serialized', 'unit' => 'unit'],
         'white_background' => ['name' => 'Background Putih', 'tracking_type' => 'serialized', 'unit' => 'unit'],
@@ -64,6 +63,7 @@ return [
         ],
         'hologram' => [
             'name' => 'Hologram', 'product_names' => ['Hologram', 'Hologram Photobooth'],
+            'item_options' => ['hologram_lens' => ['quantity_basis' => 'manual']],
             'items' => ['c_stand' => 1, 'camera_700d' => 1, 'dummy_700d' => 1, 'wide_lens' => 1, 'mini_pc' => 1, 'lantern' => 1, 'sl300' => 1, 'tv_43' => 1, 'tv_stand' => 1, 'magic_arm' => 1, 'printer_dnp' => 1, 'ribbon' => 2, 'cable_roll' => 3, 'keyboard_mouse' => 1, 'cutter' => 1, 'laminator' => 1, 'hologram_lens' => 1, 'monitor_24' => 1],
         ],
         'take_me_away' => [
@@ -79,6 +79,7 @@ return [
             'name' => 'Additional Lensa Hologram', 'optional' => true,
             'product_names' => ['Additional Lensa Hologram', 'Additional Hologram Lens'],
             'items' => ['hologram_lens' => 1],
+            'item_options' => ['hologram_lens' => ['quantity_basis' => 'sales']],
         ],
     ],
 ];

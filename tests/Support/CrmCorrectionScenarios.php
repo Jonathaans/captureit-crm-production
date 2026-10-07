@@ -4,17 +4,31 @@ namespace Tests\Support;
 
 use Illuminate\Container\Container;
 use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Translation\ArrayLoader;
+use Illuminate\Translation\Translator;
+use Illuminate\Validation\Factory;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\InvoiceCorrectionService;
 use Webkul\Admin\Services\PhotoboothCatalogService;
+use Webkul\Invoice\Models\DeliveryOrder;
+use Webkul\Invoice\Models\DeliveryOrderItem;
+use Webkul\Invoice\Models\Invoice;
+use Webkul\Invoice\Models\InvoiceItem;
 use Webkul\Invoice\Models\Payment;
+use Webkul\Invoice\Services\DeliveryOrderInventoryAllocationService;
+use Webkul\Invoice\Services\DeliveryOrderNumberService;
+use Webkul\Invoice\Services\DeliveryOrderService;
+use Webkul\Invoice\Services\DeliveryOrderWarehouseReleaseService;
 use Webkul\Invoice\Services\InvoiceNumberHistory;
+use Webkul\Product\Support\EquipmentQuantity;
 use Webkul\Quote\Models\Quote;
 
 /** In-memory database scenarios shared by Pest and the standalone smoke run. */
@@ -32,6 +46,7 @@ class CrmCorrectionScenarios
         $capsule->bootEloquent();
         Model::unsetEventDispatcher();
         $container->instance('db', $capsule->getDatabaseManager());
+        $container->instance('validator', new Factory(new Translator(new ArrayLoader, 'en'), $container));
         $container->bind('db.schema', fn () => $capsule->getConnection()->getSchemaBuilder());
         Container::setInstance($container);
         Facade::clearResolvedInstances();
@@ -200,6 +215,133 @@ class CrmCorrectionScenarios
         self::check($master->tracking_type === 'serialized' && (float) $master->quantity_on_hand === 0.0, 'Create only a serialized master, with no fabricated stock.');
     }
 
+    public static function catalogManualRequirements(): void
+    {
+        self::seedCatalog();
+        DB::table('products')->insert(['id' => 86, 'name' => 'AI Generative', 'sku' => 'AI-NEW', 'category' => null]);
+        $manualTemplateId = DB::table('product_equipment_templates')->insertGetId(['product_id' => 86, 'name' => 'Owner custom AI template', 'is_active' => true]);
+        DB::table('product_equipment_template_items')->insert(['template_id' => $manualTemplateId, 'name' => 'Owner selected equipment', 'quantity' => 3, 'unit' => 'unit', 'notes' => 'Keep manual choices']);
+        $manualRows = DB::table('product_equipment_template_items')->where('template_id', $manualTemplateId)->get()->toJson();
+        DB::table('inventory_items')->whereIn('code', ['laptop', 'curtain_pole'])->delete();
+        $service = new PhotoboothCatalogService;
+        $mapping = [
+            'templates' => ['ai_generative' => [8]],
+            'inventory' => ['laptop' => ['manual' => true], 'curtain_pole' => ['manual' => true]],
+            'requirements' => [6 => ['hologram_lens' => ['quantity' => 100, 'quantity_basis' => 'equipment']]],
+        ];
+        $before = DB::table('inventory_items')->count();
+        $plan = $service->preview($mapping);
+        self::check($plan['errors'] === [] && $plan['warnings'] !== [], 'Explicit manual requirements are reviewable without inventing masters.');
+        $service->apply($mapping, $plan['fingerprint'], 7, 'Manual laptop choice and reviewed print quantities');
+        self::check(DB::table('products')->where('id', 86)->value('sku') === 'PRD-0011', 'A newly added product joins the current sequential SKU list.');
+        self::check(DB::table('products')->where('id', 86)->value('category') === 'Photobooth', 'The new product receives the requested category.');
+        self::check(DB::table('product_equipment_templates')->where('id', $manualTemplateId)->value('name') === 'Owner custom AI template'
+            && DB::table('product_equipment_template_items')->where('template_id', $manualTemplateId)->get()->toJson() === $manualRows, 'An unmapped new AI product retains its manually edited template, even with a matching product name.');
+        $laptops = DB::table('product_equipment_template_items')->where('name', 'Device Laptop')->get();
+        self::check($laptops->count() === 2, 'Both laptop templates keep their requirement.');
+        foreach ($laptops as $row) {
+            self::check($row->inventory_item_id === null && $row->requires_inventory == 1 && (float) $row->quantity === 1.0, 'Manual laptop must remain mandatory and unselected.');
+        }
+        $holoTemplate = DB::table('product_equipment_templates')->where('product_id', 6)->value('id');
+        $lens = DB::table('product_equipment_template_items')->where('template_id', $holoTemplate)->where('name', 'Lensa Hologram')->first();
+        self::check((float) $lens->quantity === 100.0 && $lens->quantity_basis === 'equipment', 'A 100-print package needs 100 sheets per package.');
+        self::check(DB::table('inventory_items')->count() === $before && DB::table('inventory_assets')->count() === 0, 'Manual mapping must not create stock or physical assets.');
+        $invalid = $mapping;
+        $invalid['requirements'][6]['camera_700d'] = ['quantity_basis' => 'sales'];
+        self::check($service->preview($invalid)['errors'] !== [], 'Sold print quantity must not multiply a serialized camera.');
+        $invalid = $mapping;
+        $invalid['requirements'][999] = ['hologram_lens' => ['quantity' => 100]];
+        self::check($service->preview($invalid)['errors'] !== [], 'Overrides may only target mapped products.');
+        $invalid = $mapping;
+        $invalid['inventory']['laptop'] = ['manual' => true, 'create' => ['code' => 'BAD', 'warehouse_id' => 1]];
+        self::check($service->preview($invalid)['errors'] !== [], 'Manual selection cannot silently hide a create action.');
+    }
+
+    public static function equipmentQuantityRules(): void
+    {
+        self::check(EquipmentQuantity::forLine(['quantity' => 100, 'quantity_basis' => 'equipment'], ['unit' => 'pcs', 'quantity' => 2, 'equipment_quantity' => 2]) === 200.0, 'Two 100-print packages need 200 sheets.');
+        self::check(EquipmentQuantity::forLine(['quantity' => 1, 'quantity_basis' => 'sales'], ['unit' => 'pcs', 'quantity' => 100, 'equipment_quantity' => 1]) === 100.0, 'An add-on uses sold sheets, not the number of booths.');
+        self::check(EquipmentQuantity::forLine(['quantity' => 1, 'quantity_basis' => 'sales'], ['unit' => 'day', 'quantity' => 3]) === 0.0, 'Rental days cannot be guessed as sheet count.');
+        self::check(EquipmentQuantity::forLine(['quantity' => 1, 'quantity_basis' => 'manual'], ['unit' => 'pcs', 'quantity' => 1]) === 0.0, 'Custom orders require explicit print quantity.');
+        self::check(EquipmentQuantity::forLine(['quantity' => 2], ['unit' => null, 'day' => 3, 'quantity' => 2]) === 4.0, 'Historical physical equipment calculation stays unchanged.');
+    }
+
+    public static function deliveryRequirementFlow(): void
+    {
+        self::seedCatalog();
+        DB::table('products')->insert(['id' => 11, 'name' => 'Hologram Custom', 'sku' => 'HOLO-CUSTOM', 'category' => null]);
+        $mapping = [
+            'templates' => ['hologram' => [6, 11]],
+            'inventory' => ['laptop' => ['manual' => true]],
+            'requirements' => [6 => ['hologram_lens' => ['quantity' => 100, 'quantity_basis' => 'equipment']]],
+        ];
+        $service = new PhotoboothCatalogService;
+        $plan = $service->preview($mapping);
+        $service->apply($mapping, $plan['fingerprint'], 7, 'Test complete warehouse requirement flow');
+        $invoice = new Invoice;
+        $invoice->setRelation('items', new Collection([
+            new InvoiceItem(['product_id' => 6, 'quantity' => 2, 'unit' => 'pcs', 'equipment_quantity' => 2]),
+            new InvoiceItem(['product_id' => 9, 'quantity' => 50, 'unit' => 'pcs', 'equipment_quantity' => 1]),
+            new InvoiceItem(['product_id' => 7, 'quantity' => 1, 'unit' => 'pcs', 'equipment_quantity' => 1]),
+            new InvoiceItem(['product_id' => 11, 'quantity' => 1, 'unit' => 'pcs', 'equipment_quantity' => 1]),
+        ]));
+        // Concrete relation avoids needing the application's Concord proxy boot.
+        $delivery = new class extends DeliveryOrder
+        {
+            public function items()
+            {
+                return $this->hasMany(DeliveryOrderItem::class, 'delivery_order_id')->orderBy('sort_order');
+            }
+        };
+        $delivery->setTable('delivery_orders')->forceFill(['id' => 700, 'status' => 'draft', 'delivery_order_number' => 'SJ-TEST']);
+        $copier = new class(new DeliveryOrderNumberService) extends DeliveryOrderService
+        {
+            public function copyForTest(Invoice $invoice, DeliveryOrder $delivery): void
+            {
+                $this->copyEquipmentFromInvoice($invoice, $delivery);
+            }
+        };
+        $copier->copyForTest($invoice, $delivery);
+        $rows = DeliveryOrderItem::where('delivery_order_id', 700)->with('inventoryItem')->get();
+        $lenses = $rows->where('name', 'Lensa Hologram');
+        self::check($lenses->count() === 2 && (float) $lenses->sum('quantity') === 250.0, '200 package sheets plus 50 add-on sheets stay separate from unresolved custom sheets.');
+        self::check((float) $rows->where('name', 'Camera 700D')->sum('quantity') === 4.0, 'Print add-ons must not multiply camera requirements.');
+        $pending = $lenses->first(fn ($row) => (float) $row->quantity === 0.0);
+        self::check($pending !== null && $pending->requires_inventory, 'Custom sheet count must survive copying as mandatory and unresolved.');
+        $laptop = $rows->firstWhere('name', 'Device Laptop');
+        $allocation = new DeliveryOrderInventoryAllocationService;
+        $delivery->setRelation('items', new Collection([$laptop]));
+        self::check(! $allocation->isComplete($delivery) && $allocation->incompleteItemNames($delivery) === ['Device Laptop'], 'An unselected laptop must block release.');
+        $delivery->setRelation('items', new Collection([$pending]));
+        self::check(! $allocation->isComplete($delivery), 'A linked lenticular master with unknown count must also block release.');
+        try {
+            $allocation->syncQuantity($delivery, $pending, 1);
+            throw new RuntimeException('Pending quantity unexpectedly allocated.');
+        } catch (ValidationException $exception) {
+            self::check(isset($exception->errors()['quantity']), 'Pending quantity gives an actionable validation error.');
+        }
+        // Keep only the unresolved row so the release guard is tested directly.
+        DeliveryOrderItem::where('delivery_order_id', 700)->where('id', '!=', $pending->id)->delete();
+        try {
+            (new DeliveryOrderWarehouseReleaseService)->releaseOnIssue($delivery);
+            throw new RuntimeException('Pending requirement unexpectedly released.');
+        } catch (ValidationException $exception) {
+            self::check(isset($exception->errors()['inventory']), 'Warehouse release rechecks incomplete manual requirements.');
+        }
+        $pending->update(['quantity' => 100]);
+        DB::table('inventory_items')->where('id', $pending->inventory_item_id)->update(['quantity_on_hand' => 500]);
+        $delivery->unsetRelation('items');
+        $allocation->syncQuantity($delivery, $pending->fresh(), 100, 7);
+        self::check($allocation->isComplete($delivery), 'Filling the ordered sheet count and allocation resolves the requirement.');
+        (new DeliveryOrderWarehouseReleaseService)->releaseOnIssue($delivery, 7);
+        self::check((float) DB::table('inventory_items')->where('id', $pending->inventory_item_id)->value('quantity_on_hand') === 400.0, 'Releasing 100 lenticular sheets deducts exactly 100 from stock.');
+        self::check((float) DB::table('inventory_stock_movements')->where('movement_type', 'out')->sum('quantity') === 100.0, 'The stock movement records the actual sheet quantity.');
+        $legacy = new DeliveryOrderItem(['name' => 'Legacy text note', 'quantity' => 1]);
+        $legacy->setRelation('inventoryItem', null);
+        $delivery->setRelation('items', new Collection([$legacy]));
+        self::check($allocation->isComplete($delivery), 'Historical untracked text rows keep their existing behavior.');
+    }
+
     private static function seedInvoice(): void
     {
         DB::table('quotes')->insert([['id' => 1, 'quote_number' => 'QT 2610-0023', 'grand_total' => 13000000], ['id' => 2, 'quote_number' => 'OTHER', 'grand_total' => 1000000]]);
@@ -297,6 +439,7 @@ class CrmCorrectionScenarios
             $t->string('name');
         });
         DB::table('warehouses')->insert(['id' => 1, 'name' => 'Warehouse']);
+        Schema::create('warehouse_locations', fn (Blueprint $t) => $t->increments('id'));
         Schema::create('inventory_items', function (Blueprint $t) {
             $t->increments('id');
             $t->string('code')->unique();
@@ -317,9 +460,19 @@ class CrmCorrectionScenarios
         });
         Schema::create('delivery_order_items', function (Blueprint $t) {
             $t->increments('id');
-            $t->integer('quantity');
+            $t->unsignedInteger('delivery_order_id')->nullable();
+            $t->unsignedInteger('product_id')->nullable();
+            $t->unsignedInteger('inventory_item_id')->nullable();
+            $t->string('sku')->nullable();
+            $t->string('name')->nullable();
+            $t->text('description')->nullable();
+            $t->decimal('quantity', 12, 2);
+            $t->string('unit')->nullable();
+            $t->text('notes')->nullable();
+            $t->integer('sort_order')->default(0);
+            $t->timestamps();
         });
-        foreach (['2026_08_27_133453_create_product_equipment_templates_table.php', '2026_08_27_133504_create_product_equipment_template_items_table.php', '2026_08_28_140100_add_inventory_item_id_to_product_equipment_template_items.php', '2026_10_07_000000_create_crm_data_corrections_table.php'] as $file) {
+        foreach (['2026_08_27_133453_create_product_equipment_templates_table.php', '2026_08_27_133504_create_product_equipment_template_items_table.php', '2026_08_28_140100_add_inventory_item_id_to_product_equipment_template_items.php', '2026_08_28_120520_create_inventory_stock_movements_table.php', '2026_08_28_145000_create_delivery_order_inventory_allocations_table.php', '2026_08_28_153500_add_picking_out_to_delivery_order_inventory_allocations.php', '2026_10_07_000000_create_crm_data_corrections_table.php', '2026_10_07_010000_add_equipment_requirement_rules.php'] as $file) {
             (require __DIR__.'/../../database/migrations/'.$file)->up();
         }
     }

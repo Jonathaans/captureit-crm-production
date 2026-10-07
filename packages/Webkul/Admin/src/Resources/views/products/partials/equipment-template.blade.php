@@ -24,6 +24,8 @@
                     'name'              => $item->name,
                     'description'       => $item->description,
                     'quantity'          => $item->quantity,
+                    'quantity_basis'    => $item->quantity_basis ?? 'equipment',
+                    'requires_inventory' => $item->requires_inventory,
                     'unit'              => $item->unit,
                     'notes'             => $item->notes,
                 ];
@@ -204,6 +206,11 @@
                                     {{ $message }}
                                 </p>
                             @enderror
+                            <input type="hidden" name="equipment_items[{{ $index }}][requires_inventory]" value="0">
+                            <label class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                <input type="checkbox" name="equipment_items[{{ $index }}][requires_inventory]" value="1" @checked($item['requires_inventory'] ?? false)>
+                                Wajib dipenuhi gudang
+                            </label>
                         </td>
 
                         <td class="px-2 py-2">
@@ -215,6 +222,11 @@
                                 value="{{ $item['quantity'] ?? 1 }}"
                                 class="w-full rounded-md border border-gray-300 bg-white px-2 py-2 text-sm text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-white"
                             >
+                            <select name="equipment_items[{{ $index }}][quantity_basis]" aria-label="Dasar jumlah kebutuhan" class="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-2 text-xs dark:border-gray-800 dark:bg-gray-950 dark:text-white">
+                                <option value="equipment" @selected(($item['quantity_basis'] ?? 'equipment') === 'equipment')>Per paket/unit alat</option>
+                                <option value="sales" @selected(($item['quantity_basis'] ?? 'equipment') === 'sales')>Per jumlah pesanan (pcs)</option>
+                                <option value="manual" @selected(($item['quantity_basis'] ?? 'equipment') === 'manual')>Isi jumlah di Surat Jalan</option>
+                            </select>
                         </td>
 
                         <td class="px-2 py-2">

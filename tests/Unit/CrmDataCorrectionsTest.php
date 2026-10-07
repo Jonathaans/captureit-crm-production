@@ -9,3 +9,6 @@ it('renumbers colliding SKUs and EAV values while preserving document snapshots 
 it('rejects stale catalogs and incompatible inventory tracking', fn () => CrmCorrectionScenarios::run('catalogGuards'));
 it('rolls back SKUs and templates together on a late failure', fn () => CrmCorrectionScenarios::run('catalogRollback'));
 it('creates a missing inventory master only from an explicit mapping and never invents stock', fn () => CrmCorrectionScenarios::run('catalogNewMaster'));
+it('preserves required manual equipment and validates per-product print quantities', fn () => CrmCorrectionScenarios::run('catalogManualRequirements'));
+it('distinguishes package, sold-sheet and manually entered quantities', fn () => CrmCorrectionScenarios::run('equipmentQuantityRules'));
+it('copies print quantities into delivery requirements and blocks unresolved warehouse release', fn () => CrmCorrectionScenarios::run('deliveryRequirementFlow'));

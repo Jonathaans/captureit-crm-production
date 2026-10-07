@@ -4,6 +4,7 @@ namespace Webkul\Admin\Services;
 
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Webkul\Product\Support\EquipmentQuantity;
 
 class PhotoboothCatalogService
 {
@@ -52,7 +53,9 @@ class PhotoboothCatalogService
             $definition = $this->definition();
             $inventoryIds = [];
             foreach ($plan['inventory'] as $key => $row) {
-                if (isset($row['create'])) {
+                if ($row['manual'] ?? false) {
+                    $inventoryIds[$key] = null;
+                } elseif (isset($row['create'])) {
                     $item = $definition['inventory'][$key];
                     $inventoryIds[$key] = DB::table('inventory_items')->insertGetId([
                         'code' => $row['create']['code'], 'name' => $item['name'],
@@ -79,11 +82,13 @@ class PhotoboothCatalogService
                     }
                     DB::table('product_equipment_template_items')->where('template_id', $templateId)->delete();
                     $order = 0;
-                    foreach ($template['items'] as $itemKey => $quantity) {
+                    foreach ($plan['requirements'][$productId] as $itemKey => $requirement) {
                         $item = $definition['inventory'][$itemKey];
                         DB::table('product_equipment_template_items')->insert([
                             'template_id' => $templateId, 'inventory_item_id' => $inventoryIds[$itemKey],
-                            'name' => $item['name'], 'quantity' => $quantity, 'unit' => $item['unit'],
+                            'name' => $item['name'], 'quantity' => $requirement['quantity'], 'unit' => $item['unit'],
+                            'quantity_basis' => $requirement['quantity_basis'], 'requires_inventory' => true,
+                            'notes' => $requirement['notes'],
                             'sort_order' => $order++, 'created_at' => date('Y-m-d H:i:s'), 'updated_at' => date('Y-m-d H:i:s'),
                         ]);
                     }
@@ -98,7 +103,8 @@ class PhotoboothCatalogService
     {
         $definition = $this->definition();
         $errors = [];
-        foreach (array_diff(array_keys($mapping), ['inventory', 'templates']) as $key) {
+        $warnings = [];
+        foreach (array_diff(array_keys($mapping), ['inventory', 'templates', 'requirements']) as $key) {
             $errors[] = 'Mapping key tidak dikenal: '.$key;
         }
         foreach (['inventory', 'templates'] as $section) {
@@ -130,6 +136,15 @@ class PhotoboothCatalogService
         $newCodes = [];
         foreach ($definition['inventory'] as $key => $item) {
             $selection = $mapping['inventory'][$key] ?? null;
+            if (is_array($selection) && array_key_exists('manual', $selection)) {
+                if ($selection !== ['manual' => true]) {
+                    $errors[] = $key.': pemilihan manual harus berbentuk {"manual": true} tanpa opsi lain.';
+                }
+                $inventory[$key] = $item + ['id' => null, 'manual' => true];
+                $warnings[] = $key.': wajib pilih inventory di template atau Surat Jalan sebelum alokasi/rilis gudang.';
+
+                continue;
+            }
             if (is_array($selection) && isset($selection['create'])) {
                 $create = $selection['create'];
                 $code = trim((string) ($create['code'] ?? ''));
@@ -189,9 +204,59 @@ class PhotoboothCatalogService
             $templates[$key] = $ids;
         }
 
+        $overrides = $mapping['requirements'] ?? [];
+        if (! is_array($overrides)) {
+            throw new RuntimeException('Mapping requirements harus berupa object per product ID.');
+        }
+        foreach (array_keys($overrides) as $id) {
+            if (! in_array($id, $usedProducts, true)) {
+                $errors[] = 'Requirements product ID tidak terpetakan: '.$id;
+            }
+        }
+        $requirements = [];
+        foreach ($templates as $key => $ids) {
+            $template = $definition['templates'][$key];
+            foreach ($ids as $id) {
+                $changes = $overrides[$id] ?? [];
+                if (! is_array($changes)) {
+                    $errors[] = $id.': requirements harus berupa object.';
+                    $changes = [];
+                }
+                foreach (array_diff(array_keys($changes), array_keys($template['items'])) as $itemKey) {
+                    $errors[] = $id.': requirement tidak dikenal: '.$itemKey;
+                }
+                foreach ($template['items'] as $itemKey => $quantity) {
+                    $options = $changes[$itemKey] ?? [];
+                    if (! is_array($options) || array_diff(array_keys($options), ['quantity', 'quantity_basis'])) {
+                        $errors[] = $id.'/'.$itemKey.': hanya quantity dan quantity_basis yang dapat diatur.';
+                        $options = [];
+                    }
+                    $options += ($template['item_options'][$itemKey] ?? []) + ['quantity' => $quantity, 'quantity_basis' => 'equipment'];
+                    if (! is_numeric($options['quantity']) || ! is_finite((float) $options['quantity']) || (float) $options['quantity'] <= 0
+                        || ! in_array($options['quantity_basis'], EquipmentQuantity::BASES, true)) {
+                        $errors[] = $id.'/'.$itemKey.': quantity atau quantity_basis tidak valid.';
+                    }
+                    $item = $definition['inventory'][$itemKey];
+                    if ($item['tracking_type'] === 'serialized' && ($options['quantity_basis'] !== 'equipment' || floor((float) $options['quantity']) !== (float) $options['quantity'])) {
+                        $errors[] = $id.'/'.$itemKey.': aset serialized harus berupa jumlah unit bulat per paket.';
+                    }
+                    $notes = [$item['notes'] ?? ''];
+                    if ($inventory[$itemKey]['manual'] ?? false) {
+                        $notes[] = 'Hubungkan ke master inventory yang sesuai sebelum alokasi.';
+                    }
+                    if ($options['quantity_basis'] === 'manual') {
+                        $notes[] = 'Isi jumlah sesuai pesanan pada Surat Jalan sebelum alokasi.';
+                        $warnings[] = $id.'/'.$itemKey.': jumlah wajib diisi pada Surat Jalan.';
+                    }
+                    $requirements[$id][$itemKey] = $options + ['notes' => implode(' ', array_filter($notes))];
+                }
+            }
+        }
+
         return [
             'scope' => 'SEMUA produk: SKU berurutan menurut ID dan kategori Photobooth.',
-            'products' => $products, 'inventory' => $inventory, 'templates' => $templates, 'errors' => $errors,
+            'products' => $products, 'inventory' => $inventory, 'templates' => $templates,
+            'requirements' => $requirements, 'warnings' => $warnings, 'errors' => $errors,
             'fingerprint' => hash('sha256', json_encode([$snapshot, $mapping, $definition], JSON_THROW_ON_ERROR)),
         ];
     }

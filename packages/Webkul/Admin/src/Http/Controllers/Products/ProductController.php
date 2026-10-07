@@ -179,6 +179,9 @@ class ProductController extends Controller
             'min:0.01',
         ],
 
+        'equipment_items.*.quantity_basis' => ['nullable', 'in:equipment,sales,manual'],
+        'equipment_items.*.requires_inventory' => ['nullable', 'boolean'],
+
         'equipment_items.*.unit' => [
             'nullable',
             'string',
@@ -321,6 +324,10 @@ class ProductController extends Controller
                     'quantity' =>
                         $item['quantity']
                         ?? 1,
+
+                    'quantity_basis' => $item['quantity_basis'] ?? 'equipment',
+                    'requires_inventory' => (bool) ($item['requires_inventory'] ?? false)
+                        || ($item['quantity_basis'] ?? 'equipment') !== 'equipment',
 
                     'unit' =>
                         ! empty($item['unit'])

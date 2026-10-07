@@ -17,6 +17,8 @@ class ProductEquipmentTemplateItem extends Model
         'description',
 
         'quantity',
+        'quantity_basis',
+        'requires_inventory',
         'unit',
 
         'notes',
@@ -25,9 +27,10 @@ class ProductEquipmentTemplateItem extends Model
     ];
 
     protected $casts = [
-        'quantity'          => 'decimal:2',
-        'sort_order'        => 'integer',
+        'quantity' => 'decimal:2',
+        'sort_order' => 'integer',
         'inventory_item_id' => 'integer',
+        'requires_inventory' => 'boolean',
     ];
 
     /**
