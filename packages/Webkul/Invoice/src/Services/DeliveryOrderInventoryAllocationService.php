@@ -25,36 +25,34 @@ class DeliveryOrderInventoryAllocationService
         InventoryAsset $inventoryAsset,
         ?int $performedBy = null
     ): DeliveryOrderInventoryAllocation {
-        $this->assertDraft($deliveryOrder);
-
-        $inventoryItem = $this->getMappedInventoryItem(
-            $deliveryOrderItem
-        );
-
-        if (! $inventoryItem->isSerialized()) {
-            throw ValidationException::withMessages([
-                'barcode' => 'Requirement ini bukan serialized asset.',
-            ]);
-        }
-
-        $need = (float) $deliveryOrderItem->quantity;
-
-        if (floor($need) !== $need) {
-            throw ValidationException::withMessages([
-                'barcode' => 'Requirement serialized harus menggunakan quantity bilangan bulat.',
-            ]);
-        }
-
-        $requiredCount = (int) $need;
-
         return DB::transaction(function () use (
             $deliveryOrder,
             $deliveryOrderItem,
-            $inventoryItem,
             $inventoryAsset,
-            $performedBy,
-            $requiredCount
+            $performedBy
         ) {
+            [$deliveryOrder, $deliveryOrderItem] = $this->lockDraftRequirement($deliveryOrder, $deliveryOrderItem);
+
+            $inventoryItem = $this->getMappedInventoryItem(
+                $deliveryOrderItem
+            );
+
+            if (! $inventoryItem->isSerialized()) {
+                throw ValidationException::withMessages([
+                    'barcode' => 'Requirement ini bukan serialized asset.',
+                ]);
+            }
+
+            $need = (float) $deliveryOrderItem->quantity;
+
+            if (floor($need) !== $need) {
+                throw ValidationException::withMessages([
+                    'barcode' => 'Requirement serialized harus menggunakan quantity bilangan bulat.',
+                ]);
+            }
+
+            $requiredCount = (int) $need;
+
             /*
              * Lock allocation requirement terlebih dahulu supaya dua scan
              * yang hampir bersamaan tidak dapat melewati batas NEED.
@@ -180,16 +178,16 @@ class DeliveryOrderInventoryAllocationService
             ]);
 
             $allocation = DeliveryOrderInventoryAllocation::create([
-                'delivery_order_id'      => $deliveryOrder->id,
+                'delivery_order_id' => $deliveryOrder->id,
                 'delivery_order_item_id' => $deliveryOrderItem->id,
-                'inventory_item_id'      => $inventoryItem->id,
-                'inventory_asset_id'     => $lockedAsset->id,
-                'tracking_type'          => 'serialized',
-                'quantity'               => 1,
-                'status'                 => 'allocated',
-                'allocated_by'           => $performedBy,
-                'allocated_at'           => now(),
-                'notes'                  => sprintf(
+                'inventory_item_id' => $inventoryItem->id,
+                'inventory_asset_id' => $lockedAsset->id,
+                'tracking_type' => 'serialized',
+                'quantity' => 1,
+                'status' => 'allocated',
+                'allocated_by' => $performedBy,
+                'allocated_at' => now(),
+                'notes' => sprintf(
                     'Allocated by scan for %s / %s.',
                     $deliveryOrder->delivery_order_number,
                     $deliveryOrderItem->name
@@ -222,53 +220,52 @@ class DeliveryOrderInventoryAllocationService
         array $assetIds,
         ?int $performedBy = null
     ): void {
-        $this->assertDraft($deliveryOrder);
-
-        $inventoryItem = $this->getMappedInventoryItem(
-            $deliveryOrderItem
-        );
-
-        if (! $inventoryItem->isSerialized()) {
-            throw ValidationException::withMessages([
-                'asset_ids' => 'Inventory Item ini bukan serialized asset.',
-            ]);
-        }
-
-        $need = (float) $deliveryOrderItem->quantity;
-
-        if (floor($need) !== $need) {
-            throw ValidationException::withMessages([
-                'asset_ids' => 'Requirement serialized harus menggunakan quantity bilangan bulat.',
-            ]);
-        }
-
-        $requiredCount = (int) $need;
-
-        $assetIds = collect($assetIds)
-            ->filter(fn ($id) => is_numeric($id))
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values()
-            ->all();
-
-        if (count($assetIds) > $requiredCount) {
-            throw ValidationException::withMessages([
-                'asset_ids' => sprintf(
-                    'Maksimal %d asset dapat dialokasikan untuk %s.',
-                    $requiredCount,
-                    $deliveryOrderItem->name
-                ),
-            ]);
-        }
-
         DB::transaction(function () use (
             $deliveryOrder,
             $deliveryOrderItem,
-            $inventoryItem,
             $assetIds,
             $performedBy
         ) {
+            [$deliveryOrder, $deliveryOrderItem] = $this->lockDraftRequirement($deliveryOrder, $deliveryOrderItem);
+
+            $inventoryItem = $this->getMappedInventoryItem(
+                $deliveryOrderItem
+            );
+
+            if (! $inventoryItem->isSerialized()) {
+                throw ValidationException::withMessages([
+                    'asset_ids' => 'Inventory Item ini bukan serialized asset.',
+                ]);
+            }
+
+            $need = (float) $deliveryOrderItem->quantity;
+
+            if (floor($need) !== $need) {
+                throw ValidationException::withMessages([
+                    'asset_ids' => 'Requirement serialized harus menggunakan quantity bilangan bulat.',
+                ]);
+            }
+
+            $requiredCount = (int) $need;
+
+            $assetIds = collect($assetIds)
+                ->filter(fn ($id) => is_numeric($id))
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
+            if (count($assetIds) > $requiredCount) {
+                throw ValidationException::withMessages([
+                    'asset_ids' => sprintf(
+                        'Maksimal %d asset dapat dialokasikan untuk %s.',
+                        $requiredCount,
+                        $deliveryOrderItem->name
+                    ),
+                ]);
+            }
+
             $currentAllocations = DeliveryOrderInventoryAllocation::query()
                 ->where('delivery_order_id', $deliveryOrder->id)
                 ->where('delivery_order_item_id', $deliveryOrderItem->id)
@@ -333,7 +330,7 @@ class DeliveryOrderInventoryAllocationService
                 }
 
                 $allocation->update([
-                    'status'      => 'released',
+                    'status' => 'released',
                     'released_by' => $performedBy,
                     'released_at' => now(),
                 ]);
@@ -380,16 +377,16 @@ class DeliveryOrderInventoryAllocationService
                 ]);
 
                 DeliveryOrderInventoryAllocation::create([
-                    'delivery_order_id'      => $deliveryOrder->id,
+                    'delivery_order_id' => $deliveryOrder->id,
                     'delivery_order_item_id' => $deliveryOrderItem->id,
-                    'inventory_item_id'      => $inventoryItem->id,
-                    'inventory_asset_id'     => $asset->id,
-                    'tracking_type'          => 'serialized',
-                    'quantity'               => 1,
-                    'status'                 => 'allocated',
-                    'allocated_by'           => $performedBy,
-                    'allocated_at'           => now(),
-                    'notes'                  => sprintf(
+                    'inventory_item_id' => $inventoryItem->id,
+                    'inventory_asset_id' => $asset->id,
+                    'tracking_type' => 'serialized',
+                    'quantity' => 1,
+                    'status' => 'allocated',
+                    'allocated_by' => $performedBy,
+                    'allocated_at' => now(),
+                    'notes' => sprintf(
                         'Allocated for %s / %s.',
                         $deliveryOrder->delivery_order_number,
                         $deliveryOrderItem->name
@@ -472,44 +469,43 @@ class DeliveryOrderInventoryAllocationService
         float $quantity,
         ?int $performedBy = null
     ): void {
-        $this->assertDraft($deliveryOrder);
-
-        $inventoryItem = $this->getMappedInventoryItem(
-            $deliveryOrderItem
-        );
-
-        if (! $inventoryItem->isQuantityTracked()) {
-            throw ValidationException::withMessages([
-                'quantity' => 'Inventory Item ini bukan quantity tracked item.',
-            ]);
-        }
-
-        $need = (float) $deliveryOrderItem->quantity;
-        $quantity = round($quantity, 2);
-
-        if ($quantity < 0) {
-            throw ValidationException::withMessages([
-                'quantity' => 'Allocation quantity tidak boleh negatif.',
-            ]);
-        }
-
-        if ($quantity > $need) {
-            throw ValidationException::withMessages([
-                'quantity' => sprintf(
-                    'Allocation maksimal %s %s sesuai requirement Surat Jalan.',
-                    $this->formatQuantity($need),
-                    $inventoryItem->unit
-                ),
-            ]);
-        }
-
         DB::transaction(function () use (
             $deliveryOrder,
             $deliveryOrderItem,
-            $inventoryItem,
             $quantity,
             $performedBy
         ) {
+            [$deliveryOrder, $deliveryOrderItem] = $this->lockDraftRequirement($deliveryOrder, $deliveryOrderItem);
+
+            $inventoryItem = $this->getMappedInventoryItem(
+                $deliveryOrderItem
+            );
+
+            if (! $inventoryItem->isQuantityTracked()) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'Inventory Item ini bukan quantity tracked item.',
+                ]);
+            }
+
+            $need = (float) $deliveryOrderItem->quantity;
+            $quantity = round($quantity, 2);
+
+            if ($quantity < 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'Allocation quantity tidak boleh negatif.',
+                ]);
+            }
+
+            if ($quantity > $need) {
+                throw ValidationException::withMessages([
+                    'quantity' => sprintf(
+                        'Allocation maksimal %s %s sesuai requirement Surat Jalan.',
+                        $this->formatQuantity($need),
+                        $inventoryItem->unit
+                    ),
+                ]);
+            }
+
             $lockedItem = InventoryItem::query()
                 ->lockForUpdate()
                 ->findOrFail($inventoryItem->id);
@@ -566,7 +562,7 @@ class DeliveryOrderInventoryAllocationService
             if ($currentQuantity > 0) {
                 foreach ($currentAllocations as $allocation) {
                     $allocation->update([
-                        'status'      => 'released',
+                        'status' => 'released',
                         'released_by' => $performedBy,
                         'released_at' => now(),
                     ]);
@@ -594,16 +590,16 @@ class DeliveryOrderInventoryAllocationService
             }
 
             DeliveryOrderInventoryAllocation::create([
-                'delivery_order_id'      => $deliveryOrder->id,
+                'delivery_order_id' => $deliveryOrder->id,
                 'delivery_order_item_id' => $deliveryOrderItem->id,
-                'inventory_item_id'      => $lockedItem->id,
-                'inventory_asset_id'     => null,
-                'tracking_type'          => 'quantity',
-                'quantity'               => $quantity,
-                'status'                 => 'allocated',
-                'allocated_by'           => $performedBy,
-                'allocated_at'           => now(),
-                'notes'                  => sprintf(
+                'inventory_item_id' => $lockedItem->id,
+                'inventory_asset_id' => null,
+                'tracking_type' => 'quantity',
+                'quantity' => $quantity,
+                'status' => 'allocated',
+                'allocated_by' => $performedBy,
+                'allocated_at' => now(),
+                'notes' => sprintf(
                     'Reserved for %s / %s.',
                     $deliveryOrder->delivery_order_number,
                     $deliveryOrderItem->name
@@ -807,6 +803,23 @@ class DeliveryOrderInventoryAllocationService
         return array_values(array_unique($names));
     }
 
+    /** Serialize edits, scans and issue, then re-read quantities and mapping. */
+    private function lockDraftRequirement(DeliveryOrder $deliveryOrder, DeliveryOrderItem $item): array
+    {
+        $lockedOrder = DeliveryOrder::query()->lockForUpdate()->findOrFail($deliveryOrder->id);
+        $this->assertDraft($lockedOrder);
+        $lockedItem = DeliveryOrderItem::query()
+            ->where('delivery_order_id', $lockedOrder->id)
+            ->lockForUpdate()->find($item->id);
+        if (! $lockedItem) {
+            throw ValidationException::withMessages([
+                'inventory' => 'Daftar equipment sudah berubah. Muat ulang halaman Allocation sebelum scan kembali.',
+            ]);
+        }
+
+        return [$lockedOrder, $lockedItem];
+    }
+
     private function getMappedInventoryItem(
         DeliveryOrderItem $deliveryOrderItem
     ): InventoryItem {
@@ -881,7 +894,7 @@ class DeliveryOrderInventoryAllocationService
                 }
 
                 $allocation->update([
-                    'status'      => 'released',
+                    'status' => 'released',
                     'released_by' => $performedBy,
                     'released_at' => now(),
                 ]);
@@ -915,7 +928,7 @@ class DeliveryOrderInventoryAllocationService
 
             foreach ($allocations as $allocation) {
                 $allocation->update([
-                    'status'      => 'released',
+                    'status' => 'released',
                     'released_by' => $performedBy,
                     'released_at' => now(),
                 ]);
@@ -1038,22 +1051,22 @@ class DeliveryOrderInventoryAllocationService
         string $notes
     ): InventoryStockMovement {
         return InventoryStockMovement::create([
-            'inventory_item_id'     => $inventoryItem->id,
-            'inventory_asset_id'    => $inventoryAsset?->id,
-            'warehouse_id'          => $inventoryAsset?->warehouse_id
+            'inventory_item_id' => $inventoryItem->id,
+            'inventory_asset_id' => $inventoryAsset?->id,
+            'warehouse_id' => $inventoryAsset?->warehouse_id
                 ?? $inventoryItem->warehouse_id,
             'warehouse_location_id' => $inventoryAsset?->warehouse_location_id
                 ?? $inventoryItem->warehouse_location_id,
-            'movement_type'         => $movementType,
-            'quantity'              => $quantity,
-            'from_status'           => $fromStatus,
-            'to_status'             => $toStatus,
-            'reference_type'        => 'delivery_order',
-            'reference_id'          => $deliveryOrder->id,
-            'reference_number'      => $deliveryOrder->delivery_order_number,
-            'performed_by'          => $performedBy,
-            'notes'                 => $notes,
-            'occurred_at'           => now(),
+            'movement_type' => $movementType,
+            'quantity' => $quantity,
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'reference_type' => 'delivery_order',
+            'reference_id' => $deliveryOrder->id,
+            'reference_number' => $deliveryOrder->delivery_order_number,
+            'performed_by' => $performedBy,
+            'notes' => $notes,
+            'occurred_at' => now(),
         ]);
     }
 

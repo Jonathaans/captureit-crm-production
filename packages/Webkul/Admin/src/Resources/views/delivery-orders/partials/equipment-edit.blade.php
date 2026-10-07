@@ -6,6 +6,7 @@
         $existingItems = $deliveryOrder->items
             ->map(function ($item) {
                 return [
+                    'id'                => $item->id,
                     'inventory_item_id' => $item->inventory_item_id,
                     'name'              => $item->name,
                     'description'       => $item->description,
@@ -46,6 +47,11 @@
         ]);
 @endphp
 
+<input type="hidden" name="equipment_revision" value="{{ old('equipment_revision', \Webkul\Invoice\Services\DeliveryOrderEquipmentService::revision($deliveryOrder->items)) }}">
+@error('equipment_revision')
+    <p class="mt-4 text-sm text-red-600">Muat ulang halaman Edit untuk menggunakan form terbaru.</p>
+@enderror
+
 <div
     class="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900"
     data-crm-equipment-editor
@@ -70,6 +76,7 @@
                 <p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
                     Tambahkan sebanyak apa pun kebutuhan Surat Jalan. Inventory Item menghubungkan
                     kebutuhan dengan master stok; actual asset dipilih saat Allocation / Picking.
+                    Hasil scan tetap tersimpan saat Anda menambah item, menaikkan jumlah, atau mengedit catatan.
                 </p>
             </div>
 
@@ -152,6 +159,10 @@
                                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-brandColor focus:ring-2 focus:ring-brandColor/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                                 data-equipment-name
                             >
+                            <input type="hidden" name="items[{{ $index }}][id]" value="{{ $item['id'] ?? '' }}">
+                            @error("items.{$index}.id")
+                                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                            @enderror
                             <input type="hidden" name="items[{{ $index }}][requires_inventory]" value="{{ ! empty($item['requires_inventory']) ? 1 : 0 }}">
                         </td>
 
@@ -201,6 +212,9 @@
                                 value="{{ $item['quantity'] ?? 1 }}"
                                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-brandColor focus:ring-2 focus:ring-brandColor/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                             >
+                            @error("items.{$index}.quantity")
+                                <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                            @enderror
                             @if (! empty($item['requires_inventory']) && (float) ($item['quantity'] ?? 0) <= 0)
                                 <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">Isi jumlah sesuai pesanan sebelum alokasi.</p>
                             @endif
