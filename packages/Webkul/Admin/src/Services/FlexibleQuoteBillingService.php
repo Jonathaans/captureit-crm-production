@@ -548,14 +548,8 @@ class FlexibleQuoteBillingService
     {
         $prefix = 'INV '.now()->format('ym').'-';
 
-        $lastNumber = Invoice::query()
-            ->where('invoice_number', 'like', $prefix.'%')
-            ->orderByDesc('invoice_number')
-            ->value('invoice_number');
-
-        $sequence = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
+        $sequence = app(\Webkul\Invoice\Services\InvoiceNumberHistory::class)
+            ->lastSequence($prefix) + 1;
 
         return $prefix.str_pad(
             (string) $sequence,

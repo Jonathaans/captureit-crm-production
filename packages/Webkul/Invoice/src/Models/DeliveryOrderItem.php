@@ -22,6 +22,7 @@ class DeliveryOrderItem extends Model implements DeliveryOrderItemContract
         'description',
 
         'quantity',
+        'requires_inventory',
         'unit',
 
         'notes',
@@ -30,9 +31,10 @@ class DeliveryOrderItem extends Model implements DeliveryOrderItemContract
     ];
 
     protected $casts = [
-        'quantity'          => 'decimal:2',
-        'sort_order'        => 'integer',
+        'quantity' => 'decimal:2',
+        'sort_order' => 'integer',
         'inventory_item_id' => 'integer',
+        'requires_inventory' => 'boolean',
     ];
 
     /**

@@ -496,9 +496,12 @@ class DeliveryOrderController extends Controller
 
             'items.*.quantity' => [
                 'nullable',
+                'required_if:items.*.requires_inventory,1',
                 'numeric',
                 'min:0.01',
             ],
+
+            'items.*.requires_inventory' => ['nullable', 'boolean'],
 
             'items.*.unit' => [
                 'nullable',
@@ -592,6 +595,8 @@ class DeliveryOrderController extends Controller
 
                         'quantity' =>
                             $item['quantity'] ?? 1,
+
+                        'requires_inventory' => (bool) ($item['requires_inventory'] ?? false),
 
                         'unit' =>
                             ! empty($item['unit'])

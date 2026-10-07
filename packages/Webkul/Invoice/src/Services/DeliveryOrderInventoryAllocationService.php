@@ -699,7 +699,7 @@ class DeliveryOrderInventoryAllocationService
         ]);
 
         $mappedItems = $deliveryOrder->items
-            ->filter(fn ($item) => $item->inventoryItem);
+            ->filter(fn ($item) => $item->inventoryItem || $item->requires_inventory);
 
         if ($mappedItems->isEmpty()) {
             return true;
@@ -707,6 +707,9 @@ class DeliveryOrderInventoryAllocationService
 
         foreach ($mappedItems as $item) {
             $need = (float) $item->quantity;
+            if (! $item->inventoryItem || ($item->requires_inventory && $need <= 0)) {
+                return false;
+            }
 
             if ($item->inventoryItem->isSerialized()) {
                 if (floor($need) !== $need) {
@@ -756,6 +759,11 @@ class DeliveryOrderInventoryAllocationService
         $names = [];
 
         foreach ($deliveryOrder->items as $item) {
+            if ($item->requires_inventory && (! $item->inventoryItem || (float) $item->quantity <= 0)) {
+                $names[] = $item->name;
+
+                continue;
+            }
             if (! $item->inventoryItem) {
                 continue;
             }
@@ -802,6 +810,11 @@ class DeliveryOrderInventoryAllocationService
     private function getMappedInventoryItem(
         DeliveryOrderItem $deliveryOrderItem
     ): InventoryItem {
+        if ($deliveryOrderItem->requires_inventory && (float) $deliveryOrderItem->quantity <= 0) {
+            throw ValidationException::withMessages([
+                'quantity' => 'Isi jumlah sesuai pesanan pada Surat Jalan sebelum alokasi.',
+            ]);
+        }
         $inventoryItem = $deliveryOrderItem->inventoryItem;
 
         if (! $inventoryItem) {

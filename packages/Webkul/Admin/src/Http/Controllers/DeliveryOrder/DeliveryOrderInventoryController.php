@@ -43,7 +43,7 @@ class DeliveryOrderInventoryController extends Controller
             $inventoryItem = $item->inventoryItem;
             $need = (float) $item->quantity;
 
-            if (! $inventoryItem) {
+            if (! $inventoryItem || ($item->requires_inventory && $need <= 0)) {
                 $summaries[$item->id] = [
                     'tracking_type'  => null,
                     'need'           => $need,

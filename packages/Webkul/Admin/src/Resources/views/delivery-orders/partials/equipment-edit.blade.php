@@ -10,6 +10,7 @@
                     'name'              => $item->name,
                     'description'       => $item->description,
                     'quantity'          => $item->quantity,
+                    'requires_inventory' => $item->requires_inventory,
                     'unit'              => $item->unit,
                     'notes'             => $item->notes,
                 ];
@@ -151,6 +152,7 @@
                                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-brandColor focus:ring-2 focus:ring-brandColor/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                                 data-equipment-name
                             >
+                            <input type="hidden" name="items[{{ $index }}][requires_inventory]" value="{{ ! empty($item['requires_inventory']) ? 1 : 0 }}">
                         </td>
 
                         <td class="border-b border-gray-100 px-3 py-3 align-top dark:border-gray-800">
@@ -195,9 +197,13 @@
                                 step="0.01"
                                 min="0.01"
                                 name="items[{{ $index }}][quantity]"
+                                @required(! empty($item['requires_inventory']))
                                 value="{{ $item['quantity'] ?? 1 }}"
                                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-brandColor focus:ring-2 focus:ring-brandColor/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                             >
+                            @if (! empty($item['requires_inventory']) && (float) ($item['quantity'] ?? 0) <= 0)
+                                <p class="mt-1 text-xs text-amber-700 dark:text-amber-400">Isi jumlah sesuai pesanan sebelum alokasi.</p>
+                            @endif
                         </td>
 
                         <td class="border-b border-gray-100 px-3 py-3 align-top dark:border-gray-800">

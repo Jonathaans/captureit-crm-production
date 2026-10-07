@@ -2,12 +2,12 @@
 
 namespace Webkul\Invoice\Services;
 
-use Webkul\Core\Support\SalesLineItem;
 use Illuminate\Support\Facades\DB;
 use Webkul\Invoice\Models\DeliveryOrder;
 use Webkul\Invoice\Models\DeliveryOrderItem;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Product\Models\ProductEquipmentTemplate;
+use Webkul\Product\Support\EquipmentQuantity;
 
 class DeliveryOrderService
 {
@@ -324,8 +324,6 @@ class DeliveryOrderService
             |
             */
 
-            $productQuantity = SalesLineItem::physicalQuantity($invoiceItem->getAttributes());
-
             foreach ($template->items as $templateItem) {
                 $name = trim((string) $templateItem->name);
 
@@ -345,15 +343,9 @@ class DeliveryOrderService
                     (string) ($templateItem->notes ?? '')
                 );
 
-                $templateQuantity = is_numeric($templateItem->quantity)
-                    ? (float) $templateItem->quantity
-                    : 1.0;
-
-                if ($templateQuantity <= 0) {
-                    $templateQuantity = 1.0;
-                }
-
-                $quantity = $templateQuantity * $productQuantity;
+                $quantity = EquipmentQuantity::forLine($templateItem->getAttributes(), $invoiceItem->getAttributes());
+                $requiresInventory = $templateItem->requires_inventory
+                    || ($templateItem->quantity_basis ?? 'equipment') !== 'equipment';
 
                 /*
                  * Inventory master yang dipetakan dari Equipment Template.
@@ -386,6 +378,8 @@ class DeliveryOrderService
                     .$notes
                     .'|inventory:'
                     .($inventoryItemId ?? 'none')
+                    .'|required:'.(int) $requiresInventory
+                    .'|pending:'.(int) ($requiresInventory && $quantity <= 0)
                 );
 
                 if (isset($equipment[$mergeKey])) {
@@ -422,6 +416,7 @@ class DeliveryOrderService
                         : null,
 
                     'quantity' => $quantity,
+                    'requires_inventory' => $requiresInventory,
 
                     'unit' => $unit !== ''
                         ? $unit
@@ -454,6 +449,7 @@ class DeliveryOrderService
                 'description' => $item['description'],
 
                 'quantity' => $item['quantity'],
+                'requires_inventory' => $item['requires_inventory'],
                 'unit' => $item['unit'],
 
                 'notes' => $item['notes'],

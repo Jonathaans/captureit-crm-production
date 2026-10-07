@@ -39,6 +39,12 @@ class DeliveryOrderWarehouseReleaseService
             $deliveryOrder,
             $performedBy
         ) {
+            $deliveryOrder->unsetRelation('items');
+            if (! (new DeliveryOrderInventoryAllocationService)->isComplete($deliveryOrder)) {
+                throw ValidationException::withMessages([
+                    'inventory' => 'Lengkapi pilihan inventory, jumlah pesanan, dan alokasi sebelum rilis Surat Jalan.',
+                ]);
+            }
             $allocations = DeliveryOrderInventoryAllocation::query()
                 ->where('delivery_order_id', $deliveryOrder->id)
                 ->whereIn('status', [

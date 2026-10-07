@@ -63,6 +63,14 @@ class AdminServiceProvider extends ServiceProvider
         ]);
 
         $this->app->register(EventServiceProvider::class);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                \Webkul\Admin\Console\Commands\CrmInvoiceCorrectCommand::class,
+                \Webkul\Admin\Console\Commands\CrmCatalogReviewCommand::class,
+                \Webkul\Admin\Console\Commands\CrmPhotoboothCatalogCommand::class,
+            ]);
+        }
     }
 
     /**

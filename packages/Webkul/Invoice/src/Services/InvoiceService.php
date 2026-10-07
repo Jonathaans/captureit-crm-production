@@ -90,26 +90,7 @@ class InvoiceService
 
             $prefix = 'INV '.$yearMonth.'-';
 
-            $lastInvoice = Invoice::query()
-                ->where(
-                    'invoice_number',
-                    'like',
-                    $prefix.'%'
-                )
-                ->orderByDesc('invoice_number')
-                ->first();
-
-            $nextNumber = 1;
-
-            if ($lastInvoice?->invoice_number) {
-                $lastSequence = (int) substr(
-                    $lastInvoice->invoice_number,
-                    -4
-                );
-
-                $nextNumber =
-                    $lastSequence + 1;
-            }
+            $nextNumber = app(InvoiceNumberHistory::class)->lastSequence($prefix) + 1;
 
             $invoice->invoice_number =
                 $prefix.str_pad(
