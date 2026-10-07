@@ -1,7 +1,7 @@
 {
   "templates": {
     "classic": [1, 2, 3, 4, 5, 6, 7],
-    "classic_box": [],
+    "classic_box": [46, 47, 48, 51, 52, 79],
     "high_angle": [84],
     "high_angle_box": [49, 50],
     "mozaik": [38, 85],
@@ -17,7 +17,7 @@
     "mini_pc": 100,
     "softbox_p120": 131,
     "sl300": 125,
-    "lighting_stand": null,
+    "lighting_stand": 132,
     "camera_mount": 168,
     "printer_dnp": 169,
     "ribbon": 194,
@@ -27,7 +27,7 @@
     "monitor_24": 162,
     "curtain_pole": null,
     "red_curtain": null,
-    "magic_arm": null,
+    "magic_arm": 165,
     "c_stand": 133,
     "wide_lens": 113,
     "lantern": 129,
@@ -39,11 +39,11 @@
     "hologram_lens": null,
     "monopod": 137,
     "battery_700d": null,
-    "flash": null,
+    "flash": 119,
     "charger_700d": null,
     "laptop": null,
     "ipad": 120,
-    "magic_clamp": null,
+    "magic_clamp": 166,
     "white_background": null,
     "background_pole": 136
   }

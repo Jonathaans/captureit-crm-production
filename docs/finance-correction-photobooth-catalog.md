@@ -39,11 +39,14 @@ Riwayat audit adalah sumber pemulihan manual; tidak ada tombol undo otomatis. Ro
 
 ## Pemetaan template dan inventory
 
-Definisi terletak di `packages/Webkul/Admin/src/Config/photobooth-catalog.php`. Delapan template utama wajib terpetakan. Template tambahan Lensa Hologram bersifat opsional pada produk Additional yang sudah ada; Hologram Photobooth sendiri selalu berisi satu lensa. Produk tambahan baru memerlukan data komersial tersendiri dan tidak dibuat dengan harga tebakan.
+Definisi terletak di `packages/Webkul/Admin/src/Config/photobooth-catalog.php`. Delapan template utama wajib terpetakan. Template tambahan Lensa Hologram bersifat opsional pada produk Additional yang sudah ada; Hologram Photobooth sendiri wajib memakai lensa lenticular. Produk tambahan baru memerlukan data komersial tersendiri dan tidak dibuat dengan harga tebakan.
 
 - Perleng = Kabel Roll: 3 unit serialized pada semua paket utama.
 - Ribbon reguler dan Corporated: dua master consumable terpisah, masing-masing 2 roll pada paket yang memakainya.
-- Barang tanpa qty dianggap 1 unit/set. TL 120 menggunakan set.
+- Barang tanpa qty dianggap 1 unit. TL 120 sudah dikonfirmasi satu unit per QR.
+- Classic Box dipakai untuk Lite Box, Pro Branded Box, dan Photobox. Flash Take Me Away menggunakan YN 560 III.
+- Stand Lighting = TAKARA, Magic Arm = CLAMP ARM, dan Magic Clamp = CLAMP KECIL, sesuai konfirmasi pemilik.
+- Lensa Hologram adalah bahan lenticular, bukan lensa fisheye kamera. Draft menyiapkan tracking quantity dengan satuan lembar. Konfirmasi pemakaian per cetakan, satuan stok, dan jumlah tiap varian Hologram/add-on sebelum apply; angka 1 pada draft belum merupakan kebutuhan final paket 100/200/300 prints.
 - AI Generative membutuhkan 5 stand lighting; High Angle Box mengikuti daftar tanpa lensa wide.
 - Qty template adalah kebutuhan per paket. Membuat master baru tidak membuat unit aset atau stok fisik.
 
@@ -64,6 +67,8 @@ Pencocokan otomatis hanya memakai nama/alias yang tepat setelah normalisasi spas
 ```
 
 ID di atas hanyalah contoh. Gunakan hasil pemeriksaan production. Mapping `create` hanya untuk master yang telah dipastikan belum ada; stok awalnya nol dan aset fisiknya harus didaftarkan lewat alur inventory. Tipe master lama tidak dikonversi otomatis.
+
+Untuk production yang ditinjau pada 7 Oktober 2026, pemilik memilih mendaftarkan Tiang Gorden, Gorden Merah, Ribbon Corporated, Baterai 700D, Charger 700D, dan Background Putih secara manual nanti. Mapping draft tidak memakai `create`; lengkapi ID setelah master didaftarkan. Master yang belum tersedia tetap memblokir apply seluruh katalog, termasuk penataan SKU/kategori; kebutuhan template tidak dibuang diam-diam. Koreksi invoice menggunakan command terpisah dan tidak bergantung pada kelengkapan inventory.
 
 ```sh
 php artisan crm:photobooth-catalog --mapping=/path/reviewed-mapping.json

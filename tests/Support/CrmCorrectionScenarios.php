@@ -112,6 +112,13 @@ class CrmCorrectionScenarios
     public static function catalogCorrection(): void
     {
         self::seedCatalog();
+        // Reviewed warehouse names/units must resolve without changing masters.
+        foreach (['lighting_stand' => 'TAKARA', 'magic_arm' => 'CLAMP ARM', 'magic_clamp' => 'CLAMP KECIL', 'flash' => 'FLASH YN 560 III'] as $code => $name) {
+            DB::table('inventory_items')->where('code', $code)->update(['name' => $name]);
+        }
+        DB::table('inventory_items')->where('code', 'tl120')->update(['unit' => 'unit']);
+        DB::table('inventory_items')->where('code', 'hologram_lens')->update(['name' => 'Lensa Lenticular', 'tracking_type' => 'quantity', 'unit' => 'lembar']);
+        DB::table('inventory_items')->insert(['code' => 'LENS FISHEYE', 'name' => 'LENSA FISHEYE CANON', 'tracking_type' => 'serialized', 'unit' => 'unit', 'warehouse_id' => 1, 'is_active' => true, 'quantity_on_hand' => 0]);
         $service = new PhotoboothCatalogService;
         $preview = $service->preview();
         self::check($preview['errors'] === [], 'Seeded catalog should resolve without errors.');
