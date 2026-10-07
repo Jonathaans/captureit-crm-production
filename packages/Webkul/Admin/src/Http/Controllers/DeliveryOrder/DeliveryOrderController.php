@@ -12,8 +12,7 @@ use Webkul\Admin\DataGrids\DeliveryOrder\DeliveryOrderDataGrid;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Invoice\Models\DeliveryOrder;
-use Webkul\Invoice\Models\DeliveryOrderItem;
-use Webkul\Invoice\Models\DeliveryOrderInventoryAllocation;
+use Webkul\Invoice\Services\DeliveryOrderEquipmentService;
 use Webkul\Invoice\Services\DeliveryOrderInventoryAllocationService;
 use Webkul\Invoice\Services\DeliveryOrderReturnService;
 use Webkul\Invoice\Services\DeliveryOrderWarehouseReleaseService;
@@ -391,26 +390,6 @@ class DeliveryOrderController extends Controller
     ): RedirectResponse {
         $deliveryOrder = DeliveryOrder::findOrFail($id);
 
-        $hasActiveAllocations = DeliveryOrderInventoryAllocation::query()
-            ->where('delivery_order_id', $deliveryOrder->id)
-            ->whereIn(
-                'status',
-                DeliveryOrderInventoryAllocation::ACTIVE_STATUSES
-            )
-            ->exists();
-
-        if ($hasActiveAllocations) {
-            return redirect()
-                ->route(
-                    'admin.delivery-orders.show',
-                    $deliveryOrder->id
-                )
-                ->with(
-                    'error',
-                    'Surat Jalan memiliki inventory allocation aktif. Release allocation terlebih dahulu sebelum mengubah Equipment / Items.'
-                );
-        }
-
         $validated = $request->validate([
             'recipient_name' => [
                 'nullable',
@@ -477,6 +456,10 @@ class DeliveryOrderController extends Controller
                 'array',
             ],
 
+            'equipment_revision' => ['required', 'string', 'size:64'],
+
+            'items.*.id' => ['nullable', 'integer', 'min:1', 'distinct'],
+
             'items.*.inventory_item_id' => [
                 'nullable',
                 'integer',
@@ -515,103 +498,7 @@ class DeliveryOrderController extends Controller
             ],
         ]);
 
-        DB::transaction(
-            function () use (
-                $deliveryOrder,
-                $validated
-            ) {
-                $deliveryOrder->update([
-                    'recipient_name' =>
-                        $validated['recipient_name'] ?? null,
-
-                    'recipient_phone' =>
-                        $validated['recipient_phone'] ?? null,
-
-                    'pic_name' =>
-                        $validated['pic_name'] ?? null,
-
-                    'pic_phone' =>
-                        $validated['pic_phone'] ?? null,
-
-                    'event_date' =>
-                        $validated['event_date'] ?? null,
-
-                    'event_time' =>
-                        $validated['event_time'] ?? null,
-
-                    'location' =>
-                        $validated['location'] ?? null,
-
-                    'delivery_address' =>
-                        $validated['delivery_address'] ?? null,
-
-                    'delivery_date' =>
-                        $validated['delivery_date'] ?? null,
-
-                    'delivery_time' =>
-                        $validated['delivery_time'] ?? null,
-
-                    'notes' =>
-                        $validated['notes'] ?? null,
-                ]);
-
-                /*
-                |--------------------------------------------------------------------------
-                | Rebuild Equipment Items
-                |--------------------------------------------------------------------------
-                */
-
-                $deliveryOrder
-                    ->items()
-                    ->delete();
-
-                $items = $validated['items'] ?? [];
-
-                $sortOrder = 0;
-
-                foreach ($items as $item) {
-                    $name = trim(
-                        (string) ($item['name'] ?? '')
-                    );
-
-                    if ($name === '') {
-                        continue;
-                    }
-
-                    DeliveryOrderItem::create([
-                        'delivery_order_id' =>
-                            $deliveryOrder->id,
-
-                        'inventory_item_id' =>
-                            ! empty($item['inventory_item_id'])
-                                ? (int) $item['inventory_item_id']
-                                : null,
-
-                        'name' =>
-                            $name,
-
-                        'description' =>
-                            $item['description'] ?? null,
-
-                        'quantity' =>
-                            $item['quantity'] ?? 1,
-
-                        'requires_inventory' => (bool) ($item['requires_inventory'] ?? false),
-
-                        'unit' =>
-                            ! empty($item['unit'])
-                                ? $item['unit']
-                                : 'unit',
-
-                        'notes' =>
-                            $item['notes'] ?? null,
-
-                        'sort_order' =>
-                            $sortOrder++,
-                    ]);
-                }
-            }
-        );
+        app(DeliveryOrderEquipmentService::class)->update($deliveryOrder, $validated);
 
         session()->flash(
             'success',

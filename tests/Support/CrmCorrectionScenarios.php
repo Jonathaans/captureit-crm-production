@@ -34,7 +34,7 @@ use Webkul\Quote\Models\Quote;
 /** In-memory database scenarios shared by Pest and the standalone smoke run. */
 class CrmCorrectionScenarios
 {
-    public static function run(string $scenario): void
+    public static function run(string|callable $scenario): void
     {
         $oldApp = Facade::getFacadeApplication();
         $oldContainer = Container::getInstance();
@@ -54,7 +54,7 @@ class CrmCorrectionScenarios
         try {
             self::check(DB::connection()->getDatabaseName() === ':memory:', 'Tests require an in-memory DB.');
             self::schema();
-            self::$scenario();
+            is_string($scenario) ? self::$scenario() : $scenario();
         } finally {
             $capsule->getConnection()->disconnect();
             if ($oldResolver) {
@@ -293,7 +293,7 @@ class CrmCorrectionScenarios
                 return $this->hasMany(DeliveryOrderItem::class, 'delivery_order_id')->orderBy('sort_order');
             }
         };
-        $delivery->setTable('delivery_orders')->forceFill(['id' => 700, 'status' => 'draft', 'delivery_order_number' => 'SJ-TEST']);
+        $delivery->setTable('delivery_orders')->forceFill(['id' => 700, 'status' => 'draft', 'delivery_order_number' => 'SJ-TEST'])->save();
         $copier = new class(new DeliveryOrderNumberService) extends DeliveryOrderService
         {
             public function copyForTest(Invoice $invoice, DeliveryOrder $delivery): void
@@ -406,9 +406,16 @@ class CrmCorrectionScenarios
             $t->foreign('invoice_id')->references('id')->on('invoices')->cascadeOnDelete();
         });
         foreach (['invoice_items', 'expenses', 'work_orders', 'delivery_orders', 'purchase_orders'] as $table) {
-            Schema::create($table, function (Blueprint $t) {
+            Schema::create($table, function (Blueprint $t) use ($table) {
                 $t->increments('id');
-                $t->unsignedInteger('invoice_id');
+                $t->unsignedInteger('invoice_id')->nullable();
+                if ($table === 'delivery_orders') {
+                    $t->string('delivery_order_number')->nullable();
+                    $t->string('status')->default('draft');
+                    $t->text('notes')->nullable();
+                    $t->string('recipient_name')->nullable();
+                    $t->timestamps();
+                }
                 $t->foreign('invoice_id')->references('id')->on('invoices')->cascadeOnDelete();
             });
         }
@@ -452,7 +459,14 @@ class CrmCorrectionScenarios
             $t->decimal('minimum_stock', 12, 2)->default(0);
             $t->timestamps();
         });
-        Schema::create('inventory_assets', fn (Blueprint $t) => $t->increments('id'));
+        Schema::create('inventory_assets', function (Blueprint $t) {
+            $t->increments('id');
+            $t->unsignedInteger('inventory_item_id');
+            $t->unsignedInteger('warehouse_id')->default(1);
+            $t->string('asset_code')->unique();
+            $t->string('status')->default('available');
+            $t->timestamps();
+        });
         Schema::create('quote_items', function (Blueprint $t) {
             $t->increments('id');
             $t->integer('product_id');
