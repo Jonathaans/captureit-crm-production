@@ -1289,7 +1289,7 @@
                         if (availableColumn.filterable_type === 'date_range' || availableColumn.filterable_type === 'datetime_range') {
                             const option = availableColumn.filterable_options.find(option => option.name === appliedColumn.value);
 
-                            return option.label;
+                            return option?.label ?? appliedColumn.value;
                         }
 
                         return appliedColumn.value;

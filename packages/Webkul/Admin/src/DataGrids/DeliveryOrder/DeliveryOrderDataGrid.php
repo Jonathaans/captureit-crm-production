@@ -5,6 +5,7 @@ namespace Webkul\Admin\DataGrids\DeliveryOrder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Webkul\DataGrid\DataGrid;
+use Webkul\DataGrid\Enums\DateRangeOptionEnum;
 
 class DeliveryOrderDataGrid extends DataGrid
 {
@@ -102,11 +103,11 @@ class DeliveryOrderDataGrid extends DataGrid
         */
 
         $this->addColumn([
-            'index'      => 'delivery_order_number',
-            'label'      => 'Surat Jalan Number',
-            'type'       => 'string',
+            'index' => 'delivery_order_number',
+            'label' => 'Surat Jalan Number',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
             'closure' => function ($row) {
@@ -130,48 +131,47 @@ class DeliveryOrderDataGrid extends DataGrid
         */
 
         $this->addColumn([
-            'index'      => 'project_code',
-            'label'      => 'Project Code',
-            'type'       => 'string',
+            'index' => 'project_code',
+            'label' => 'Project Code',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
-            'closure' => fn ($row) =>
-                $row->project_code ?: '-',
+            'closure' => fn ($row) => $row->project_code ?: '-',
         ]);
 
         /**
- * Business Unit.
- */
-$this->addColumn([
-    'index' => 'business_unit',
-    'label' => 'Business Unit',
-    'type' => 'string',
+         * Business Unit.
+         */
+        $this->addColumn([
+            'index' => 'business_unit',
+            'label' => 'Business Unit',
+            'type' => 'string',
 
-    'searchable' => false,
-    'sortable' => false,
-    'filterable' => true,
+            'searchable' => false,
+            'sortable' => false,
+            'filterable' => true,
 
-    'visibility' => false,
+            'visibility' => false,
 
-    'filterable_type' => 'dropdown',
+            'filterable_type' => 'dropdown',
 
-    'filterable_options' => [
-        [
-            'label' => 'Varbel - EO',
-            'value' => 'varbel',
-        ],
-        [
-            'label' => 'Vartech - Event Tech',
-            'value' => 'vartech',
-        ],
-        [
-            'label' => 'Capture It - Photobooth',
-            'value' => 'capture_it',
-        ],
-    ],
-]);
+            'filterable_options' => [
+                [
+                    'label' => 'Varbel - EO',
+                    'value' => 'varbel',
+                ],
+                [
+                    'label' => 'Vartech - Event Tech',
+                    'value' => 'vartech',
+                ],
+                [
+                    'label' => 'Capture It - Photobooth',
+                    'value' => 'capture_it',
+                ],
+            ],
+        ]);
 
         /*
         |--------------------------------------------------------------------------
@@ -180,15 +180,14 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'project_name',
-            'label'      => 'Project Name',
-            'type'       => 'string',
+            'index' => 'project_name',
+            'label' => 'Project Name',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
-            'closure' => fn ($row) =>
-                $row->project_name ?: '-',
+            'closure' => fn ($row) => $row->project_name ?: '-',
         ]);
 
         /*
@@ -198,15 +197,14 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'customer_name',
-            'label'      => 'Customer',
-            'type'       => 'string',
+            'index' => 'customer_name',
+            'label' => 'Customer',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
-            'closure' => fn ($row) =>
-                $row->customer_name ?: '-',
+            'closure' => fn ($row) => $row->customer_name ?: '-',
         ]);
 
         /*
@@ -216,11 +214,11 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'invoice_number',
-            'label'      => 'Invoice',
-            'type'       => 'string',
+            'index' => 'invoice_number',
+            'label' => 'Invoice',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
             'closure' => function ($row) {
@@ -252,15 +250,14 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'sales_person_name',
-            'label'      => 'Sales Person',
-            'type'       => 'string',
+            'index' => 'sales_person_name',
+            'label' => 'Sales Person',
+            'type' => 'string',
             'searchable' => true,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
-            'closure' => fn ($row) =>
-                $row->sales_person_name ?: '-',
+            'closure' => fn ($row) => $row->sales_person_name ?: '-',
         ]);
 
         /*
@@ -270,12 +267,15 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'event_date',
-            'label'      => 'Event Date',
-            'type'       => 'date',
+            'index' => 'event_date',
+            'label' => 'Event Date',
+            'type' => 'date',
             'searchable' => false,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
+
+            'filterable_type' => 'date_range',
+            'filterable_options' => fn () => DateRangeOptionEnum::options('Y-m-d'),
 
             'closure' => function ($row) {
                 return $row->event_date
@@ -294,11 +294,11 @@ $this->addColumn([
         */
 
         $this->addColumn([
-            'index'      => 'status',
-            'label'      => 'Status',
-            'type'       => 'string',
+            'index' => 'status',
+            'label' => 'Status',
+            'type' => 'string',
             'searchable' => false,
-            'sortable'   => true,
+            'sortable' => true,
             'filterable' => true,
 
             'filterable_type' => 'dropdown',
@@ -333,20 +333,15 @@ $this->addColumn([
 
                 [$background, $color, $border] =
                     match ($status) {
-                        'issued' =>
-                            ['#dbeafe', '#1d4ed8', '#93c5fd'],
+                        'issued' => ['#dbeafe', '#1d4ed8', '#93c5fd'],
 
-                        'delivered' =>
-                            ['#dcfce7', '#15803d', '#86efac'],
+                        'delivered' => ['#dcfce7', '#15803d', '#86efac'],
 
-                        'returned' =>
-                            ['#f3e8ff', '#7e22ce', '#d8b4fe'],
+                        'returned' => ['#f3e8ff', '#7e22ce', '#d8b4fe'],
 
-                        'cancelled' =>
-                            ['#fee2e2', '#b91c1c', '#fca5a5'],
+                        'cancelled' => ['#fee2e2', '#b91c1c', '#fca5a5'],
 
-                        default =>
-                            ['#fef3c7', '#b45309', '#fcd34d'],
+                        default => ['#fef3c7', '#b45309', '#fcd34d'],
                     };
 
                 return sprintf(
@@ -376,14 +371,45 @@ $this->addColumn([
     }
 
     /**
+     * Event dates are SQL DATE values: include both ends without adding times.
+     */
+    protected function processRequestedFilters(array $requestedFilters)
+    {
+        if (isset($requestedFilters['event_date'])) {
+            $ranges = $requestedFilters['event_date'];
+
+            if (is_string($ranges)) {
+                $option = collect(DateRangeOptionEnum::options('Y-m-d'))->firstWhere('name', $ranges);
+                $ranges = [[$option['from'] ?? $ranges, $option['to'] ?? $ranges]];
+            }
+
+            foreach ($ranges as $range) {
+                [$from, $to] = [$range[0] ?? '', $range[1] ?? ''];
+
+                if ($from !== '') {
+                    $this->queryBuilder->whereDate('delivery_orders.event_date', '>=', $from);
+                }
+
+                if ($to !== '') {
+                    $this->queryBuilder->whereDate('delivery_orders.event_date', '<=', $to);
+                }
+            }
+
+            unset($requestedFilters['event_date']);
+        }
+
+        return parent::processRequestedFilters($requestedFilters);
+    }
+
+    /**
      * Row actions.
      */
     public function prepareActions(): void
     {
         $this->addAction([
-            'index'  => 'view',
-            'icon'   => 'icon-eye',
-            'title'  => 'View Surat Jalan',
+            'index' => 'view',
+            'icon' => 'icon-eye',
+            'title' => 'View Surat Jalan',
             'method' => 'GET',
 
             'url' => fn ($row) => route(

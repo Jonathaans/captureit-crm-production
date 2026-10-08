@@ -22,8 +22,7 @@ class WorkOrderController extends Controller
 
     public function __construct(
         protected WorkOrderAccessService $access
-    ) {
-    }
+    ) {}
 
     public function index(
         Request $request
@@ -131,7 +130,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertManageSpk(
+            ->assertGenerateSpk(
                 $user
             );
 
@@ -222,11 +221,9 @@ class WorkOrderController extends Controller
             abort(403);
         }
 
-        $canManage =
-            $this->access
-                ->canManageSpk(
-                    $user
-                );
+        $canEdit = $this->access->canEditSpk($user);
+        $canPrint = $this->access->canPrint($user);
+        $canUpdateStatus = $this->access->canUpdateStatus($user);
 
         $canGenerateDeliveryOrder =
             $this->access
@@ -238,7 +235,9 @@ class WorkOrderController extends Controller
             'admin::work-orders.show',
             compact(
                 'workOrder',
-                'canManage',
+                'canEdit',
+                'canPrint',
+                'canUpdateStatus',
                 'canGenerateDeliveryOrder'
             )
         );
@@ -251,7 +250,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertManageSpk(
+            ->assertEditSpk(
                 $user
             );
 
@@ -294,7 +293,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertManageSpk(
+            ->assertEditSpk(
                 $user
             );
 
@@ -388,38 +387,32 @@ class WorkOrderController extends Controller
                 $validated
             ) {
                 $workOrder->update([
-                    'event_date' =>
-                        $validated[
+                    'event_date' => $validated[
                             'event_date'
                         ]
                         ?? null,
 
-                    'location' =>
-                        $validated[
+                    'location' => $validated[
                             'location'
                         ]
                         ?? null,
 
-                    'notes' =>
-                        $validated[
+                    'notes' => $validated[
                             'notes'
                         ]
                         ?? null,
 
-                    'admin_sales_name' =>
-                        $validated[
+                    'admin_sales_name' => $validated[
                             'admin_sales_name'
                         ]
                         ?? null,
 
-                    'sales_name' =>
-                        $validated[
+                    'sales_name' => $validated[
                             'sales_name'
                         ]
                         ?? null,
 
-                    'operational_name' =>
-                        $validated[
+                    'operational_name' => $validated[
                             'operational_name'
                         ]
                         ?? null,
@@ -435,8 +428,7 @@ class WorkOrderController extends Controller
                     $validated[
                         'items'
                     ]
-                    ?? []
-                    as $item
+                    ?? [] as $item
                 ) {
                     $name =
                         trim(
@@ -453,26 +445,22 @@ class WorkOrderController extends Controller
                     $workOrder
                         ->items()
                         ->create([
-                            'product_id' =>
-                                ! empty(
-                                    $item[
-                                        'product_id'
-                                    ]
-                                )
+                            'product_id' => ! empty(
+                                $item[
+                                    'product_id'
+                                ]
+                            )
                                     ? (int) $item[
                                         'product_id'
                                     ]
                                     : null,
 
-                            'name' =>
-                                $name,
+                            'name' => $name,
 
-                            'notes' =>
-                                $item['notes']
+                            'notes' => $item['notes']
                                 ?? null,
 
-                            'sort_order' =>
-                                $sortOrder++,
+                            'sort_order' => $sortOrder++,
                         ]);
                 }
             }
@@ -496,7 +484,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertView(
+            ->assertPrint(
                 $user
             );
 
@@ -595,7 +583,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertManageSpk(
+            ->assertUpdateStatus(
                 $user
             );
 
@@ -631,7 +619,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertGenerateDeliveryOrder(
+            ->assertUpdateStatus(
                 $user
             );
 
@@ -667,7 +655,7 @@ class WorkOrderController extends Controller
             $this->access->user();
 
         $this->access
-            ->assertManageSpk(
+            ->assertUpdateStatus(
                 $user
             );
 

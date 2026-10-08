@@ -46,7 +46,7 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    @if ($canManage && $status !== 'cancelled')
+                    @if ($canEdit && $status !== 'cancelled')
                         <a
                             href="{{ route('admin.work-orders.edit', $workOrder->id) }}"
                             class="secondary-button"
@@ -55,12 +55,14 @@
                         </a>
                     @endif
 
-                    <a
-                        href="{{ route('admin.work-orders.print', $workOrder->id) }}"
-                        class="secondary-button"
-                    >
-                        PDF SPK
-                    </a>
+                    @if ($canPrint)
+                        <a
+                            href="{{ route('admin.work-orders.print', $workOrder->id) }}"
+                            class="secondary-button"
+                        >
+                            PDF SPK
+                        </a>
+                    @endif
 
                     @if ($canGenerateDeliveryOrder && ! in_array($status, ['cancelled', 'completed'], true))
                         <form
@@ -124,7 +126,7 @@
                     </p>
                 </div>
 
-                @if ($canManage && $status !== 'cancelled')
+                @if ($canEdit && $status !== 'cancelled')
                     <a
                         href="{{ route('admin.work-orders.edit', $workOrder->id) }}"
                         class="secondary-button"
@@ -281,7 +283,7 @@
 
         <div class="rounded-xl border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex flex-wrap gap-2">
-                @if ($canManage && $status === 'draft')
+                @if ($canUpdateStatus && $status === 'draft')
                     <form
                         method="POST"
                         action="{{ route('admin.work-orders.release', $workOrder->id) }}"
@@ -295,7 +297,7 @@
                     </form>
                 @endif
 
-                @if ($canGenerateDeliveryOrder && ! in_array($status, ['completed', 'cancelled'], true))
+                @if ($canUpdateStatus && ! in_array($status, ['completed', 'cancelled'], true))
                     <form
                         method="POST"
                         action="{{ route('admin.work-orders.complete', $workOrder->id) }}"
@@ -309,7 +311,7 @@
                     </form>
                 @endif
 
-                @if ($canManage && ! in_array($status, ['completed', 'cancelled'], true))
+                @if ($canUpdateStatus && ! in_array($status, ['completed', 'cancelled'], true))
                     <form
                         method="POST"
                         action="{{ route('admin.work-orders.cancel', $workOrder->id) }}"

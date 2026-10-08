@@ -4,13 +4,10 @@ namespace Webkul\Admin\Http\Controllers\DeliveryOrder;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\DataGrids\DeliveryOrder\DeliveryOrderDataGrid;
 use Webkul\Admin\Http\Controllers\Controller;
-use Webkul\Core\Traits\PDFHandler;
 use Webkul\Invoice\Models\DeliveryOrder;
 use Webkul\Invoice\Models\DeliveryOrderInventoryAllocation;
 use Webkul\Invoice\Services\DeliveryOrderEquipmentService;
@@ -20,8 +17,6 @@ use Webkul\Invoice\Services\DeliveryOrderWarehouseReleaseService;
 
 class DeliveryOrderController extends Controller
 {
-    use PDFHandler;
-
     /**
      * Delivery Order listing.
      */
@@ -68,26 +63,16 @@ class DeliveryOrderController extends Controller
     }
 
     /**
-     * Download / Print Surat Jalan as A4 PDF.
+     * Open the A4 Surat Jalan and its browser print dialog.
      */
     public function print(
         int $id
-    ): Response|StreamedResponse {
+    ): View {
         $deliveryOrder = $this->findDeliveryOrder($id);
 
-        $fileName = 'Surat_Jalan_'
-            .str_replace(
-                ['/', '\\', ' '],
-                ['-', '-', '_'],
-                $deliveryOrder->delivery_order_number
-            );
-
-        return $this->downloadPDF(
-            view(
-                'admin::delivery-orders.print',
-                compact('deliveryOrder')
-            )->render(),
-            $fileName
+        return view(
+            'admin::delivery-orders.print',
+            compact('deliveryOrder')
         );
     }
 
