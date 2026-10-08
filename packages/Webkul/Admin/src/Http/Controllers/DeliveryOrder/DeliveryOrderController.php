@@ -12,6 +12,7 @@ use Webkul\Admin\DataGrids\DeliveryOrder\DeliveryOrderDataGrid;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Core\Traits\PDFHandler;
 use Webkul\Invoice\Models\DeliveryOrder;
+use Webkul\Invoice\Models\DeliveryOrderInventoryAllocation;
 use Webkul\Invoice\Services\DeliveryOrderEquipmentService;
 use Webkul\Invoice\Services\DeliveryOrderInventoryAllocationService;
 use Webkul\Invoice\Services\DeliveryOrderReturnService;
