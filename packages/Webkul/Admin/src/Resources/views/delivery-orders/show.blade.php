@@ -134,6 +134,8 @@
                         'admin.delivery-orders.print',
                         $deliveryOrder->id
                     ) }}"
+                    target="_blank"
+                    rel="noopener"
                     class="primary-button"
                 >
                     Print Surat Jalan

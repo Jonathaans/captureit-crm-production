@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <title>
         {{ $deliveryOrder->delivery_order_number }}
@@ -11,11 +12,7 @@
         @page {
             size: A4 portrait;
 
-            /*
-             * Bottom margin intentionally larger so fixed footer
-             * never collides with document content.
-             */
-            margin: 12mm 12mm 21mm 12mm;
+            margin: 12mm 12mm 7mm 12mm;
         }
 
         * {
@@ -25,7 +22,7 @@
         body {
             margin: 0;
             color: #111827;
-            font-family: DejaVu Sans, sans-serif;
+            font-family: DejaVu Sans, Arial, sans-serif;
             font-size: 9.5px;
             line-height: 1.35;
         }
@@ -33,7 +30,7 @@
         .footer {
             position: fixed;
             right: 0;
-            bottom: -14mm;
+            bottom: 0;
             left: 0;
             height: 10mm;
             border-top: 0.5px solid #d1d5db;
@@ -163,13 +160,14 @@
         | Equipment Table
         |--------------------------------------------------------------------------
         |
-        | thead repeats when table continues on the next PDF page.
+        | thead repeats when table continues on the next printed page.
         | Each row is kept together where possible.
         |
         */
 
         .equipment-table {
             margin-top: 2mm;
+            table-layout: fixed;
         }
 
         .equipment-table thead {
@@ -195,6 +193,7 @@
             border: 0.6px solid #d1d5db;
             vertical-align: top;
             font-size: 8.3px;
+            overflow-wrap: anywhere;
         }
 
         .col-no {
@@ -234,6 +233,10 @@
             text-align: center;
         }
 
+        .notes-section {
+            break-inside: avoid-page;
+        }
+
         .notes-box {
             min-height: 14mm;
             padding: 2.5mm;
@@ -250,7 +253,7 @@
         | Entire signature block must stay together.
         |
         | If there is not enough space after Notes/Equipment on Page 1,
-        | DomPDF moves this WHOLE block to Page 2 automatically.
+        | The browser moves this WHOLE block to the next page.
         |
         */
 
@@ -312,12 +315,89 @@
             color: #6b7280;
             font-size: 7.5px;
         }
+
+        .print-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            max-width: 210mm;
+            margin: 16px auto;
+            padding: 12px 16px;
+            background: #fff;
+            font-size: 14px;
+        }
+
+        .print-toolbar a {
+            color: #1f2937;
+        }
+
+        .print-toolbar button {
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 4px;
+            background: #ffb000;
+            color: #111827;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        @media screen {
+            body {
+                background: #e5e7eb;
+            }
+
+            .document {
+                position: relative;
+                max-width: 210mm;
+                min-height: 297mm;
+                margin: 0 auto 16px;
+                padding: 12mm 12mm 21mm;
+                background: #fff;
+                box-shadow: 0 2px 8px #0002;
+            }
+
+            .footer {
+                position: absolute;
+                right: 12mm;
+                bottom: 7mm;
+                left: 12mm;
+            }
+        }
+
+        @media print {
+            .print-toolbar {
+                display: none !important;
+            }
+
+            .document {
+                /* Reserve footer space on every printed fragment. */
+                padding-bottom: 14mm;
+                -webkit-box-decoration-break: clone;
+                box-decoration-break: clone;
+            }
+        }
     </style>
 </head>
 
 <body>
+    <nav class="print-toolbar" aria-label="Aksi cetak Surat Jalan">
+        <a href="{{ route('admin.delivery-orders.show', $deliveryOrder->id) }}">
+            Kembali ke Surat Jalan
+        </a>
+
+        <button type="button" onclick="window.print()">
+            Print Surat Jalan
+        </button>
+
+        <noscript>Gunakan Ctrl+P atau menu Print pada browser untuk mencetak.</noscript>
+    </nav>
+
+    <main class="document">
     {{-- ============================================================= --}}
-    {{-- FOOTER - appears on every PDF page --}}
+    {{-- FOOTER - appears on every printed page --}}
     {{-- ============================================================= --}}
 
     <div class="footer">
@@ -347,7 +427,7 @@
 
                 @if (file_exists($logoPath))
                     <img
-                        src="{{ $logoPath }}"
+                        src="{{ asset('images/logo-varbel.png') }}"
                         class="logo"
                         alt="Varbel Corps"
                     >
@@ -665,7 +745,7 @@
     {{-- ============================================================= --}}
 
     @if ($deliveryOrder->notes)
-        <div class="section">
+        <div class="section notes-section">
             <div class="section-title">
                 Notes
             </div>
@@ -684,8 +764,8 @@
         signature-section has page-break-inside: avoid.
 
         If the remaining space on Page 1 is not enough for all four
-        signature columns, DomPDF moves the entire signature section
-        to Page 2 instead of cutting it.
+        signature columns, the browser moves the entire signature section
+        to the next page instead of cutting it.
     --}}
 
     <div class="signature-section">
@@ -782,5 +862,16 @@
             </tr>
         </table>
     </div>
+    </main>
+
+    <script>
+        window.addEventListener('load', async function () {
+            if (document.fonts) {
+                await document.fonts.ready;
+            }
+
+            window.print();
+        }, { once: true });
+    </script>
 </body>
 </html>

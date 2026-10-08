@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Webkul\Admin\Http\Controllers\DeliveryOrder\DeliveryOrderController;
 use Webkul\Admin\Http\Controllers\DeliveryOrder\DeliveryOrderInventoryController;
 use Webkul\Admin\Http\Controllers\DeliveryOrder\DeliveryOrderReturnController;
+use Webkul\Admin\Http\Middleware\InjectInternalCommunicationUi;
 
 Route::controller(DeliveryOrderController::class)
     ->prefix('delivery-orders')
@@ -24,6 +25,7 @@ Route::controller(DeliveryOrderController::class)
         */
 
         Route::get('{id}/print', 'print')
+            ->withoutMiddleware(InjectInternalCommunicationUi::class)
             ->name('admin.delivery-orders.print');
 
         /*
@@ -71,7 +73,6 @@ Route::controller(DeliveryOrderController::class)
             ->name('admin.delivery-orders.show');
     });
 
-
 /*
 |--------------------------------------------------------------------------
 | Delivery Order > Inventory Allocation
@@ -92,7 +93,6 @@ Route::controller(DeliveryOrderInventoryController::class)
         Route::delete('{id}/inventory-allocation/{itemId}', 'release')
             ->name('admin.delivery-orders.inventory-allocation.release');
     });
-
 
 /*
 |--------------------------------------------------------------------------

@@ -107,7 +107,7 @@
                     </a>
 @if ($deliveryOrder)
     @if (
-        bouncer()->hasPermission('delivery-orders.view')
+        bouncer()->hasPermission('work-orders.view')
     )
         <a
             href="{{ route('admin.invoices.work-orders.open', $invoice->id) }}"
@@ -117,7 +117,7 @@
         </a>
 @if (
     bouncer()->hasPermission(
-        'delivery-orders.generate'
+        'work-orders.generate'
     )
 )
     <form
@@ -155,6 +155,8 @@
                 'admin.delivery-orders.print',
                 $deliveryOrder->id
             ) }}"
+            target="_blank"
+            rel="noopener"
             class="secondary-button"
         >
             Print Surat Jalan
@@ -162,7 +164,7 @@
     @endif
 @else
     @if (
-        bouncer()->hasPermission('delivery-orders.generate')
+        bouncer()->hasPermission('work-orders.generate')
     )
         <form
             method="POST"
