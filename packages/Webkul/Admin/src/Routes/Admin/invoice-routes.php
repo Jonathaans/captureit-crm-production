@@ -1,8 +1,23 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
+use Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController;
+use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
+use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController;
+use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderExpenseExportController;
+use Webkul\Admin\Http\Controllers\WorkOrder\WorkOrderController;
+
+Route::controller(ProformaInvoiceController::class)->prefix('proformas')->group(function () {
+    Route::get('/', 'index')->name('admin.proformas.index');
+    Route::get('{id}', 'show')->whereNumber('id')->name('admin.proformas.show');
+    Route::get('{id}/print', 'print')->whereNumber('id')->name('admin.proformas.print');
+    Route::post('{id}/approve', 'approve')->whereNumber('id')->name('admin.proformas.approve');
+    Route::post('{id}/payment', 'confirmPayment')->whereNumber('id')->name('admin.proformas.payment');
+    Route::post('{id}/cancel', 'cancel')->whereNumber('id')->name('admin.proformas.cancel');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -35,13 +50,11 @@ Route::controller(FinancialReportController::class)
         );
     });
 
-
 /*
 |--------------------------------------------------------------------------
 | Purchase Orders - Event Vendor / Outsource
 |--------------------------------------------------------------------------
 */
-
 
 /*
 |--------------------------------------------------------------------------
@@ -52,12 +65,12 @@ Route::controller(FinancialReportController::class)
 Route::get(
     'purchase-orders/export-expense-csv',
     [
-        \Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderExpenseExportController::class,
+        PurchaseOrderExpenseExportController::class,
         'export',
     ]
 )->name('admin.purchase-orders.export-expense');
 Route::controller(
-    \Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController::class
+    PurchaseOrderController::class
 )
     ->prefix('purchase-orders')
     ->group(function () {
@@ -106,7 +119,7 @@ Route::controller(
 */
 
 Route::controller(
-    \Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController::class
+    ExpenseExportController::class
 )
     ->prefix('invoices')
     ->group(function () {
@@ -153,17 +166,17 @@ Route::controller(InvoiceController::class)
         |--------------------------------------------------------------------------
         */
 
-                Route::get(
+        Route::get(
             '{id}/delivery-orders',
-            [\Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController::class, 'index']
+            [InvoiceDeliveryOrderController::class, 'index']
         )
             ->name('admin.invoices.delivery-orders.index');
 
-Route::post(
-    '{id}/delivery-order',
-    [\Webkul\Admin\Http\Controllers\WorkOrder\WorkOrderController::class, 'storeFromInvoice']
-)
-    ->name('admin.invoices.delivery-order.generate');
+        Route::post(
+            '{id}/delivery-order',
+            [WorkOrderController::class, 'storeFromInvoice']
+        )
+            ->name('admin.invoices.delivery-order.generate');
 
         /*
         |--------------------------------------------------------------------------

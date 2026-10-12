@@ -159,7 +159,8 @@ class WorkOrderController extends Controller
     }
 
     public function openForInvoice(
-        int $id
+        int $id,
+        WorkOrderService $service
     ): RedirectResponse {
         $user =
             $this->access->user();
@@ -169,13 +170,7 @@ class WorkOrderController extends Controller
                 $user
             );
 
-        $workOrder =
-            WorkOrder::query()
-                ->where(
-                    'invoice_id',
-                    $id
-                )
-                ->first();
+        $workOrder = $service->findForInvoice(Invoice::findOrFail($id));
 
         if (! $workOrder) {
             session()->flash(

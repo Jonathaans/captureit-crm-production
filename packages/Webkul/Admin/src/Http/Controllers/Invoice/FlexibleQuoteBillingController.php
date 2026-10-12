@@ -16,8 +16,7 @@ class FlexibleQuoteBillingController extends Controller
 
     public function __construct(
         protected FlexibleQuoteBillingService $billingService
-    ) {
-    }
+    ) {}
 
     public function create(Request $request): View
     {
@@ -105,21 +104,18 @@ class FlexibleQuoteBillingController extends Controller
                 'numeric',
                 'gt:0',
             ],
-            'issued_at' => ['nullable', 'date'],
+            'payment_term' => ['required', 'string', 'max:2000'],
+            'issued_at' => ['required', 'date_format:Y-m-d'],
             'due_at' => [
-                'nullable',
-                'date',
+                'required',
+                'date_format:Y-m-d',
                 'after_or_equal:issued_at',
             ],
         ], [
-            'billing_amount.required_if' =>
-                'Nominal DP wajib diisi saat metode Nominal dipilih.',
-            'billing_percentage.required_if' =>
-                'Persentase DP wajib diisi saat metode Persentase dipilih.',
-            'billing_method.required_if' =>
-                'Pilih metode DP Persentase atau Nominal.',
-            'due_at.after_or_equal' =>
-                'Due Date tidak boleh sebelum tanggal Invoice.',
+            'billing_amount.required_if' => 'Nominal DP wajib diisi saat metode Nominal dipilih.',
+            'billing_percentage.required_if' => 'Persentase DP wajib diisi saat metode Persentase dipilih.',
+            'billing_method.required_if' => 'Pilih metode DP Persentase atau Nominal.',
+            'due_at.after_or_equal' => 'Due Date tidak boleh sebelum tanggal Invoice.',
         ]);
 
         $quote = Quote::query()->findOrFail(
@@ -139,21 +135,10 @@ class FlexibleQuoteBillingController extends Controller
             );
         }
 
-        $invoice = $this->billingService->createFromQuote(
-            $quote,
-            $validated,
-            auth()->guard('user')->id()
-        );
+        $proforma = $this->billingService->createFromQuote($quote, $validated, auth()->guard('user')->id());
 
-        session()->flash(
-            'success',
-            $this->successMessage($invoice)
-        );
-
-        return redirect()->route(
-            'admin.invoices.show',
-            $invoice->id
-        );
+        return redirect()->route('admin.proformas.show', $proforma->id)
+            ->with('success', 'Proforma '.$proforma->proforma_number.' dibuat. Admin Sales dapat memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.');
     }
 
     public function legacy(int $quoteId): RedirectResponse
@@ -171,25 +156,8 @@ class FlexibleQuoteBillingController extends Controller
         abort_unless(auth()->guard('user')->check(), 403);
 
         abort_unless(
-            bouncer()->hasPermission('invoices')
-                || bouncer()->hasPermission('invoices.edit')
-                || bouncer()->hasPermission('invoices.create'),
+            bouncer()->hasPermission('invoices.generate'),
             403
         );
-    }
-
-    private function successMessage($invoice): string
-    {
-        $label = match ($invoice->billing_type) {
-            FlexibleQuoteBillingService::TYPE_DOWN_PAYMENT =>
-                'Down Payment',
-            FlexibleQuoteBillingService::TYPE_SETTLEMENT =>
-                'Pelunasan',
-            default =>
-                'Full Payment',
-        };
-
-        return 'Invoice '.$label.' berhasil dibuat: '
-            .$invoice->invoice_number.'. Nilai komersial sudah dikunci.';
     }
 }

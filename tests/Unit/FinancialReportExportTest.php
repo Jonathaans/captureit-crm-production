@@ -26,6 +26,7 @@ beforeEach(function (): void {
             $table->string($column)->default('');
         }
         $table->decimal('grand_total', 16, 4)->default(0);
+        $table->decimal('quote_total_snapshot', 16, 4)->nullable();
         $table->dateTime('issued_at');
     });
     Schema::create('quotes', function (Blueprint $table): void {

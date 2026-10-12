@@ -71,105 +71,105 @@ return [
         'name' => 'admin::app.acl.delete',
         'route' => ['admin.quotes.delete', 'admin.quotes.mass_delete'],
         'sort' => 5,
-    ], 
-/**
- * Invoices.
- */
-[
-    'key'   => 'invoices',
-    'name'  => 'admin::app.acl.invoices',
-    'route' => 'admin.invoices.index',
-    'sort'  => 4,
-], [
+    ],
     /**
-     * View Invoice.
+     * Invoices.
      */
-    'key'   => 'invoices.view',
-    'name'  => 'admin::app.acl.view',
-    'route' => 'admin.invoices.show',
-    'sort'  => 1,
-], [
-    /**
-     * Generate Invoice from Quote.
-     */
-    'key'   => 'invoices.generate',
-    'name'  => 'admin::app.acl.generate-invoice',
-    'route' => 'admin.invoices.generate',
-    'sort'  => 2,
-], [
-    /**
-     * Add Payment.
-     */
-    'key'   => 'invoices.payment',
-    'name'  => 'admin::app.acl.add-payment',
-    'route' => 'admin.invoices.payments.store',
-    'sort'  => 3,
-], [
-    /**
-     * Update Event Status.
-     *
-     * Prospect / Confirm / Cancel
-     */
-    'key'   => 'invoices.event-status',
-    'name'  => 'admin::app.acl.update-event-status',
-    'route' => 'admin.invoices.event-status.update',
-    'sort'  => 4,
-], [
-    /**
-     * Add Expense.
-     */
-    'key'   => 'invoices.expense',
-    'name'  => 'admin::app.acl.add-expense',
-    'route' => 'admin.invoices.expenses.store',
-    'sort'  => 5,
-], [
-    /**
-     * Edit Expense.
-     */
-    'key'   => 'invoices.expense.edit',
-    'name'  => 'admin::app.acl.edit-expense',
-    'route' => 'admin.invoices.expenses.update',
-    'sort'  => 1,
-], [
-    /**
-     * Delete Expense.
-     */
-    'key'   => 'invoices.expense.delete',
-    'name'  => 'admin::app.acl.delete-expense',
-    'route' => 'admin.invoices.expenses.delete',
-    'sort'  => 2,
-], [
-    /**
-     * Print Invoice.
-     */
-    'key'   => 'invoices.print',
-    'name'  => 'admin::app.acl.print',
-    'route' => 'admin.invoices.print',
-    'sort'  => 6,
-], [
-    /**
-     * Financial Report.
-     *
-     * Permission ini nanti hanya kita aktifkan
-     * untuk Head Finance.
-     */
-    'key'   => 'invoices.financial-report',
-    'name'  => 'admin::app.acl.financial-report',
-    'route' => 'admin.invoices.financial-report',
-    'sort'  => 7,
-], [
-    /**
-     * Export Financial Report.
-     *
-     * Child permission dari Financial Report.
-     */
-    'key'   => 'invoices.financial-report.export',
-    'name'  => 'admin::app.acl.export-financial-report',
-    'route' => 'admin.invoices.financial-report.export',
-    'sort'  => 1,
-],
+    [
+        'key' => 'invoices',
+        'name' => 'admin::app.acl.invoices',
+        'route' => ['admin.invoices.index', 'admin.proformas.index'],
+        'sort' => 4,
+    ], [
+        /**
+         * View Invoice.
+         */
+        'key' => 'invoices.view',
+        'name' => 'admin::app.acl.view',
+        'route' => ['admin.invoices.show', 'admin.proformas.show'],
+        'sort' => 1,
+    ], [
+        /**
+         * Generate Invoice from Quote.
+         */
+        'key' => 'invoices.generate',
+        'name' => 'admin::app.acl.generate-invoice',
+        'route' => ['admin.invoices.generate', 'admin.invoices.billing.create', 'admin.invoices.billing.summary', 'admin.invoices.billing.store', 'admin.proformas.approve'],
+        'sort' => 2,
+    ], [
+        /**
+         * Add Payment.
+         */
+        'key' => 'invoices.payment',
+        'name' => 'admin::app.acl.add-payment',
+        'route' => ['admin.invoices.payments.store', 'admin.proformas.payment'],
+        'sort' => 3,
+    ], [
+        /**
+         * Update Event Status.
+         *
+         * Prospect / Confirm / Cancel
+         */
+        'key' => 'invoices.event-status',
+        'name' => 'admin::app.acl.update-event-status',
+        'route' => ['admin.invoices.event-status.update', 'admin.proformas.cancel'],
+        'sort' => 4,
+    ], [
+        /**
+         * Add Expense.
+         */
+        'key' => 'invoices.expense',
+        'name' => 'admin::app.acl.add-expense',
+        'route' => 'admin.invoices.expenses.store',
+        'sort' => 5,
+    ], [
+        /**
+         * Edit Expense.
+         */
+        'key' => 'invoices.expense.edit',
+        'name' => 'admin::app.acl.edit-expense',
+        'route' => 'admin.invoices.expenses.update',
+        'sort' => 1,
+    ], [
+        /**
+         * Delete Expense.
+         */
+        'key' => 'invoices.expense.delete',
+        'name' => 'admin::app.acl.delete-expense',
+        'route' => 'admin.invoices.expenses.delete',
+        'sort' => 2,
+    ], [
+        /**
+         * Print Invoice.
+         */
+        'key' => 'invoices.print',
+        'name' => 'admin::app.acl.print',
+        'route' => ['admin.invoices.print', 'admin.proformas.print'],
+        'sort' => 6,
+    ], [
+        /**
+         * Financial Report.
+         *
+         * Permission ini nanti hanya kita aktifkan
+         * untuk Head Finance.
+         */
+        'key' => 'invoices.financial-report',
+        'name' => 'admin::app.acl.financial-report',
+        'route' => 'admin.invoices.financial-report',
+        'sort' => 7,
+    ], [
+        /**
+         * Export Financial Report.
+         *
+         * Child permission dari Financial Report.
+         */
+        'key' => 'invoices.financial-report.export',
+        'name' => 'admin::app.acl.export-financial-report',
+        'route' => 'admin.invoices.financial-report.export',
+        'sort' => 1,
+    ],
 
-/*
+    /*
 |--------------------------------------------------------------------------
 | Delivery Orders
 |--------------------------------------------------------------------------
@@ -178,247 +178,247 @@ return [
 | Request -> Scan Allocation -> Issue/Auto OUT -> Delivered -> Scan Return.
 |
 */
-[
-    'key'   => 'delivery-orders',
-    'name'  => 'admin::app.acl.delivery-orders',
-    'route' => 'admin.delivery-orders.index',
-    'sort'  => 5,
-], [
-    'key'   => 'delivery-orders.view',
-    'name'  => 'admin::app.acl.view',
-    'route' => [
+    [
+        'key' => 'delivery-orders',
+        'name' => 'admin::app.acl.delivery-orders',
+        'route' => 'admin.delivery-orders.index',
+        'sort' => 5,
+    ], [
+        'key' => 'delivery-orders.view',
+        'name' => 'admin::app.acl.view',
+        'route' => [
             'admin.invoices.delivery-orders.index',
             'admin.delivery-orders.show',
         ],
-    'sort'  => 1,
-], [
-    'key'   => 'delivery-orders.generate',
-    'name'  => 'admin::app.acl.generate-delivery-order',
-    'route' => 'admin.invoices.delivery-order.generate',
-    'sort'  => 2,
-], [
-    'key'   => 'delivery-orders.edit',
-    'name'  => 'admin::app.acl.edit',
-    'route' => [
-        'admin.delivery-orders.edit',
-        'admin.delivery-orders.update',
-    ],
-    'sort'  => 3,
-], [
-    'key'   => 'delivery-orders.print',
-    'name'  => 'admin::app.acl.print',
-    'route' => 'admin.delivery-orders.print',
-    'sort'  => 4,
-], [
-    /*
+        'sort' => 1,
+    ], [
+        'key' => 'delivery-orders.generate',
+        'name' => 'admin::app.acl.generate-delivery-order',
+        'route' => 'admin.invoices.delivery-order.generate',
+        'sort' => 2,
+    ], [
+        'key' => 'delivery-orders.edit',
+        'name' => 'admin::app.acl.edit',
+        'route' => [
+            'admin.delivery-orders.edit',
+            'admin.delivery-orders.update',
+        ],
+        'sort' => 3,
+    ], [
+        'key' => 'delivery-orders.print',
+        'name' => 'admin::app.acl.print',
+        'route' => 'admin.delivery-orders.print',
+        'sort' => 4,
+    ], [
+        /*
      * Draft -> Issued and inventory automatically becomes OUT.
      */
-    'key'   => 'delivery-orders.issue',
-    'name'  => 'admin::app.acl.issue-delivery-order',
-    'route' => 'admin.delivery-orders.issue',
-    'sort'  => 5,
-], [
-    /*
+        'key' => 'delivery-orders.issue',
+        'name' => 'admin::app.acl.issue-delivery-order',
+        'route' => 'admin.delivery-orders.issue',
+        'sort' => 5,
+    ], [
+        /*
      * Administrative delivery status only.
      */
-    'key'   => 'delivery-orders.delivered',
-    'name'  => 'admin::app.acl.mark-delivered',
-    'route' => 'admin.delivery-orders.delivered',
-    'sort'  => 6,
-], [
-    'key'   => 'delivery-orders.returned',
-    'name'  => 'admin::app.acl.mark-returned',
-    'route' => 'admin.delivery-orders.returned',
-    'sort'  => 7,
-], [
-    'key'   => 'delivery-orders.cancel',
-    'name'  => 'admin::app.acl.cancel-delivery-order',
-    'route' => 'admin.delivery-orders.cancel',
-    'sort'  => 8,
-], [
-    /*
+        'key' => 'delivery-orders.delivered',
+        'name' => 'admin::app.acl.mark-delivered',
+        'route' => 'admin.delivery-orders.delivered',
+        'sort' => 6,
+    ], [
+        'key' => 'delivery-orders.returned',
+        'name' => 'admin::app.acl.mark-returned',
+        'route' => 'admin.delivery-orders.returned',
+        'sort' => 7,
+    ], [
+        'key' => 'delivery-orders.cancel',
+        'name' => 'admin::app.acl.cancel-delivery-order',
+        'route' => 'admin.delivery-orders.cancel',
+        'sort' => 8,
+    ], [
+        /*
      * Serialized asset allocation is primarily driven by global QR scan.
      */
-    'key'   => 'delivery-orders.inventory-allocation',
-    'name'  => 'Inventory Allocation',
-    'route' => [
-        'admin.delivery-orders.inventory-allocation.edit',
-        'admin.delivery-orders.inventory-allocation.scan',
-        'admin.delivery-orders.inventory-allocation.update',
-        'admin.delivery-orders.inventory-allocation.release',
-    ],
-    'sort'  => 9,
-], [
-    /*
+        'key' => 'delivery-orders.inventory-allocation',
+        'name' => 'Inventory Allocation',
+        'route' => [
+            'admin.delivery-orders.inventory-allocation.edit',
+            'admin.delivery-orders.inventory-allocation.scan',
+            'admin.delivery-orders.inventory-allocation.update',
+            'admin.delivery-orders.inventory-allocation.release',
+        ],
+        'sort' => 9,
+    ], [
+        /*
      * Return page only. No Start Return action is required.
      */
-    'key'   => 'delivery-orders.return',
-    'name'  => 'Return Inventory',
-    'route' => [
-        'admin.delivery-orders.return.show',
-    ],
-    'sort'  => 10,
-], [
-    /*
+        'key' => 'delivery-orders.return',
+        'name' => 'Return Inventory',
+        'route' => [
+            'admin.delivery-orders.return.show',
+        ],
+        'sort' => 10,
+    ], [
+        /*
      * Direct QR Check-In, batch quantity return, and Missing fallback.
      */
-    'key'   => 'delivery-orders.return.check-in',
-    'name'  => 'Check-In Inventory',
-    'route' => [
-        'admin.delivery-orders.return.check-in',
-        'admin.delivery-orders.return.scan-check-in',
-        'admin.delivery-orders.return.finalize',
+        'key' => 'delivery-orders.return.check-in',
+        'name' => 'Check-In Inventory',
+        'route' => [
+            'admin.delivery-orders.return.check-in',
+            'admin.delivery-orders.return.scan-check-in',
+            'admin.delivery-orders.return.finalize',
+        ],
+        'sort' => 11,
     ],
-    'sort'  => 11,
-],
 
-/*
+    /*
 |--------------------------------------------------------------------------
 | Inventory
 |--------------------------------------------------------------------------
 */
     [
-        'key'   => 'inventory',
-        'name'  => 'Inventory',
+        'key' => 'inventory',
+        'name' => 'Inventory',
         'route' => 'admin.inventory.dashboard',
-        'sort'  => 6,
+        'sort' => 6,
     ], [
-        'key'   => 'inventory.dashboard',
-        'name'  => 'Inventory Dashboard',
+        'key' => 'inventory.dashboard',
+        'name' => 'Inventory Dashboard',
         'route' => 'admin.inventory.dashboard',
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.consumables',
-        'name'  => 'Consumables',
+        'key' => 'inventory.consumables',
+        'name' => 'Consumables',
         'route' => 'admin.inventory.consumables.index',
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.consumables.create',
-        'name'  => 'Create Consumable',
+        'key' => 'inventory.consumables.create',
+        'name' => 'Create Consumable',
         'route' => [
             'admin.inventory.consumables.create',
             'admin.inventory.consumables.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.consumables.edit',
-        'name'  => 'Edit Consumable',
+        'key' => 'inventory.consumables.edit',
+        'name' => 'Edit Consumable',
         'route' => [
             'admin.inventory.consumables.edit',
             'admin.inventory.consumables.update',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.items',
-        'name'  => 'Inventory Items',
+        'key' => 'inventory.items',
+        'name' => 'Inventory Items',
         'route' => 'admin.inventory.items.index',
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.items.create',
-        'name'  => 'Create Inventory Item',
+        'key' => 'inventory.items.create',
+        'name' => 'Create Inventory Item',
         'route' => [
             'admin.inventory.items.create',
             'admin.inventory.items.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.items.edit',
-        'name'  => 'Edit Inventory Item',
+        'key' => 'inventory.items.edit',
+        'name' => 'Edit Inventory Item',
         'route' => [
             'admin.inventory.items.edit',
             'admin.inventory.items.update',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.assets',
-        'name'  => 'Inventory Assets',
+        'key' => 'inventory.assets',
+        'name' => 'Inventory Assets',
         'route' => 'admin.inventory.assets.index',
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'inventory.assets.create',
-        'name'  => 'Create Inventory Asset',
+        'key' => 'inventory.assets.create',
+        'name' => 'Create Inventory Asset',
         'route' => [
             'admin.inventory.assets.create',
             'admin.inventory.assets.store',
             'admin.inventory.assets.bulk-create',
             'admin.inventory.assets.bulk-store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.assets.edit',
-        'name'  => 'Edit Inventory Asset',
+        'key' => 'inventory.assets.edit',
+        'name' => 'Edit Inventory Asset',
         'route' => [
             'admin.inventory.assets.edit',
             'admin.inventory.assets.update',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.assets.qr-labels',
-        'name'  => 'Print Asset QR Labels',
+        'key' => 'inventory.assets.qr-labels',
+        'name' => 'Print Asset QR Labels',
         'route' => [
             'admin.inventory.assets.qr-labels.index',
             'admin.inventory.assets.qr-labels.svg',
         ],
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'inventory.movements',
-        'name'  => 'Inventory Movements',
+        'key' => 'inventory.movements',
+        'name' => 'Inventory Movements',
         'route' => 'admin.inventory.movements.index',
-        'sort'  => 4,
+        'sort' => 4,
     ], [
-        'key'   => 'inventory.movements.adjust-stock',
-        'name'  => 'Adjust Quantity Stock',
+        'key' => 'inventory.movements.adjust-stock',
+        'name' => 'Adjust Quantity Stock',
         'route' => [
             'admin.inventory.movements.adjust-stock.create',
             'admin.inventory.movements.adjust-stock.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.maintenance',
-        'name'  => 'Maintenance & Repair',
+        'key' => 'inventory.maintenance',
+        'name' => 'Maintenance & Repair',
         'route' => [
             'admin.inventory.maintenance.index',
             'admin.inventory.maintenance.show',
         ],
-        'sort'  => 5,
+        'sort' => 5,
     ], [
-        'key'   => 'inventory.maintenance.start',
-        'name'  => 'Start Maintenance',
+        'key' => 'inventory.maintenance.start',
+        'name' => 'Start Maintenance',
         'route' => [
             'admin.inventory.maintenance.create',
             'admin.inventory.maintenance.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.maintenance.complete',
-        'name'  => 'Complete Repair',
+        'key' => 'inventory.maintenance.complete',
+        'name' => 'Complete Repair',
         'route' => 'admin.inventory.maintenance.complete',
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.maintenance.retire',
-        'name'  => 'Retire Asset',
+        'key' => 'inventory.maintenance.retire',
+        'name' => 'Retire Asset',
         'route' => 'admin.inventory.maintenance.retire',
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'inventory.stock-opname',
-        'name'  => 'Stock Opname',
+        'key' => 'inventory.stock-opname',
+        'name' => 'Stock Opname',
         'route' => [
             'admin.inventory.stock-opname.index',
             'admin.inventory.stock-opname.show',
             'admin.inventory.stock-opname.export-csv',
         ],
-        'sort'  => 6,
+        'sort' => 6,
     ], [
-        'key'   => 'inventory.stock-opname.create',
-        'name'  => 'Create Stock Opname',
+        'key' => 'inventory.stock-opname.create',
+        'name' => 'Create Stock Opname',
         'route' => [
             'admin.inventory.stock-opname.create',
             'admin.inventory.stock-opname.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'inventory.stock-opname.count',
-        'name'  => 'Count Stock Opname',
+        'key' => 'inventory.stock-opname.count',
+        'name' => 'Count Stock Opname',
         'route' => [
             'admin.inventory.stock-opname.start',
             'admin.inventory.stock-opname.scan',
@@ -426,36 +426,36 @@ return [
             'admin.inventory.stock-opname.review',
             'admin.inventory.stock-opname.resume',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'inventory.stock-opname.finalize',
-        'name'  => 'Finalize Stock Opname',
+        'key' => 'inventory.stock-opname.finalize',
+        'name' => 'Finalize Stock Opname',
         'route' => 'admin.inventory.stock-opname.finalize',
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'inventory.alerts',
-        'name'  => 'Inventory Alerts & Reorder',
+        'key' => 'inventory.alerts',
+        'name' => 'Inventory Alerts & Reorder',
         'route' => [
             'admin.inventory.alerts.index',
             'admin.inventory.alerts.export-csv',
         ],
-        'sort'  => 7,
+        'sort' => 7,
     ],
     [
-        'key'   => 'inventory.qa',
-        'name'  => 'Warehouse QA',
+        'key' => 'inventory.qa',
+        'name' => 'Warehouse QA',
         'route' => [
             'admin.inventory.qa.index',
             'admin.inventory.qa.export-csv',
         ],
-        'sort'  => 8,
+        'sort' => 8,
     ],
     [
         'key' => 'mail',
         'name' => 'admin::app.acl.mail',
         'route' => 'admin.mail.index',
         'sort' => 7,
-], [
+    ], [
         'key' => 'mail.inbox',
         'name' => 'admin::app.acl.inbox',
         'route' => 'admin.mail.index',
@@ -586,7 +586,7 @@ return [
         'key' => 'contacts.organizations.edit',
         'name' => 'admin::app.acl.edit',
         'route' => [
-            'admin.contacts.organizations.npwp','admin.contacts.organizations.edit', 'admin.contacts.organizations.update'],
+            'admin.contacts.organizations.npwp', 'admin.contacts.organizations.edit', 'admin.contacts.organizations.update'],
         'sort' => 2,
     ], [
         'key' => 'contacts.organizations.delete',
@@ -982,8 +982,8 @@ return [
     ],
 
     [
-        'key'   => 'contacts.vendors',
-        'name'  => 'Vendor Master',
+        'key' => 'contacts.vendors',
+        'name' => 'Vendor Master',
         'route' => [
             'admin.vendors.index',
             'admin.vendors.create',
@@ -992,84 +992,84 @@ return [
             'admin.vendors.update',
             'admin.vendors.npwp-image',
         ],
-        'sort'  => 3,
+        'sort' => 3,
     ],
     [
-        'key'   => 'purchase-orders',
-        'name'  => 'Purchase Orders',
+        'key' => 'purchase-orders',
+        'name' => 'Purchase Orders',
         'route' => 'admin.purchase-orders.index',
-        'sort'  => 10,
+        'sort' => 10,
     ], [
-        'key'   => 'purchase-orders.create',
-        'name'  => 'Create Purchase Order',
+        'key' => 'purchase-orders.create',
+        'name' => 'Create Purchase Order',
         'route' => [
             'admin.purchase-orders.create',
             'admin.purchase-orders.store',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'purchase-orders.edit',
-        'name'  => 'Edit Purchase Order',
+        'key' => 'purchase-orders.edit',
+        'name' => 'Edit Purchase Order',
         'route' => [
             'admin.purchase-orders.edit',
             'admin.purchase-orders.update',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'purchase-orders.view',
-        'name'  => 'View Purchase Order',
+        'key' => 'purchase-orders.view',
+        'name' => 'View Purchase Order',
         'route' => [
             'admin.purchase-orders.show',
             'admin.purchase-orders.payment-proof',
         ],
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'purchase-orders.release',
-        'name'  => 'Release Purchase Order',
+        'key' => 'purchase-orders.release',
+        'name' => 'Release Purchase Order',
         'route' => 'admin.purchase-orders.release',
-        'sort'  => 4,
+        'sort' => 4,
     ], [
         /* PURCHASE ORDER PAID WORKFLOW V1 ACL */
-        'key'   => 'purchase-orders.paid',
-        'name'  => 'Mark Purchase Order Paid',
+        'key' => 'purchase-orders.paid',
+        'name' => 'Mark Purchase Order Paid',
         'route' => 'admin.purchase-orders.paid',
-        'sort'  => 5,
+        'sort' => 5,
     ], [
-        'key'   => 'purchase-orders.complete',
-        'name'  => 'Complete Purchase Order',
+        'key' => 'purchase-orders.complete',
+        'name' => 'Complete Purchase Order',
         'route' => 'admin.purchase-orders.complete',
-        'sort'  => 5,
+        'sort' => 5,
     ], [
-        'key'   => 'purchase-orders.cancel',
-        'name'  => 'Cancel Purchase Order',
+        'key' => 'purchase-orders.cancel',
+        'name' => 'Cancel Purchase Order',
         'route' => 'admin.purchase-orders.cancel',
-        'sort'  => 6,
+        'sort' => 6,
     ], [
-        'key'   => 'purchase-orders.print',
-        'name'  => 'Print Purchase Order',
+        'key' => 'purchase-orders.print',
+        'name' => 'Print Purchase Order',
         'route' => 'admin.purchase-orders.print',
-        'sort'  => 7,
+        'sort' => 7,
     ],
     [
-        'key'   => 'purchase-orders.export',
-        'name'  => 'Export PO Expense CSV',
+        'key' => 'purchase-orders.export',
+        'name' => 'Export PO Expense CSV',
         'route' => 'admin.purchase-orders.export-expense',
-        'sort'  => 8,
+        'sort' => 8,
     ],
     [
-        'key'   => 'system-control',
-        'name'  => 'System Control',
+        'key' => 'system-control',
+        'name' => 'System Control',
         'route' => [
             'admin.system-control.index',
             'admin.system-control.audit-logs',
             'admin.system-control.incidents',
             'admin.system-control.incidents.resolve',
         ],
-        'sort'  => 99,
+        'sort' => 99,
     ],
     [
-        'key'   => 'vendors',
-        'name'  => 'Vendor Master',
+        'key' => 'vendors',
+        'name' => 'Vendor Master',
         'route' => [
             'admin.vendors.index',
             'admin.vendors.create',
@@ -1077,37 +1077,37 @@ return [
             'admin.vendors.edit',
             'admin.vendors.update',
         ],
-        'sort'  => 90,
+        'sort' => 90,
     ],
     [
-        'key'   => 'crm-notifications',
-        'name'  => 'CRM Notifications',
+        'key' => 'crm-notifications',
+        'name' => 'CRM Notifications',
         'route' => [
             'admin.crm-notifications.index',
             'admin.crm-notifications.read',
             'admin.crm-notifications.read-all',
         ],
-        'sort'  => 91,
+        'sort' => 91,
     ],
     [
-        'key'   => 'operations-dashboard',
-        'name'  => 'Operations Dashboard',
+        'key' => 'operations-dashboard',
+        'name' => 'Operations Dashboard',
         'route' => 'admin.operations-dashboard.index',
-        'sort'  => 92,
+        'sort' => 92,
     ],
     [
-        'key'   => 'financial-periods',
-        'name'  => 'Financial Period Lock',
+        'key' => 'financial-periods',
+        'name' => 'Financial Period Lock',
         'route' => [
             'admin.financial-periods.index',
             'admin.financial-periods.store',
             'admin.financial-periods.destroy',
         ],
-        'sort'  => 93,
+        'sort' => 93,
     ],
     [
-        'key'   => 'my-email',
-        'name'  => 'My Email',
+        'key' => 'my-email',
+        'name' => 'My Email',
         'route' => [
             'admin.my-email.inbox',
             'admin.my-email.sync',
@@ -1117,81 +1117,81 @@ return [
             'admin.my-email.test-imap',
             'admin.my-email.test-smtp',
         ],
-        'sort'  => 94,
+        'sort' => 94,
     ],
     [
-        'key'   => 'system-control.email-accounts',
-        'name'  => 'User Email Connections',
+        'key' => 'system-control.email-accounts',
+        'name' => 'User Email Connections',
         'route' => 'admin.system-control.email-accounts',
-        'sort'  => 100,
+        'sort' => 100,
     ],
     [
-        'key'   => 'work-orders',
-        'name'  => 'Surat Perintah Kerja',
+        'key' => 'work-orders',
+        'name' => 'Surat Perintah Kerja',
         'route' => 'admin.work-orders.index',
-        'sort'  => 65,
+        'sort' => 65,
     ], [
-        'key'   => 'work-orders.view',
-        'name'  => 'View SPK',
+        'key' => 'work-orders.view',
+        'name' => 'View SPK',
         'route' => [
             'admin.work-orders.index',
             'admin.work-orders.show',
             'admin.invoices.work-orders.open',
         ],
-        'sort'  => 1,
+        'sort' => 1,
     ], [
-        'key'   => 'work-orders.generate',
-        'name'  => 'Generate SPK from Invoice',
+        'key' => 'work-orders.generate',
+        'name' => 'Generate SPK from Invoice',
         'route' => [
             'admin.invoices.work-orders.store',
             'admin.invoices.delivery-order.generate',
         ],
-        'sort'  => 2,
+        'sort' => 2,
     ], [
-        'key'   => 'work-orders.edit',
-        'name'  => 'Edit SPK',
+        'key' => 'work-orders.edit',
+        'name' => 'Edit SPK',
         'route' => [
             'admin.work-orders.edit',
             'admin.work-orders.update',
         ],
-        'sort'  => 3,
+        'sort' => 3,
     ], [
-        'key'   => 'work-orders.print',
-        'name'  => 'Print SPK',
+        'key' => 'work-orders.print',
+        'name' => 'Print SPK',
         'route' => 'admin.work-orders.print',
-        'sort'  => 4,
+        'sort' => 4,
     ], [
-        'key'   => 'work-orders.delivery-orders',
-        'name'  => 'Generate Surat Jalan from SPK',
+        'key' => 'work-orders.delivery-orders',
+        'name' => 'Generate Surat Jalan from SPK',
         'route' => 'admin.work-orders.delivery-orders.generate',
-        'sort'  => 5,
+        'sort' => 5,
     ], [
-        'key'   => 'work-orders.status',
-        'name'  => 'Update SPK Status',
+        'key' => 'work-orders.status',
+        'name' => 'Update SPK Status',
         'route' => [
             'admin.work-orders.release',
             'admin.work-orders.complete',
             'admin.work-orders.cancel',
         ],
-        'sort'  => 6,
+        'sort' => 6,
     ],
 
     [
-        'key'   => 'internal-chat-audit',
-        'name'  => 'Internal Chat Audit',
+        'key' => 'internal-chat-audit',
+        'name' => 'Internal Chat Audit',
         'route' => [
             'admin.operational-dashboard.internal-chat-audit.index',
             'admin.operational-dashboard.internal-chat-audit.show',
         ],
-        'sort'  => 999,
+        'sort' => 999,
     ],
-[
-    /**
-     * Export All Expenses CSV.
-     */
-    'key'   => 'invoices.expense.export-all',
-    'name'  => 'Export All Expenses',
-    'route' => 'admin.invoices.expenses.export-all',
-    'sort'  => 3,
-],
+    [
+        /**
+         * Export All Expenses CSV.
+         */
+        'key' => 'invoices.expense.export-all',
+        'name' => 'Export All Expenses',
+        'route' => 'admin.invoices.expenses.export-all',
+        'sort' => 3,
+    ],
 ];
