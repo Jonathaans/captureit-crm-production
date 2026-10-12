@@ -14,6 +14,7 @@ Route::controller(ProformaInvoiceController::class)->prefix('proformas')->group(
     Route::get('/', 'index')->name('admin.proformas.index');
     Route::get('{id}', 'show')->whereNumber('id')->name('admin.proformas.show');
     Route::get('{id}/print', 'print')->whereNumber('id')->name('admin.proformas.print');
+    Route::post('{id}/approve', 'approve')->whereNumber('id')->name('admin.proformas.approve');
     Route::post('{id}/payment', 'confirmPayment')->whereNumber('id')->name('admin.proformas.payment');
     Route::post('{id}/cancel', 'cancel')->whereNumber('id')->name('admin.proformas.cancel');
 });

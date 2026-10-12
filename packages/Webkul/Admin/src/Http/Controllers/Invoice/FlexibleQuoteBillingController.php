@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
-use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Quote\Models\Quote;
 
 class FlexibleQuoteBillingController extends Controller
@@ -136,28 +135,10 @@ class FlexibleQuoteBillingController extends Controller
             );
         }
 
-        if ($validated['billing_type'] === FlexibleQuoteBillingService::TYPE_DOWN_PAYMENT) {
-            $proforma = app(ProformaInvoiceService::class)->create($quote, $validated, auth()->guard('user')->id());
+        $proforma = $this->billingService->createFromQuote($quote, $validated, auth()->guard('user')->id());
 
-            return redirect()->route('admin.proformas.show', $proforma->id)
-                ->with('success', 'Proforma '.$proforma->proforma_number.' dibuat. Konfirmasi pembayaran setelah DP diterima.');
-        }
-
-        $invoice = $this->billingService->createFromQuote(
-            $quote,
-            $validated,
-            auth()->guard('user')->id()
-        );
-
-        session()->flash(
-            'success',
-            $this->successMessage($invoice)
-        );
-
-        return redirect()->route(
-            'admin.invoices.show',
-            $invoice->id
-        );
+        return redirect()->route('admin.proformas.show', $proforma->id)
+            ->with('success', 'Proforma '.$proforma->proforma_number.' dibuat. Admin Sales dapat memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.');
     }
 
     public function legacy(int $quoteId): RedirectResponse
@@ -178,17 +159,5 @@ class FlexibleQuoteBillingController extends Controller
             bouncer()->hasPermission('invoices.generate'),
             403
         );
-    }
-
-    private function successMessage($invoice): string
-    {
-        $label = match ($invoice->billing_type) {
-            FlexibleQuoteBillingService::TYPE_DOWN_PAYMENT => 'Down Payment',
-            FlexibleQuoteBillingService::TYPE_SETTLEMENT => 'Pelunasan',
-            default => 'Full Payment',
-        };
-
-        return 'Invoice '.$label.' berhasil dibuat: '
-            .$invoice->invoice_number.'. Nilai komersial sudah dikunci.';
     }
 }

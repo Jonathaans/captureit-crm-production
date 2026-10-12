@@ -116,7 +116,7 @@
                 <a href="{{ route('admin.delivery-orders.print', $deliveryOrder->id) }}" target="_blank" rel="noopener" class="secondary-button">Print Surat Jalan</a>
             @endif
             @if ($invoice->billing_type === 'down_payment' && $invoice->status === 'paid' && bouncer()->hasPermission('invoices.generate'))
-                <a href="{{ route('admin.invoices.billing.create', ['quote_id' => $invoice->quote_id, 'billing_type' => 'settlement']) }}" class="secondary-button">Buat Invoice Pelunasan</a>
+                <a href="{{ route('admin.invoices.billing.create', ['quote_id' => $invoice->quote_id, 'billing_type' => 'settlement']) }}" class="secondary-button">Buat Proforma Pelunasan</a>
             @endif
             @if ($invoice->billing_type === 'settlement' && $invoice->dp_invoice_id && bouncer()->hasPermission('invoices.view'))
                 <a href="{{ route('admin.invoices.show', $invoice->dp_invoice_id) }}" class="secondary-button">Buka Invoice DP</a>

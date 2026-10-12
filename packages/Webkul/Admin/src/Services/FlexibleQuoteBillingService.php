@@ -45,7 +45,7 @@ class FlexibleQuoteBillingService
         ];
     }
 
-    public function summarize(Quote $quote): array
+    public function summarize(Quote $quote, ?int $convertingProformaId = null): array
     {
         $quoteTotal = round((float) $quote->grand_total, self::SCALE);
 
@@ -87,7 +87,8 @@ class FlexibleQuoteBillingService
             $quoteTotal = round((float) $downPayment->quote_total_snapshot, self::SCALE);
         }
 
-        $proforma = ProformaInvoice::where('quote_id', $quote->id)->where('status', 'issued')->first();
+        $proforma = ProformaInvoice::where('quote_id', $quote->id)->where('status', 'issued')
+            ->when($convertingProformaId, fn ($query) => $query->where('id', '<>', $convertingProformaId))->first();
 
         $agreement = $proforma?->quote_snapshot['attributes'] ?? $downPayment?->getAttributes() ?? $quote->getAttributes();
 
@@ -108,6 +109,7 @@ class FlexibleQuoteBillingService
                 'invoice_number' => $proforma->proforma_number,
                 'amount' => (float) $proforma->amount,
                 'status' => $proforma->status,
+                'billing_type' => $proforma->billing_type,
             ] : null,
             'quote_total' => $quoteTotal,
             'active_invoiced' => $activeInvoiced,
@@ -130,7 +132,7 @@ class FlexibleQuoteBillingService
                 'full_payment' => $quoteTotal > 0
                     && $activeInvoices->isEmpty()
                     && ! $proforma,
-                'settlement' => $downPayment !== null
+                'settlement' => ! $proforma && $downPayment !== null
                     && $downPayment->status === 'paid'
                     && ! $settlement
                     && ! $fullPayment
@@ -138,7 +140,7 @@ class FlexibleQuoteBillingService
             ],
             'messages' => [
                 'down_payment' => $proforma
-                    ? 'Proforma '.$proforma->proforma_number.' menunggu pembayaran DP. Konfirmasi uang masuk dari detail proforma.'
+                    ? 'Proforma '.$proforma->proforma_number.' menunggu keputusan Admin Sales. Buka detail untuk pindahkan ke Invoice.'
                     : $this->downPaymentMessage(
                         $quoteTotal,
                         $downPayment,
@@ -146,11 +148,11 @@ class FlexibleQuoteBillingService
                         $fullPayment
                     ),
                 'full_payment' => $proforma
-                    ? 'Batalkan proforma aktif terlebih dahulu jika perjanjian berubah menjadi tanpa DP.'
+                    ? 'Proforma aktif sudah ada. Buka proforma untuk dipindahkan ke Invoice atau batalkan jika perjanjian berubah.'
                     : ($activeInvoices->isEmpty()
                         ? 'Full Payment tersedia untuk seluruh nilai Quote.'
                         : 'Full Payment tidak tersedia karena Quote sudah memiliki Invoice aktif.'),
-                'settlement' => $this->settlementMessage(
+                'settlement' => $proforma ? 'Proforma aktif sudah ada: '.$proforma->proforma_number.'.' : $this->settlementMessage(
                     $downPayment,
                     $settlement,
                     $fullPayment,
@@ -160,22 +162,17 @@ class FlexibleQuoteBillingService
         ];
     }
 
-    public function createFromQuote(
-        Quote $quote,
-        array $input,
-        ?int $createdBy = null
-    ): Invoice {
-        if (($input['billing_type'] ?? '') === self::TYPE_DOWN_PAYMENT) {
-            throw ValidationException::withMessages(['billing_type' => 'Buat proforma terlebih dahulu, lalu konfirmasi pembayaran DP yang sudah diterima.']);
-        }
+    /** Every quote-generated billing document starts as a proforma. */
+    public function createFromQuote(Quote $quote, array $input, ?int $createdBy = null): ProformaInvoice
+    {
+        return app(ProformaInvoiceService::class)->create($quote, $input, $createdBy);
+    }
 
-        Validator::make($input, [
-            'payment_term' => ['required', 'string', 'max:2000'],
-            'issued_at' => ['required', 'date_format:Y-m-d'],
-            'due_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:issued_at'],
-        ])->validate();
+    public function approveProforma(ProformaInvoice $proforma, ?int $createdBy = null, ?string $note = null): Invoice
+    {
+        Validator::make(['note' => $note], ['note' => ['nullable', 'string', 'max:2000']])->validate();
 
-        return $this->createInvoice($quote, $input, $createdBy);
+        return $this->createInvoice($proforma, 'event_confirmed', $createdBy, [], $note);
     }
 
     public function confirmProformaPayment(ProformaInvoice $proforma, array $payment, ?int $createdBy = null): Invoice
@@ -188,21 +185,15 @@ class FlexibleQuoteBillingService
             'notes' => ['nullable', 'string', 'max:5000'],
         ])->validate();
 
-        return $this->createInvoice(
-            Quote::findOrFail($proforma->quote_id),
-            ['billing_type' => self::TYPE_DOWN_PAYMENT],
-            $createdBy,
-            $proforma,
-            $payment
-        );
+        return $this->createInvoice($proforma, 'payment_received', $createdBy, $payment);
     }
 
     private function createInvoice(
-        Quote $quote,
-        array $input,
+        ProformaInvoice $proforma,
+        string $reason,
         ?int $createdBy,
-        ?ProformaInvoice $proforma = null,
-        array $payment = []
+        array $payment = [],
+        ?string $note = null
     ): Invoice {
         $connection = DB::connection();
         $usesNamedLock = $connection->getDriverName() === 'mysql';
@@ -220,62 +211,53 @@ class FlexibleQuoteBillingService
         }
 
         try {
-            return DB::transaction(function () use ($quote, $input, $createdBy, $proforma, $payment) {
+            return DB::transaction(function () use ($proforma, $reason, $createdBy, $payment, $note) {
                 $lockedQuote = Quote::query()
                     ->with(['items', 'person.organization'])
                     ->lockForUpdate()
-                    ->findOrFail($quote->id);
+                    ->findOrFail($proforma->quote_id);
 
                 Invoice::query()
                     ->where('quote_id', $lockedQuote->id)
                     ->lockForUpdate()
                     ->get();
 
-                $summary = $this->summarize($lockedQuote);
-                $type = (string) ($input['billing_type'] ?? '');
+                $proforma = ProformaInvoice::lockForUpdate()->findOrFail($proforma->id);
 
-                if ($proforma) {
-                    $proforma = ProformaInvoice::lockForUpdate()->findOrFail($proforma->id);
-
-                    // A repeated submission must never record the same receipt twice.
-                    if ($proforma->status === 'converted') {
-                        return Invoice::with(['items', 'payments'])->findOrFail($proforma->invoice_id);
+                // A repeated action returns the original invoice without new money.
+                if ($proforma->status === 'converted') {
+                    if ($proforma->conversion_reason !== $reason) {
+                        throw ValidationException::withMessages(['proforma' => 'Proforma sudah dipindahkan ke Invoice. Catat pembayaran berikutnya dari halaman Invoice.']);
                     }
 
-                    if ($proforma->status !== 'issued') {
-                        throw ValidationException::withMessages(['proforma' => 'Proforma sudah dibatalkan.']);
-                    }
+                    return Invoice::with(['items', 'payments'])->findOrFail($proforma->invoice_id);
+                }
 
+                if ($proforma->status !== 'issued') {
+                    throw ValidationException::withMessages(['proforma' => 'Proforma sudah dibatalkan.']);
+                }
+
+                if ($payment) {
                     if (app(FinancialPeriodLockService::class)->isLocked($payment['paid_at'])) {
                         throw ValidationException::withMessages(['paid_at' => 'Periode keuangan untuk tanggal pembayaran sudah ditutup.']);
                     }
-
                     if (round((float) $payment['amount'], self::SCALE) !== (float) $proforma->amount) {
-                        throw ValidationException::withMessages(['amount' => 'Nominal uang masuk harus sama dengan DP di proforma. Jika nominal berubah, batalkan dan buat ulang proforma terlebih dahulu.']);
+                        throw ValidationException::withMessages(['amount' => 'Nominal uang masuk harus sama dengan nominal proforma. Untuk pembayaran bertahap, pindahkan karena event deal lalu catat penerimaan di Invoice.']);
                     }
-
                     if (now()->parse($payment['paid_at'])->startOfDay()->lt($proforma->issued_at)) {
                         throw ValidationException::withMessages(['paid_at' => 'Tanggal pembayaran tidak boleh sebelum tanggal proforma.']);
                     }
-
-                    $summary['eligibility'][self::TYPE_DOWN_PAYMENT] =
-                        ! $summary['down_payment'] && ! $summary['settlement'] && ! $summary['full_payment'];
-                    $lockedQuote = $proforma->snapshotQuote();
-                    $summary['quote_total'] = (float) $lockedQuote->grand_total;
-                    $summary['remaining'] = $summary['quote_total'];
-                    $input = [
-                        'billing_method' => $proforma->billing_method,
-                        'billing_amount' => (float) $proforma->amount,
-                        'issued_at' => now(),
-                        'due_at' => now(),
-                    ];
-                } elseif ($type === self::TYPE_SETTLEMENT && $summary['down_payment']) {
-                    $source = ProformaInvoice::where('invoice_id', $summary['down_payment']['id'])->first();
-                    if ($source) {
-                        $lockedQuote = $source->snapshotQuote();
-                    }
-                    $lockedQuote->grand_total = $summary['quote_total'];
                 }
+
+                $lockedQuote = $proforma->snapshotQuote();
+                $type = $proforma->billing_type;
+                $summary = $this->summarize($lockedQuote, $proforma->id);
+                $input = [
+                    'billing_method' => $proforma->billing_method,
+                    'billing_amount' => (float) $proforma->amount,
+                    'issued_at' => now(),
+                    'due_at' => $proforma->due_at,
+                ];
 
                 if (! in_array($type, [
                     self::TYPE_DOWN_PAYMENT,
@@ -336,6 +318,11 @@ class FlexibleQuoteBillingService
                     $dpInvoiceId = (int) $summary['down_payment']['id'];
                 } else {
                     $amount = $quoteTotal;
+                }
+
+                if (round($amount, self::SCALE) !== (float) $proforma->amount
+                    || ($type === self::TYPE_SETTLEMENT && $dpInvoiceId !== (int) $proforma->dp_invoice_id)) {
+                    throw ValidationException::withMessages(['proforma' => 'Posisi tagihan berubah sejak proforma dibuat. Batalkan dan buat ulang proforma setelah ditinjau.']);
                 }
 
                 if ($amount <= 0) {
@@ -421,14 +408,17 @@ class FlexibleQuoteBillingService
                 $invoice->invoice_number = $this->nextInvoiceNumber();
                 $invoice->saveQuietly();
 
-                if ($proforma) {
+                if ($payment) {
                     app(PaymentService::class)->addPayment($invoice, array_merge($payment, ['created_by' => $createdBy]));
-                    $proforma->update([
-                        'status' => 'converted',
-                        'invoice_id' => $invoice->id,
-                        'converted_at' => now(),
-                    ]);
                 }
+                $proforma->update([
+                    'status' => 'converted',
+                    'invoice_id' => $invoice->id,
+                    'converted_at' => now(),
+                    'converted_by' => $createdBy,
+                    'conversion_reason' => $reason,
+                    'conversion_note' => $note,
+                ]);
 
                 return $invoice->fresh([
                     'items',
@@ -854,7 +844,7 @@ class FlexibleQuoteBillingService
                 .$downPayment->invoice_number.'.';
         }
 
-        return 'Buat proforma untuk meminta DP. Invoice DP dibuat setelah uang masuk dikonfirmasi.';
+        return 'Buat proforma DP. Admin Sales memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.';
     }
 
     private function settlementMessage(

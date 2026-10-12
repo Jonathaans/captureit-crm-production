@@ -26,7 +26,7 @@ class ProformaInvoiceController extends Controller
         $this->assertPermission('invoices.view');
 
         return view('admin::invoices.proformas.show', [
-            'proforma' => ProformaInvoice::with('invoice')->findOrFail($id),
+            'proforma' => ProformaInvoice::with(['invoice', 'converter'])->findOrFail($id),
         ]);
     }
 
@@ -41,6 +41,7 @@ class ProformaInvoiceController extends Controller
 
     public function confirmPayment(Request $request, int $id, FlexibleQuoteBillingService $billing): RedirectResponse
     {
+        $this->assertPermission('invoices.generate');
         $this->assertPermission('invoices.payment');
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'decimal:0,2', 'gt:0'],
@@ -53,9 +54,25 @@ class ProformaInvoiceController extends Controller
             ProformaInvoice::findOrFail($id), $validated, auth()->guard('user')->id()
         );
 
-        session()->flash('success', 'Pembayaran DP tercatat. Invoice '.$invoice->invoice_number.' berstatus PAID.');
+        session()->flash('success', 'Proforma dipindahkan ke Invoice '.$invoice->invoice_number.'. Status pembayaran: '.strtoupper($invoice->status).'.');
 
         return redirect()->route('admin.proformas.show', $id);
+    }
+
+    public function approve(Request $request, int $id, FlexibleQuoteBillingService $billing): RedirectResponse
+    {
+        $this->assertPermission('invoices.generate');
+        $validated = $request->validate([
+            'event_confirmed' => ['required', 'accepted'],
+            'confirmation_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $invoice = $billing->approveProforma(
+            ProformaInvoice::findOrFail($id), auth()->guard('user')->id(), $validated['confirmation_note'] ?? null
+        );
+
+        return redirect()->route('admin.proformas.show', $id)->with(
+            'success', 'Proforma dipindahkan ke Invoice '.$invoice->invoice_number.'. Status pembayaran: '.strtoupper($invoice->status).'.'
+        );
     }
 
     public function cancel(Request $request, int $id, ProformaInvoiceService $service): RedirectResponse

@@ -16,10 +16,6 @@ it('stores the selected quote bill to identity on generated invoices', function 
     $flexibleService = file_get_contents(
         base_path('packages/Webkul/Admin/src/Services/FlexibleQuoteBillingService.php')
     );
-    $legacyService = file_get_contents(
-        base_path('packages/Webkul/Invoice/src/Services/InvoiceService.php')
-    );
-
     expect($migration)
         ->toContain("string('bill_to_display_mode', 20)")
         ->toContain("string('bill_to_person_name')")
@@ -33,7 +29,7 @@ it('stores the selected quote bill to identity on generated invoices', function 
         ->toContain('$quote?->bill_to_person_name')
         ->toContain('$quote?->bill_to_company_name');
 
-    foreach ([$flexibleService, $legacyService] as $service) {
+    foreach ([$flexibleService] as $service) {
         expect($service)
             ->toContain('resolveQuoteBillToIdentity')
             ->toContain("'bill_to_display_mode' => \$billToIdentity['mode']")

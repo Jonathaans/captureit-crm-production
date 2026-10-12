@@ -94,7 +94,7 @@ return [
          */
         'key' => 'invoices.generate',
         'name' => 'admin::app.acl.generate-invoice',
-        'route' => ['admin.invoices.generate', 'admin.invoices.billing.create', 'admin.invoices.billing.summary', 'admin.invoices.billing.store'],
+        'route' => ['admin.invoices.generate', 'admin.invoices.billing.create', 'admin.invoices.billing.summary', 'admin.invoices.billing.store', 'admin.proformas.approve'],
         'sort' => 2,
     ], [
         /**

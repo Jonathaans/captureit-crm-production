@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Webkul\Quote\Models\Quote;
 use Webkul\Quote\Models\QuoteItem;
+use Webkul\User\Models\UserProxy;
 
 class ProformaInvoice extends Model
 {
@@ -24,6 +25,20 @@ class ProformaInvoice extends Model
     public function invoice()
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function converter()
+    {
+        return $this->belongsTo(UserProxy::modelClass(), 'converted_by');
+    }
+
+    public function billingLabel(): string
+    {
+        return match ($this->billing_type) {
+            'down_payment' => 'DP',
+            'settlement' => 'Pelunasan',
+            default => 'Penuh / Tanpa DP',
+        };
     }
 
     /** Frozen commercial data used for both DP and settlement invoices. */

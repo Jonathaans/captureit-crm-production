@@ -13,6 +13,7 @@ use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
 use Webkul\Invoice\Models\ProformaInvoice;
 use Webkul\Invoice\Models\WorkOrder;
+use Webkul\Invoice\Services\InvoiceService;
 use Webkul\Invoice\Services\PaymentService;
 use Webkul\Invoice\Services\WorkOrderService;
 use Webkul\Quote\Models\Quote;
@@ -111,6 +112,7 @@ beforeEach(function (): void {
         $table->string('name');
     });
     (require base_path('database/migrations/2026_10_12_030000_create_proforma_invoices_table.php'))->up();
+    (require base_path('database/migrations/2026_10_12_133000_add_proforma_conversion_workflow.php'))->up();
     (require base_path('packages/Webkul/Core/src/Database/Migrations/2021_03_12_060658_create_core_config_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_150000_create_financial_period_locks_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_210000_create_work_orders_and_link_delivery_orders.php'))->up();
@@ -167,7 +169,7 @@ it('creates paid DP of 3 million once then a separate unpaid settlement of 7 mil
         ->and($dp->payments->first()->paid_at->format('Y-m-d H:i:s'))->toBe('2026-10-12 10:00:00')
         ->and($proforma->fresh()->invoice_id)->toBe($dp->id);
     $this->travelTo(now()->parse('2026-10-19 10:00:00'));
-    $settlement = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement', 'issued_at' => '2026-10-19', 'due_at' => '2026-10-19']));
+    $settlement = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement', 'issued_at' => '2026-10-19', 'due_at' => '2026-10-19'])));
     expect((float) $settlement->grand_total)->toBe(7000000.0)->and($settlement->status)->toBe('unpaid')
         ->and((int) $settlement->dp_invoice_id)->toBe($dp->id)->and((float) Invoice::sum('grand_total'))->toBe(10000000.0)
         ->and((float) Payment::sum('amount'))->toBe(3000000.0)->and($settlement->invoice_number)->not->toBe($dp->invoice_number);
@@ -190,9 +192,9 @@ it('preserves agreed totals company and equipment even after the quote changes',
     expect($dp->bill_to_company_name)->toBe('Company Awal')->and($dp->items->first()->name)->toBe('Photobooth')
         ->and((float) $dp->items->first()->equipment_quantity)->toBe(1.0);
     $this->travelTo(now()->parse('2026-10-23 10:00:00'));
-    $settlement = $this->billing->createFromQuote($this->quote, array_replace($this->input, [
+    $settlement = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, [
         'billing_type' => 'settlement', 'issued_at' => '2026-10-23', 'due_at' => '2026-11-03', 'payment_term' => 'Lunas 14 hari setelah event',
-    ]));
+    ])));
     expect((float) $settlement->grand_total)->toBe(7000000.0)->and($settlement->bill_to_company_name)->toBe('Company Awal')
         ->and($settlement->items->first()->name)->toBe('Photobooth')
         ->and($settlement->due_at->format('Y-m-d'))->toBe('2026-11-03');
@@ -200,12 +202,12 @@ it('preserves agreed totals company and equipment even after the quote changes',
 });
 
 it('allows no DP with full invoice and SPK before payment for either TOP', function (string $dueAt) {
-    $invoice = $this->billing->createFromQuote($this->quote, array_replace($this->input, [
+    $invoice = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, [
         'billing_type' => 'full_payment', 'due_at' => $dueAt,
-    ]));
+    ])));
     expect($invoice->status)->toBe('unpaid')->and((float) $invoice->grand_total)->toBe(10000000.0)
         ->and($invoice->due_at->format('Y-m-d'))->toBe($dueAt)
-        ->and(ProformaInvoice::count())->toBe(0)->and(Payment::count())->toBe(0)
+        ->and(ProformaInvoice::count())->toBe(1)->and(Payment::count())->toBe(0)
         ->and(app(WorkOrderService::class)->createFromInvoice($invoice)->invoice_id)->toBe($invoice->id);
 })->with(['2026-10-19', '2026-11-03']);
 
@@ -228,7 +230,7 @@ it('cancels an unpaid proforma with audit reason and permits a revised agreement
     $this->proformas->cancel($proforma, 'Perjanjian berubah menjadi tanpa DP', 7);
     expect($proforma->fresh()->cancelled_by)->toBe(7)->and($proforma->fresh()->cancellation_reason)->toBe('Perjanjian berubah menjadi tanpa DP');
     expect(fn () => $this->billing->confirmProformaPayment($proforma, $this->receipt))->toThrow(ValidationException::class);
-    $invoice = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment']));
+    $invoice = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment'])));
     expect((float) $invoice->grand_total)->toBe(10000000.0)->and(Payment::count())->toBe(0);
 });
 
@@ -275,17 +277,19 @@ it('checks generate and payment permissions on direct requests', function () {
     $proforma = $this->proformas->create($this->quote, $this->input);
     $this->postJson(route('admin.proformas.payment', $proforma->id), $this->receipt)->assertUnauthorized();
     expect(Invoice::count())->toBe(0)->and(Payment::count())->toBe(0);
-    $role->permissions = ['invoices.payment', 'invoices.view'];
+    $role->permissions = ['invoices.payment', 'invoices.view', 'invoices.generate'];
     $this->postJson(route('admin.proformas.payment', $proforma->id), $this->receipt)->assertRedirect(route('admin.proformas.show', $proforma->id));
     expect(Invoice::count())->toBe(1)->and(Payment::count())->toBe(1);
 });
 
-it('routes the existing generate form to proforma for DP and actual invoice for no DP', function () {
+it('routes every generate form choice to proforma before an invoice exists', function () {
     $this->withoutMiddleware(CanInstall::class);
     config(['app.key' => str_repeat('a', 32)]);
     $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices.generate', 'invoices.view']]);
     $user = (new User)->forceFill(['id' => 1, 'status' => 1])->setRelation('role', $role);
     $this->actingAs($user, 'user');
+    $this->postJson(route('admin.invoices.generate', $this->quote->id))->assertRedirect(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]));
+    expect(Invoice::count())->toBe(0);
     $this->postJson(route('admin.invoices.billing.store'), array_merge($this->input, [
         'quote_id' => $this->quote->id, 'billing_method' => 'percentage', 'billing_percentage' => 30, 'billing_amount' => null,
     ]))->assertRedirect(route('admin.proformas.show', 1));
@@ -294,6 +298,92 @@ it('routes the existing generate form to proforma for DP and actual invoice for 
     $this->proformas->cancel(ProformaInvoice::firstOrFail(), 'Tanpa DP sesuai kesepakatan baru');
     $this->postJson(route('admin.invoices.billing.store'), array_merge($this->input, [
         'quote_id' => $this->quote->id, 'billing_type' => 'full_payment',
-    ]))->assertRedirect(route('admin.invoices.show', 1));
-    expect((float) Invoice::firstOrFail()->grand_total)->toBe(10000000.0)->and(Payment::count())->toBe(0);
+    ]))->assertRedirect(route('admin.proformas.show', 2));
+    expect(Invoice::count())->toBe(0)->and((float) ProformaInvoice::findOrFail(2)->amount)->toBe(10000000.0)->and(Payment::count())->toBe(0);
+});
+
+it('lets Admin Sales move a deal to invoice without fabricating a payment', function (string $type) {
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['name' => 'Admin Sales', 'permission_type' => 'custom', 'permissions' => ['invoices.generate', 'invoices.view']]);
+    $user = (new User)->forceFill(['id' => 17, 'status' => 1])->setRelation('role', $role);
+    $this->actingAs($user, 'user');
+    $proforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => $type]));
+    expect($proforma)->toBeInstanceOf(ProformaInvoice::class)->and(Invoice::count())->toBe(0)->and(WorkOrder::count())->toBe(0);
+    $this->postJson(route('admin.proformas.approve', $proforma->id), [])->assertUnprocessable()->assertJsonValidationErrors('event_confirmed');
+    $this->postJson(route('admin.proformas.payment', $proforma->id), $this->receipt)->assertUnauthorized();
+    $this->postJson(route('admin.proformas.approve', $proforma->id), [
+        'event_confirmed' => 1, 'confirmation_note' => 'Customer sudah menyetujui event',
+        'status' => 'paid', 'amount' => 10000000, 'paid_at' => '2026-10-12 10:00:00',
+    ])->assertRedirect(route('admin.proformas.show', $proforma->id));
+    $invoice = Invoice::firstOrFail();
+    expect($invoice->status)->toBe('unpaid')->and((float) $invoice->paid_amount)->toBe(0.0)
+        ->and((float) $invoice->balance_due)->toBe((float) $proforma->amount)->and(Payment::count())->toBe(0)
+        ->and($proforma->fresh()->converted_by)->toBe(17)->and($proforma->fresh()->conversion_reason)->toBe('event_confirmed')
+        ->and($proforma->fresh()->conversion_note)->toBe('Customer sudah menyetujui event')
+        ->and(app(WorkOrderService::class)->createFromInvoice($invoice)->invoice_id)->toBe($invoice->id);
+    $this->postJson(route('admin.proformas.approve', $proforma->id), ['event_confirmed' => 1])->assertRedirect();
+    expect(Invoice::count())->toBe(1)->and(Payment::count())->toBe(0);
+    expect(fn () => $this->billing->confirmProformaPayment($proforma, $this->receipt))->toThrow(ValidationException::class);
+})->with(['down_payment', 'full_payment']);
+
+it('requires permission to move a proforma even when payment permission is granted', function () {
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['name' => 'Admin Sales', 'permission_type' => 'custom', 'permissions' => ['invoices.payment', 'invoices.view']]);
+    $this->actingAs((new User)->forceFill(['id' => 17, 'status' => 1])->setRelation('role', $role), 'user');
+    $proforma = $this->billing->createFromQuote($this->quote, $this->input);
+    $this->postJson(route('admin.proformas.approve', $proforma->id), ['event_confirmed' => 1])->assertUnauthorized();
+    $this->postJson(route('admin.proformas.payment', $proforma->id), $this->receipt)->assertForbidden();
+    expect(Invoice::count())->toBe(0)->and(Payment::count())->toBe(0);
+});
+
+it('keeps settlement in proforma until Admin Sales moves it and retains the same SPK', function () {
+    $dpProforma = $this->billing->createFromQuote($this->quote, $this->input);
+    $dp = $this->billing->approveProforma($dpProforma, 17);
+    expect(fn () => $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement'])))->toThrow(ValidationException::class);
+    app(PaymentService::class)->addPayment($dp, $this->receipt);
+    $spk = app(WorkOrderService::class)->createFromInvoice($dp);
+    $settlementProforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement']));
+    expect((float) $settlementProforma->amount)->toBe(7000000.0)
+        ->and($settlementProforma->billing_type)->toBe('settlement')->and(Invoice::count())->toBe(1)
+        ->and($this->billing->summarize($this->quote)['eligibility']['settlement'])->toBeFalse();
+    expect(fn () => $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement'])))->toThrow(ValidationException::class);
+    $settlement = $this->billing->approveProforma($settlementProforma, 17);
+    expect($settlement->status)->toBe('unpaid')->and((float) Invoice::sum('grand_total'))->toBe(10000000.0)
+        ->and((float) Payment::sum('amount'))->toBe(3000000.0)
+        ->and(app(WorkOrderService::class)->createFromInvoice($settlement)->id)->toBe($spk->id);
+});
+
+it('also supports a full proforma that has actually been paid', function () {
+    $proforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment']));
+    $invoice = $this->billing->confirmProformaPayment($proforma, array_replace($this->receipt, ['amount' => 10000000]), 17);
+    expect($invoice->status)->toBe('paid')->and((float) Payment::sum('amount'))->toBe(10000000.0)
+        ->and($proforma->fresh()->conversion_reason)->toBe('payment_received')->and($proforma->fresh()->converted_by)->toBe(17);
+});
+
+it('does not allow the legacy generation service to bypass proforma', function () {
+    $proforma = app(InvoiceService::class)->createFromQuote($this->quote);
+    expect($proforma)->toBeInstanceOf(ProformaInvoice::class)
+        ->and($proforma->billing_type)->toBe('full_payment')->and(Invoice::count())->toBe(0)->and(Payment::count())->toBe(0);
+});
+
+it('preserves full quote snapshots and does not claim a receipt on the printed approved proforma', function () {
+    $proforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment']));
+    $this->quote->update(['grand_total' => 20000000, 'bill_to_company_name' => 'Changed Company']);
+    $invoice = $this->billing->approveProforma($proforma, 17);
+    expect((float) $invoice->grand_total)->toBe(10000000.0)->and($invoice->bill_to_company_name)->toBe('Company Awal');
+    $html = view('admin::invoices.proformas.print', ['proforma' => $proforma->fresh()])->render();
+    expect($html)->toContain('SUDAH DIPINDAHKAN KE INVOICE', 'Penuh / Tanpa DP')->not->toContain('DP TELAH DITERIMA');
+});
+
+it('upgrades earlier DP proformas without losing their type or conversion history', function () {
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $this->billing->confirmProformaPayment($proforma, $this->receipt);
+    $migration = require base_path('database/migrations/2026_10_12_133000_add_proforma_conversion_workflow.php');
+    $migration->down();
+    $migration->up();
+    expect($proforma->fresh()->billing_type)->toBe('down_payment')
+        ->and($proforma->fresh()->conversion_reason)->toBe('payment_received')
+        ->and(Invoice::count())->toBe(1)->and(Payment::count())->toBe(1);
 });

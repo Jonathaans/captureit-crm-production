@@ -95,7 +95,7 @@ class InvoiceCorrectionService
             : null;
         $snapshot['dependencies'] = [];
         if (Schema::hasTable('proforma_invoices')) {
-            $snapshot['dependencies']['proformas'] = DB::table('proforma_invoices')->where('invoice_id', $invoice->id)->count();
+            $snapshot['dependencies']['proformas'] = DB::table('proforma_invoices')->where(fn ($query) => $query->where('invoice_id', $invoice->id)->orWhere('dp_invoice_id', $invoice->id))->count();
         }
         foreach (['expenses', 'work_orders', 'delivery_orders', 'purchase_orders'] as $table) {
             $query = DB::table($table)->where('invoice_id', $invoice->id)->select('id');

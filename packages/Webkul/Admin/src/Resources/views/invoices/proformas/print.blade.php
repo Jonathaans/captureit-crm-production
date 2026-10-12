@@ -26,26 +26,28 @@
         <h1>PROFORMA INVOICE</h1>
         {{ $proforma->proforma_number }}
         @if ($proforma->status === 'cancelled')<strong> · DIBATALKAN</strong>@endif
-        @if ($proforma->status === 'converted')<strong> · DP TELAH DITERIMA</strong>@endif
+        @if ($proforma->status === 'converted')<strong> · SUDAH DIPINDAHKAN KE INVOICE</strong>@endif
     </header>
     <table>
         <tr><td><strong>Kepada</strong><br>
             @if ($mode !== 'person'){{ $snapshot['bill_to_company_name'] ?? '-' }}<br>@endif
             @if ($mode !== 'company'){{ $snapshot['bill_to_person_name'] ?? '-' }}@endif
-        </td><td>Tanggal: {{ $proforma->issued_at->format('d/m/Y') }}<br>Jatuh tempo DP: {{ $proforma->due_at->format('d/m/Y') }}</td></tr>
+        </td><td>Tanggal: {{ $proforma->issued_at->format('d/m/Y') }}<br>Jatuh tempo: {{ $proforma->due_at->format('d/m/Y') }}</td></tr>
         <tr><td>Penawaran: {{ $snapshot['quote_number'] ?? '-' }}<br>Proyek: {{ $snapshot['subject'] ?? '-' }}</td><td>Kode proyek: {{ $snapshot['project_code'] ?? '-' }}<br>Event: {{ $snapshot['event_date'] ?? '-' }}</td></tr>
     </table>
     <table>
         <thead><tr><th>Permintaan pembayaran</th><th class="amount">Nominal</th></tr></thead>
         <tbody>
             <tr><td>Total penawaran yang disepakati</td><td class="amount">Rp {{ number_format((float) $snapshot['grand_total'], 2, ',', '.') }}</td></tr>
-            <tr class="total"><td>DP {{ number_format((float) $proforma->billing_percentage, 2, ',', '.') }}%</td><td class="amount">Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</td></tr>
+            <tr class="total"><td>{{ $proforma->billingLabel() }}</td><td class="amount">Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</td></tr>
+            @if ($proforma->billing_type === 'down_payment')
             <tr><td>Sisa untuk invoice pelunasan</td><td class="amount">Rp {{ number_format((float) $snapshot['grand_total'] - (float) $proforma->amount, 2, ',', '.') }}</td></tr>
+            @endif
         </tbody>
     </table>
     <strong>TOP / Ketentuan pembayaran</strong>
     <p class="terms">{{ $snapshot['payment_term'] ?? '-' }}</p>
     @if (config('company.payment_info'))<p class="terms">{{ config('company.payment_info') }}</p>@endif
-    <p>Proforma ini merupakan permintaan pembayaran DP. Invoice DP diterbitkan setelah pembayaran diterima.</p>
+    <p>Proforma ini belum merupakan invoice aktual. Invoice diterbitkan setelah event disetujui atau pembayaran diterima.</p>
 </body>
 </html>

@@ -31,14 +31,16 @@
     <div class="flex items-center gap-x-2.5">
         {!! view_render_event('admin.contacts.quotes.edit.save_button.before', ['quote' => $quote]) !!}
 
-        <!-- Generate Invoice -->
+        @if (bouncer()->hasPermission('invoices.generate'))
+        <!-- Generate Proforma -->
         <button
             type="submit"
             form="generate-invoice-form"
             class="secondary-button"
         >
-            Generate Invoice
+            Buat Proforma
         </button>
+        @endif
 
         <!-- Save Quote -->
         @if ($archiveReason)

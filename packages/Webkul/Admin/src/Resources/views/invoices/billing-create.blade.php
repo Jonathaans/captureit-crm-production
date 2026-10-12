@@ -1,7 +1,7 @@
 <x-admin::layouts>
     {{-- CRM_INVOICE_FLEXIBLE_BILLING_UI_HOTFIX_V1_2 --}}
     <x-slot:title>
-        Buat Proforma / Invoice dari Penawaran
+        Buat Proforma dari Penawaran
     </x-slot>
 
     @php
@@ -27,17 +27,17 @@
                     </a>
 
                     <h1 class="mt-3 text-2xl font-bold text-gray-900 dark:text-white">
-                        Buat Proforma / Invoice dari Penawaran
+                        Buat Proforma dari Penawaran
                     </h1>
 
                     <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
-                        Dengan DP: buat proforma, konfirmasi uang masuk, lalu terbitkan invoice DP.
-                        Tanpa DP: buat invoice penuh. Pelunasan dibuat terpisah sesuai TOP.
+                        Semua jenis tagihan dari penawaran dibuat sebagai proforma terlebih dahulu.
+                        Admin Sales memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.
                     </p>
                 </div>
 
                 <span class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                    Proforma → Invoice DP → Pelunasan
+                    Penawaran → Proforma → Invoice
                 </span>
             </div>
         </div>
@@ -114,9 +114,9 @@
 
                     <div class="grid gap-4 md:grid-cols-3">
                         @foreach ([
-                            'down_payment' => ['Proforma DP', 'Permintaan DP sebelum pembayaran diterima.'],
-                            'full_payment' => ['Tanpa DP', 'Invoice 100%, pembayaran sebelum/sesudah event sesuai TOP.'],
-                            'settlement' => ['Pelunasan', 'Invoice sisa nilai saat event akan berjalan atau sudah lewat.'],
+                            'down_payment' => ['Proforma DP', 'Nominal DP sesuai kesepakatan.'],
+                            'full_payment' => ['Proforma Penuh', 'Tanpa DP. Pembayaran sebelum/sesudah event sesuai TOP.'],
+                            'settlement' => ['Proforma Pelunasan', 'Sisa nilai setelah DP dibayar, sesuai jadwal event dan TOP.'],
                         ] as $value => [$label, $help])
                             <label class="cursor-pointer">
                                 <input
@@ -288,7 +288,7 @@
                         <div id="crm-existing-invoices" class="space-y-2"></div>
 
                         <div class="rounded-xl bg-amber-50 p-4 text-xs leading-5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                            Proforma belum mencatat tagihan atau penerimaan uang. Invoice DP terbit setelah pembayaran dikonfirmasi. SPK dibuat dari invoice.
+                            Proforma belum mencatat invoice atau penerimaan uang. Admin Sales memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima. SPK dibuat dari invoice.
                         </div>
 
                         <button
@@ -386,7 +386,7 @@
                         if (label === 'Proforma') {
                             const link = document.createElement('a');
                             link.href = @json(route('admin.proformas.show', ['id' => '__ID__'])).replace('__ID__', invoice.id);
-                            link.textContent = 'Buka proforma / konfirmasi DP';
+                            link.textContent = 'Buka proforma / pindahkan ke Invoice';
                             link.className = 'text-brandColor text-xs underline';
                             container.appendChild(link);
                         }
@@ -413,8 +413,8 @@
                     const type = selectedType();
                     const isDp = type === 'down_payment';
                     const isPercentage = methodSelect.value === 'percentage';
-                    submitButton.textContent = isDp ? 'Buat Proforma DP' : 'Buat Invoice';
-                    document.getElementById('crm-preview-document-label').textContent = isDp ? 'Proforma DP baru' : 'Invoice baru';
+                    submitButton.textContent = 'Buat Proforma';
+                    document.getElementById('crm-preview-document-label').textContent = 'Proforma baru';
                     document.getElementById('crm-billing-event').textContent = summary?.event_date ? 'Tanggal event: ' + summary.event_date : 'Periksa perjanjian pembayaran sebelum/sesudah event.';
 
                     dpInputs.classList.toggle('hidden', ! isDp);
