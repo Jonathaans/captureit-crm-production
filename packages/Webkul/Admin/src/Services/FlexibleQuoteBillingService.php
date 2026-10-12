@@ -4,10 +4,14 @@ namespace Webkul\Admin\Services;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
+use Webkul\Invoice\Models\ProformaInvoice;
+use Webkul\Invoice\Services\InvoiceNumberHistory;
+use Webkul\Invoice\Services\PaymentService;
 use Webkul\Invoice\Support\BillingDescription;
 use Webkul\Quote\Models\Quote;
 
@@ -78,6 +82,15 @@ class FlexibleQuoteBillingService
             self::SCALE
         );
 
+        // Later edits to the quote cannot change the agreed DP + settlement total.
+        if ($downPayment && (float) $downPayment->quote_total_snapshot > 0) {
+            $quoteTotal = round((float) $downPayment->quote_total_snapshot, self::SCALE);
+        }
+
+        $proforma = ProformaInvoice::where('quote_id', $quote->id)->where('status', 'issued')->first();
+
+        $agreement = $proforma?->quote_snapshot['attributes'] ?? $downPayment?->getAttributes() ?? $quote->getAttributes();
+
         $remaining = round(
             max(0, $quoteTotal - $activeInvoiced),
             self::SCALE
@@ -88,6 +101,14 @@ class FlexibleQuoteBillingService
             'quote_number' => $quote->quote_number ?: '#'.$quote->id,
             'project_code' => $quote->project_code ?: '-',
             'subject' => $quote->subject ?: '-',
+            'payment_term' => $agreement['payment_term'] ?? null,
+            'event_date' => $agreement['event_date'] ?? null,
+            'proforma' => $proforma ? [
+                'id' => $proforma->id,
+                'invoice_number' => $proforma->proforma_number,
+                'amount' => (float) $proforma->amount,
+                'status' => $proforma->status,
+            ] : null,
             'quote_total' => $quoteTotal,
             'active_invoiced' => $activeInvoiced,
             'remaining' => $remaining,
@@ -101,31 +122,34 @@ class FlexibleQuoteBillingService
                 ? $this->invoiceSummary($fullPayment)
                 : null,
             'eligibility' => [
-                'down_payment' =>
-                    $quoteTotal > 0
+                'down_payment' => $quoteTotal > 0
+                    && ! $proforma
                     && ! $downPayment
                     && ! $settlement
                     && ! $fullPayment,
-                'full_payment' =>
-                    $quoteTotal > 0
-                    && $activeInvoices->isEmpty(),
-                'settlement' =>
-                    $downPayment !== null
+                'full_payment' => $quoteTotal > 0
+                    && $activeInvoices->isEmpty()
+                    && ! $proforma,
+                'settlement' => $downPayment !== null
                     && $downPayment->status === 'paid'
                     && ! $settlement
                     && ! $fullPayment
                     && $remaining > 0,
             ],
             'messages' => [
-                'down_payment' => $this->downPaymentMessage(
-                    $quoteTotal,
-                    $downPayment,
-                    $settlement,
-                    $fullPayment
-                ),
-                'full_payment' => $activeInvoices->isEmpty()
-                    ? 'Full Payment tersedia untuk seluruh nilai Quote.'
-                    : 'Full Payment tidak tersedia karena Quote sudah memiliki Invoice aktif.',
+                'down_payment' => $proforma
+                    ? 'Proforma '.$proforma->proforma_number.' menunggu pembayaran DP. Konfirmasi uang masuk dari detail proforma.'
+                    : $this->downPaymentMessage(
+                        $quoteTotal,
+                        $downPayment,
+                        $settlement,
+                        $fullPayment
+                    ),
+                'full_payment' => $proforma
+                    ? 'Batalkan proforma aktif terlebih dahulu jika perjanjian berubah menjadi tanpa DP.'
+                    : ($activeInvoices->isEmpty()
+                        ? 'Full Payment tersedia untuk seluruh nilai Quote.'
+                        : 'Full Payment tidak tersedia karena Quote sudah memiliki Invoice aktif.'),
                 'settlement' => $this->settlementMessage(
                     $downPayment,
                     $settlement,
@@ -141,6 +165,45 @@ class FlexibleQuoteBillingService
         array $input,
         ?int $createdBy = null
     ): Invoice {
+        if (($input['billing_type'] ?? '') === self::TYPE_DOWN_PAYMENT) {
+            throw ValidationException::withMessages(['billing_type' => 'Buat proforma terlebih dahulu, lalu konfirmasi pembayaran DP yang sudah diterima.']);
+        }
+
+        Validator::make($input, [
+            'payment_term' => ['required', 'string', 'max:2000'],
+            'issued_at' => ['required', 'date_format:Y-m-d'],
+            'due_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:issued_at'],
+        ])->validate();
+
+        return $this->createInvoice($quote, $input, $createdBy);
+    }
+
+    public function confirmProformaPayment(ProformaInvoice $proforma, array $payment, ?int $createdBy = null): Invoice
+    {
+        $payment = Validator::make($payment, [
+            'amount' => ['required', 'numeric', 'decimal:0,2', 'gt:0'],
+            'paid_at' => ['required', 'date', 'before_or_equal:now'],
+            'payment_method' => ['required', 'string', 'max:255'],
+            'reference_number' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ])->validate();
+
+        return $this->createInvoice(
+            Quote::findOrFail($proforma->quote_id),
+            ['billing_type' => self::TYPE_DOWN_PAYMENT],
+            $createdBy,
+            $proforma,
+            $payment
+        );
+    }
+
+    private function createInvoice(
+        Quote $quote,
+        array $input,
+        ?int $createdBy,
+        ?ProformaInvoice $proforma = null,
+        array $payment = []
+    ): Invoice {
         $connection = DB::connection();
         $usesNamedLock = $connection->getDriverName() === 'mysql';
 
@@ -151,180 +214,229 @@ class FlexibleQuoteBillingService
 
             if ((int) ($row->acquired ?? 0) !== 1) {
                 throw ValidationException::withMessages([
-                    'invoice_number' =>
-                        'Nomor invoice sedang digunakan proses lain. Silakan ulangi.',
+                    'invoice_number' => 'Nomor invoice sedang digunakan proses lain. Silakan ulangi.',
                 ]);
             }
         }
 
         try {
-            return DB::transaction(function () use ($quote, $input, $createdBy) {
-            $lockedQuote = Quote::query()
-                ->with(['items', 'person.organization'])
-                ->lockForUpdate()
-                ->findOrFail($quote->id);
+            return DB::transaction(function () use ($quote, $input, $createdBy, $proforma, $payment) {
+                $lockedQuote = Quote::query()
+                    ->with(['items', 'person.organization'])
+                    ->lockForUpdate()
+                    ->findOrFail($quote->id);
 
-            Invoice::query()
-                ->where('quote_id', $lockedQuote->id)
-                ->lockForUpdate()
-                ->get();
+                Invoice::query()
+                    ->where('quote_id', $lockedQuote->id)
+                    ->lockForUpdate()
+                    ->get();
 
-            $summary = $this->summarize($lockedQuote);
-            $type = (string) ($input['billing_type'] ?? '');
+                $summary = $this->summarize($lockedQuote);
+                $type = (string) ($input['billing_type'] ?? '');
 
-            if (! in_array($type, [
-                self::TYPE_DOWN_PAYMENT,
-                self::TYPE_FULL_PAYMENT,
-                self::TYPE_SETTLEMENT,
-            ], true)) {
-                throw ValidationException::withMessages([
-                    'billing_type' => 'Jenis invoice tidak valid.',
-                ]);
-            }
+                if ($proforma) {
+                    $proforma = ProformaInvoice::lockForUpdate()->findOrFail($proforma->id);
 
-            if (! ($summary['eligibility'][$type] ?? false)) {
-                throw ValidationException::withMessages([
-                    'billing_type' =>
-                        $summary['messages'][$type]
-                        ?? 'Jenis invoice ini tidak tersedia.',
-                ]);
-            }
+                    // A repeated submission must never record the same receipt twice.
+                    if ($proforma->status === 'converted') {
+                        return Invoice::with(['items', 'payments'])->findOrFail($proforma->invoice_id);
+                    }
 
-            $quoteTotal = (float) $summary['quote_total'];
-            $method = null;
-            $percentage = null;
-            $dpInvoiceId = null;
+                    if ($proforma->status !== 'issued') {
+                        throw ValidationException::withMessages(['proforma' => 'Proforma sudah dibatalkan.']);
+                    }
 
-            if ($type === self::TYPE_DOWN_PAYMENT) {
-                $method = (string) ($input['billing_method'] ?? '');
+                    if (app(FinancialPeriodLockService::class)->isLocked($payment['paid_at'])) {
+                        throw ValidationException::withMessages(['paid_at' => 'Periode keuangan untuk tanggal pembayaran sudah ditutup.']);
+                    }
 
-                if (! in_array($method, ['percentage', 'nominal'], true)) {
+                    if (round((float) $payment['amount'], self::SCALE) !== (float) $proforma->amount) {
+                        throw ValidationException::withMessages(['amount' => 'Nominal uang masuk harus sama dengan DP di proforma. Jika nominal berubah, batalkan dan buat ulang proforma terlebih dahulu.']);
+                    }
+
+                    if (now()->parse($payment['paid_at'])->startOfDay()->lt($proforma->issued_at)) {
+                        throw ValidationException::withMessages(['paid_at' => 'Tanggal pembayaran tidak boleh sebelum tanggal proforma.']);
+                    }
+
+                    $summary['eligibility'][self::TYPE_DOWN_PAYMENT] =
+                        ! $summary['down_payment'] && ! $summary['settlement'] && ! $summary['full_payment'];
+                    $lockedQuote = $proforma->snapshotQuote();
+                    $summary['quote_total'] = (float) $lockedQuote->grand_total;
+                    $summary['remaining'] = $summary['quote_total'];
+                    $input = [
+                        'billing_method' => $proforma->billing_method,
+                        'billing_amount' => (float) $proforma->amount,
+                        'issued_at' => now(),
+                        'due_at' => now(),
+                    ];
+                } elseif ($type === self::TYPE_SETTLEMENT && $summary['down_payment']) {
+                    $source = ProformaInvoice::where('invoice_id', $summary['down_payment']['id'])->first();
+                    if ($source) {
+                        $lockedQuote = $source->snapshotQuote();
+                    }
+                    $lockedQuote->grand_total = $summary['quote_total'];
+                }
+
+                if (! in_array($type, [
+                    self::TYPE_DOWN_PAYMENT,
+                    self::TYPE_FULL_PAYMENT,
+                    self::TYPE_SETTLEMENT,
+                ], true)) {
                     throw ValidationException::withMessages([
-                        'billing_method' => 'Pilih metode Persentase atau Nominal.',
+                        'billing_type' => 'Jenis invoice tidak valid.',
                     ]);
                 }
+
+                if (! ($summary['eligibility'][$type] ?? false)) {
+                    throw ValidationException::withMessages([
+                        'billing_type' => $summary['messages'][$type]
+                            ?? 'Jenis invoice ini tidak tersedia.',
+                    ]);
+                }
+
+                $quoteTotal = (float) $summary['quote_total'];
+                $method = null;
+                $percentage = null;
+                $dpInvoiceId = null;
+
+                if ($type === self::TYPE_DOWN_PAYMENT) {
+                    $method = (string) ($input['billing_method'] ?? '');
+
+                    if (! in_array($method, ['percentage', 'nominal'], true)) {
+                        throw ValidationException::withMessages([
+                            'billing_method' => 'Pilih metode Persentase atau Nominal.',
+                        ]);
+                    }
+
+                    /*
+                     * Nominal is authoritative. Percentage is derived metadata.
+                     */
+                    $amount = round(
+                        (float) ($input['billing_amount'] ?? 0),
+                        self::SCALE
+                    );
+
+                    if ($amount <= 0 || $amount >= $quoteTotal) {
+                        throw ValidationException::withMessages([
+                            'billing_amount' => 'Nominal DP harus lebih dari Rp 0 dan lebih kecil dari Grand Total Quote.',
+                        ]);
+                    }
+
+                    $position = $this->calculateDownPaymentPosition(
+                        $quoteTotal,
+                        $amount
+                    );
+
+                    $percentage = $position['percentage'];
+                } elseif ($type === self::TYPE_SETTLEMENT) {
+                    $amount = round(
+                        (float) $summary['remaining'],
+                        self::SCALE
+                    );
+                    $dpInvoiceId = (int) $summary['down_payment']['id'];
+                } else {
+                    $amount = $quoteTotal;
+                }
+
+                if ($amount <= 0) {
+                    throw ValidationException::withMessages([
+                        'billing_amount' => 'Nilai invoice harus lebih dari Rp 0.',
+                    ]);
+                }
+
+                $remainingAfterInvoice = round(
+                    max(0, (float) $summary['remaining'] - $amount),
+                    self::SCALE
+                );
+
+                $billToIdentity = $this->resolveQuoteBillToIdentity($lockedQuote);
+
+                $invoice = Invoice::create([
+                    'invoice_number' => 'TMP-'.Str::uuid(),
+                    'project_code' => $lockedQuote->project_code,
+                    'business_unit' => $lockedQuote->business_unit,
+                    'event_date' => $lockedQuote->event_date,
+                    'location' => $lockedQuote->location,
+                    'payment_term' => $input['payment_term'] ?? $lockedQuote->payment_term,
+                    'quote_id' => $lockedQuote->id,
+                    'person_id' => $lockedQuote->person_id,
+                    'bill_to_display_mode' => $billToIdentity['mode'],
+                    'bill_to_person_name' => $billToIdentity['person_name'],
+                    'bill_to_company_name' => $billToIdentity['company_name'],
+                    'user_id' => $lockedQuote->user_id,
+                    'subject' => $lockedQuote->subject,
+                    'description' => $lockedQuote->description,
+                    'billing_address' => $lockedQuote->billing_address,
+                    'shipping_address' => $lockedQuote->shipping_address,
+                    'discount_percent' => $type === self::TYPE_FULL_PAYMENT
+                        ? ($lockedQuote->discount_percent ?? 0)
+                        : 0,
+                    'discount_amount' => $type === self::TYPE_FULL_PAYMENT
+                        ? ($lockedQuote->discount_amount ?? 0)
+                        : 0,
+                    'tax_amount' => $type === self::TYPE_FULL_PAYMENT
+                        ? ($lockedQuote->tax_amount ?? 0)
+                        : 0,
+                    'adjustment_amount' => $type === self::TYPE_FULL_PAYMENT
+                        ? ($lockedQuote->adjustment_amount ?? 0)
+                        : 0,
+                    'sub_total' => $type === self::TYPE_FULL_PAYMENT
+                        ? ($lockedQuote->sub_total ?? $amount)
+                        : $amount,
+                    'grand_total' => $amount,
+                    'paid_amount' => 0,
+                    'balance_due' => $amount,
+                    'status' => 'unpaid',
+                    'event_status' => 'confirm',
+                    'issued_at' => $input['issued_at'] ?? now(),
+                    'due_at' => $input['due_at'] ?? now()->addDays(7),
+                ]);
 
                 /*
-                 * Nominal is authoritative. Percentage is derived metadata.
+                 * Build immutable item snapshots before billing_locked_at is set.
                  */
-                $amount = round(
-                    (float) ($input['billing_amount'] ?? 0),
-                    self::SCALE
-                );
+                if ($type === self::TYPE_FULL_PAYMENT) {
+                    $this->copyFullItems($invoice, $lockedQuote);
+                } else {
+                    $this->copyAllocatedItems(
+                        $invoice,
+                        $lockedQuote,
+                        $amount,
+                        $type
+                    );
+                }
 
-                if ($amount <= 0 || $amount >= $quoteTotal) {
-                    throw ValidationException::withMessages([
-                        'billing_amount' =>
-                            'Nominal DP harus lebih dari Rp 0 dan lebih kecil dari Grand Total Quote.',
+                $invoice->forceFill([
+                    'billing_type' => $type,
+                    'billing_method' => $method,
+                    'billing_percentage' => $percentage,
+                    'quote_total_snapshot' => $quoteTotal,
+                    'billing_amount' => $amount,
+                    'remaining_amount_snapshot' => $remainingAfterInvoice,
+                    'dp_invoice_id' => $dpInvoiceId,
+                    'billing_created_by' => $createdBy,
+                    'billing_locked_at' => now(),
+                ])->saveQuietly();
+
+                $invoice->invoice_number = $this->nextInvoiceNumber();
+                $invoice->saveQuietly();
+
+                if ($proforma) {
+                    app(PaymentService::class)->addPayment($invoice, array_merge($payment, ['created_by' => $createdBy]));
+                    $proforma->update([
+                        'status' => 'converted',
+                        'invoice_id' => $invoice->id,
+                        'converted_at' => now(),
                     ]);
                 }
 
-                $position = $this->calculateDownPaymentPosition(
-                    $quoteTotal,
-                    $amount
-                );
-
-                $percentage = $position['percentage'];
-            } elseif ($type === self::TYPE_SETTLEMENT) {
-                $amount = round(
-                    (float) $summary['remaining'],
-                    self::SCALE
-                );
-                $dpInvoiceId = (int) $summary['down_payment']['id'];
-            } else {
-                $amount = $quoteTotal;
-            }
-
-            if ($amount <= 0) {
-                throw ValidationException::withMessages([
-                    'billing_amount' => 'Nilai invoice harus lebih dari Rp 0.',
+                return $invoice->fresh([
+                    'items',
+                    'payments',
+                    'quote',
+                    'person',
+                    'user',
                 ]);
-            }
-
-            $remainingAfterInvoice = round(
-                max(0, (float) $summary['remaining'] - $amount),
-                self::SCALE
-            );
-
-            $billToIdentity = $this->resolveQuoteBillToIdentity($lockedQuote);
-
-            $invoice = Invoice::create([
-                'invoice_number' => 'TMP-'.Str::uuid(),
-                'project_code' => $lockedQuote->project_code,
-                'business_unit' => $lockedQuote->business_unit,
-                'event_date' => $lockedQuote->event_date,
-                'location' => $lockedQuote->location,
-                'payment_term' => $lockedQuote->payment_term,
-                'quote_id' => $lockedQuote->id,
-                'person_id' => $lockedQuote->person_id,
-                'bill_to_display_mode' => $billToIdentity['mode'],
-                'bill_to_person_name' => $billToIdentity['person_name'],
-                'bill_to_company_name' => $billToIdentity['company_name'],
-                'user_id' => $lockedQuote->user_id,
-                'subject' => $lockedQuote->subject,
-                'description' => $lockedQuote->description,
-                'billing_address' => $lockedQuote->billing_address,
-                'shipping_address' => $lockedQuote->shipping_address,
-                'discount_percent' => $type === self::TYPE_FULL_PAYMENT
-                    ? ($lockedQuote->discount_percent ?? 0)
-                    : 0,
-                'discount_amount' => $type === self::TYPE_FULL_PAYMENT
-                    ? ($lockedQuote->discount_amount ?? 0)
-                    : 0,
-                'tax_amount' => $type === self::TYPE_FULL_PAYMENT
-                    ? ($lockedQuote->tax_amount ?? 0)
-                    : 0,
-                'adjustment_amount' => $type === self::TYPE_FULL_PAYMENT
-                    ? ($lockedQuote->adjustment_amount ?? 0)
-                    : 0,
-                'sub_total' => $type === self::TYPE_FULL_PAYMENT
-                    ? ($lockedQuote->sub_total ?? $amount)
-                    : $amount,
-                'grand_total' => $amount,
-                'paid_amount' => 0,
-                'balance_due' => $amount,
-                'status' => 'unpaid',
-                'event_status' => 'confirm',
-                'issued_at' => $input['issued_at'] ?? now(),
-                'due_at' => $input['due_at'] ?? now()->addDays(7),
-            ]);
-
-            /*
-             * Build immutable item snapshots before billing_locked_at is set.
-             */
-            if ($type === self::TYPE_FULL_PAYMENT) {
-                $this->copyFullItems($invoice, $lockedQuote);
-            } else {
-                $this->copyAllocatedItems(
-                    $invoice,
-                    $lockedQuote,
-                    $amount,
-                    $type
-                );
-            }
-
-            $invoice->forceFill([
-                'billing_type' => $type,
-                'billing_method' => $method,
-                'billing_percentage' => $percentage,
-                'quote_total_snapshot' => $quoteTotal,
-                'billing_amount' => $amount,
-                'remaining_amount_snapshot' => $remainingAfterInvoice,
-                'dp_invoice_id' => $dpInvoiceId,
-                'billing_created_by' => $createdBy,
-                'billing_locked_at' => now(),
-            ])->saveQuietly();
-
-            $invoice->invoice_number = $this->nextInvoiceNumber();
-            $invoice->saveQuietly();
-
-            return $invoice->fresh([
-                'items',
-                'payments',
-                'quote',
-                'person',
-                'user',
-            ]);
             }, 3);
         } finally {
             if ($usesNamedLock) {
@@ -520,6 +632,14 @@ class FlexibleQuoteBillingService
             ->whereIn('id', $ids)
             ->pluck('grand_total', 'id');
 
+        $agreedTotals = Invoice::query()
+            ->whereIn('quote_id', $ids)
+            ->where('billing_type', self::TYPE_DOWN_PAYMENT)
+            ->where('quote_total_snapshot', '>', 0)
+            ->where(fn ($query) => $query->whereNull('event_status')->orWhereNotIn('event_status', ['cancel', 'cancelled', 'canceled']))
+            ->orderByDesc('id')
+            ->pluck('quote_total_snapshot', 'quote_id');
+
         $invoiceTotals = Invoice::query()
             ->whereIn('quote_id', $ids)
             ->where(function ($query) {
@@ -537,7 +657,7 @@ class FlexibleQuoteBillingService
         foreach ($quoteTotals as $quoteId => $total) {
             $unbilled += max(
                 0,
-                (float) $total - (float) $invoiceTotals->get($quoteId, 0)
+                (float) $agreedTotals->get($quoteId, $total) - (float) $invoiceTotals->get($quoteId, 0)
             );
         }
 
@@ -548,7 +668,7 @@ class FlexibleQuoteBillingService
     {
         $prefix = 'INV '.now()->format('ym').'-';
 
-        $sequence = app(\Webkul\Invoice\Services\InvoiceNumberHistory::class)
+        $sequence = app(InvoiceNumberHistory::class)
             ->lastSequence($prefix) + 1;
 
         return $prefix.str_pad(
@@ -734,7 +854,7 @@ class FlexibleQuoteBillingService
                 .$downPayment->invoice_number.'.';
         }
 
-        return 'DP tersedia. Nominal dapat diubah sebelum Invoice dibuat.';
+        return 'Buat proforma untuk meminta DP. Invoice DP dibuat setelah uang masuk dikonfirmasi.';
     }
 
     private function settlementMessage(
@@ -779,8 +899,7 @@ class FlexibleQuoteBillingService
     private function throwLocked(): never
     {
         throw ValidationException::withMessages([
-            'billing' =>
-                'Nilai komersial Invoice DP/Full Payment/Pelunasan sudah dikunci. '
+            'billing' => 'Nilai komersial Invoice DP/Full Payment/Pelunasan sudah dikunci. '
                 .'Jika salah, batalkan Invoice lalu generate ulang agar audit trail tetap utuh.',
         ]);
     }

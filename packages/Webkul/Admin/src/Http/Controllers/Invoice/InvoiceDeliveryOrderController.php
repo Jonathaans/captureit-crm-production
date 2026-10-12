@@ -24,22 +24,21 @@ class InvoiceDeliveryOrderController extends Controller
 
         $deliveryOrders = DeliveryOrder::query()
             ->withCount('items')
-            ->where(
+            ->whereIn(
                 'invoice_id',
-                $invoice->id
+                $invoice->projectInvoiceIds()
             )
             ->orderBy('id')
             ->get();
 
         $statusCounts = $deliveryOrders
             ->groupBy(
-                fn ($deliveryOrder) =>
-                    strtolower(
-                        (string) (
-                            $deliveryOrder->status
-                            ?: 'draft'
-                        )
+                fn ($deliveryOrder) => strtolower(
+                    (string) (
+                        $deliveryOrder->status
+                        ?: 'draft'
                     )
+                )
             )
             ->map
             ->count();

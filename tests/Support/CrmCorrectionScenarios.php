@@ -398,6 +398,7 @@ class CrmCorrectionScenarios
             $t->decimal('grand_total', 12, 4);
             $t->decimal('paid_amount', 12, 4);
         });
+        (require dirname(__DIR__, 2).'/database/migrations/2026_10_12_030000_create_proforma_invoices_table.php')->up();
         Schema::create('payments', function (Blueprint $t) {
             $t->increments('id');
             $t->unsignedInteger('invoice_id');

@@ -28,12 +28,15 @@
             class="max-sm:w-full"
             style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto"
         >
+            <a href="{{ route('admin.proformas.index') }}" class="secondary-button">Proforma</a>
+            @if (bouncer()->hasPermission('invoices.generate'))
             <a
                 href="{{ route('admin.invoices.billing.create') }}"
                 class="primary-button max-sm:w-full max-sm:justify-center"
             >
-                + Generate dari Quote
+                + Buat dari Penawaran
             </a>
+            @endif
         </div>
         {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3: moved to Financial Report --}}
     </div>

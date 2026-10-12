@@ -3,6 +3,7 @@
 namespace Webkul\Admin\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /** Explicit, audited maintenance operation; normal document locks stay intact. */
@@ -93,6 +94,9 @@ class InvoiceCorrectionService
             ? (array) DB::table('quotes')->where('id', $invoice->quote_id)->first(['id', 'quote_number', 'grand_total'])
             : null;
         $snapshot['dependencies'] = [];
+        if (Schema::hasTable('proforma_invoices')) {
+            $snapshot['dependencies']['proformas'] = DB::table('proforma_invoices')->where('invoice_id', $invoice->id)->count();
+        }
         foreach (['expenses', 'work_orders', 'delivery_orders', 'purchase_orders'] as $table) {
             $query = DB::table($table)->where('invoice_id', $invoice->id)->select('id');
             $snapshot['dependencies'][$table] = ($lock ? $query->lockForUpdate() : $query)->get()->count();

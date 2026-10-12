@@ -1,7 +1,7 @@
 <x-admin::layouts>
     {{-- CRM_INVOICE_FLEXIBLE_BILLING_UI_HOTFIX_V1_2 --}}
     <x-slot:title>
-        Generate Invoice dari Quote
+        Buat Proforma / Invoice dari Penawaran
     </x-slot>
 
     @php
@@ -9,7 +9,7 @@
             'quote_id',
             $selectedQuote?->id
         );
-        $initialType = old('billing_type', 'down_payment');
+        $initialType = old('billing_type', request('billing_type', 'down_payment'));
         $initialMethod = old('billing_method', 'nominal');
         $initialAmount = old('billing_amount', '');
         $initialPercentage = old('billing_percentage', '');
@@ -27,24 +27,24 @@
                     </a>
 
                     <h1 class="mt-3 text-2xl font-bold text-gray-900 dark:text-white">
-                        Generate Invoice dari Quote
+                        Buat Proforma / Invoice dari Penawaran
                     </h1>
 
                     <p class="mt-1 max-w-3xl text-sm leading-6 text-gray-500 dark:text-gray-400">
-                        Pilih DP fleksibel, Full Payment, atau Pelunasan. Nominal DP
-                        tetap dapat diedit sampai tombol Generate ditekan.
+                        Dengan DP: buat proforma, konfirmasi uang masuk, lalu terbitkan invoice DP.
+                        Tanpa DP: buat invoice penuh. Pelunasan dibuat terpisah sesuai TOP.
                     </p>
                 </div>
 
                 <span class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                    Audit-safe billing
+                    Proforma → Invoice DP → Pelunasan
                 </span>
             </div>
         </div>
 
         @if ($errors->any())
             <div class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-                <div class="font-semibold">Invoice belum dapat dibuat:</div>
+                <div class="font-semibold">Dokumen belum dapat dibuat:</div>
                 <ul class="mt-2 list-disc space-y-1 pl-5">
                     @foreach ($errors->all() as $error)
                         <li>{{ $error }}</li>
@@ -105,7 +105,7 @@
                 <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                     <div class="mb-5">
                         <div class="text-xs font-semibold uppercase tracking-[.18em] text-brandColor">
-                            02 &middot; Jenis Invoice
+                            02 &middot; Jenis dokumen
                         </div>
                         <h2 class="mt-1 text-lg font-bold text-gray-900 dark:text-white">
                             Tentukan tahap pembayaran
@@ -114,9 +114,9 @@
 
                     <div class="grid gap-4 md:grid-cols-3">
                         @foreach ([
-                            'down_payment' => ['DP', 'Nominal fleksibel, tidak harus 50%.'],
-                            'full_payment' => ['Full Payment', 'Tagih 100% Grand Total Quote.'],
-                            'settlement' => ['Pelunasan', 'Sisa Quote setelah DP berstatus PAID.'],
+                            'down_payment' => ['Proforma DP', 'Permintaan DP sebelum pembayaran diterima.'],
+                            'full_payment' => ['Tanpa DP', 'Invoice 100%, pembayaran sebelum/sesudah event sesuai TOP.'],
+                            'settlement' => ['Pelunasan', 'Invoice sisa nilai saat event akan berjalan atau sudah lewat.'],
                         ] as $value => [$label, $help])
                             <label class="cursor-pointer">
                                 <input
@@ -183,7 +183,7 @@
 
                     <div class="mt-4">
                         <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Nominal Invoice
+                            Nominal dokumen
                         </label>
                         <input
                             id="crm-billing-amount"
@@ -218,13 +218,19 @@
                         </h2>
                     </div>
 
+                    <p id="crm-billing-event" class="mb-4 text-sm text-gray-500"></p>
+                    <label class="mb-4 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        TOP / Ketentuan pembayaran
+                        <textarea id="crm-payment-term" name="payment_term" required maxlength="2000" placeholder="Contoh: DP 30%, pelunasan H-1 event / 14 hari setelah event" class="mt-2 w-full rounded-xl border p-3 dark:border-gray-700 dark:bg-gray-950 dark:text-white">{{ old('payment_term', $billingSummary['payment_term'] ?? '') }}</textarea>
+                    </label>
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
                             <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                Invoice Date
+                                Tanggal dokumen
                             </label>
                             <input
                                 name="issued_at"
+                                required
                                 type="date"
                                 value="{{ old('issued_at', now()->toDateString()) }}"
                                 class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
@@ -233,12 +239,13 @@
 
                         <div>
                             <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                                Due Date
+                                Jatuh tempo sesuai TOP
                             </label>
                             <input
                                 name="due_at"
+                                required
                                 type="date"
-                                value="{{ old('due_at', now()->addDays(7)->toDateString()) }}"
+                                value="{{ old('due_at') }}"
                                 class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                             >
                         </div>
@@ -268,12 +275,12 @@
                             <strong id="crm-preview-invoiced" class="text-gray-900 dark:text-white">Rp 0</strong>
                         </div>
                         <div class="flex items-center justify-between gap-4 text-sm">
-                            <span class="text-gray-500">Invoice Baru</span>
+                            <span id="crm-preview-document-label" class="text-gray-500">Dokumen baru</span>
                             <strong id="crm-preview-new" class="text-brandColor">Rp 0</strong>
                         </div>
                         <div class="border-t border-gray-200 pt-4 dark:border-gray-800">
                             <div class="flex items-center justify-between gap-4">
-                                <span class="font-semibold text-gray-700 dark:text-gray-300">Sisa Setelah Generate</span>
+                                <span class="font-semibold text-gray-700 dark:text-gray-300">Sisa untuk ditagihkan berikutnya</span>
                                 <strong id="crm-preview-remaining" class="text-xl text-gray-900 dark:text-white">Rp 0</strong>
                             </div>
                         </div>
@@ -281,8 +288,7 @@
                         <div id="crm-existing-invoices" class="space-y-2"></div>
 
                         <div class="rounded-xl bg-amber-50 p-4 text-xs leading-5 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-                            Setelah dibuat, nilai komersial dan item Invoice dikunci.
-                            Koreksi dilakukan dengan Cancel lalu Generate ulang.
+                            Proforma belum mencatat tagihan atau penerimaan uang. Invoice DP terbit setelah pembayaran dikonfirmasi. SPK dibuat dari invoice.
                         </div>
 
                         <button
@@ -291,7 +297,7 @@
                             disabled
                             class="primary-button w-full justify-center disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            Generate Invoice
+                            Buat dokumen
                         </button>
                     </div>
                 </div>
@@ -326,6 +332,7 @@
                 let loading = document.getElementById('crm-billing-loading');
                 let summary = initialSummary;
                 let syncing = false;
+                let summaryRequest = 0;
 
                 const refreshElements = () => {
                     quoteSelect = document.getElementById('crm-billing-quote');
@@ -360,7 +367,8 @@
                     }
 
                     [
-                        ['DP', summary.down_payment],
+                        ['Proforma', summary.proforma],
+                        ['Invoice DP', summary.down_payment],
                         ['Full Payment', summary.full_payment],
                         ['Pelunasan', summary.settlement],
                     ].forEach(([label, invoice]) => {
@@ -374,6 +382,15 @@
                             + ' · ' + currency.format(invoice.amount)
                             + ' · ' + String(invoice.status || '').toUpperCase();
                         container.appendChild(row);
+                        @if (bouncer()->hasPermission('invoices.view'))
+                        if (label === 'Proforma') {
+                            const link = document.createElement('a');
+                            link.href = @json(route('admin.proformas.show', ['id' => '__ID__'])).replace('__ID__', invoice.id);
+                            link.textContent = 'Buka proforma / konfirmasi DP';
+                            link.className = 'text-brandColor text-xs underline';
+                            container.appendChild(link);
+                        }
+                        @endif
                     });
                 };
 
@@ -396,6 +413,9 @@
                     const type = selectedType();
                     const isDp = type === 'down_payment';
                     const isPercentage = methodSelect.value === 'percentage';
+                    submitButton.textContent = isDp ? 'Buat Proforma DP' : 'Buat Invoice';
+                    document.getElementById('crm-preview-document-label').textContent = isDp ? 'Proforma DP baru' : 'Invoice baru';
+                    document.getElementById('crm-billing-event').textContent = summary?.event_date ? 'Tanggal event: ' + summary.event_date : 'Periksa perjanjian pembayaran sebelum/sesudah event.';
 
                     dpInputs.classList.toggle('hidden', ! isDp);
                     percentageWrap.classList.toggle('hidden', ! isPercentage);
@@ -511,6 +531,7 @@
                     }
 
                     const quoteId = quoteSelect.value;
+                    const requestId = ++summaryRequest;
                     summary = null;
                     amountInput.value = '';
                     percentageInput.value = '';
@@ -538,13 +559,16 @@
                         }
 
                         const payload = await response.json();
+                        if (requestId !== summaryRequest) return;
                         summary = payload.data;
+                        document.getElementById('crm-payment-term').value = summary.payment_term || '';
                         render(false);
                     } catch (error) {
+                        if (requestId !== summaryRequest) return;
                         message.textContent = error.message
                             || 'Quote tidak dapat dimuat.';
                     } finally {
-                        loading.classList.add('hidden');
+                        if (requestId === summaryRequest) loading.classList.add('hidden');
                     }
                 };
 
@@ -623,7 +647,7 @@
                     }
 
                     submitButton.disabled = true;
-                    submitButton.textContent = 'Membuat Invoice...';
+                    submitButton.textContent = 'Membuat dokumen...';
                 }, true);
 
                 window.crmFlexibleBillingV12 = {

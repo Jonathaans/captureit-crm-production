@@ -10,10 +10,9 @@
         (float) $invoice->grand_total
         - $totalExpense;
 
-    $deliveryOrder =
-        $invoice->deliveryOrders
-            ->sortBy('id')
-            ->first();
+    $projectWorkOrder = app(\Webkul\Invoice\Services\WorkOrderService::class)->findForInvoice($invoice);
+    $deliveryOrder = $projectWorkOrder?->deliveryOrders()->orderBy('id')->first()
+        ?? $invoice->deliveryOrders->sortBy('id')->first();
 
     $billToIdentity = $invoice->billToIdentity();
 @endphp
@@ -105,86 +104,23 @@
             >
                 Print Invoice
                     </a>
-@if ($deliveryOrder)
-    @if (
-        bouncer()->hasPermission('work-orders.view')
-    )
-        <a
-            href="{{ route('admin.invoices.work-orders.open', $invoice->id) }}"
-            class="secondary-button"
-        >
-            View SPK
-        </a>
-@if (
-    bouncer()->hasPermission(
-        'work-orders.generate'
-    )
-)
-    <form
-        method="POST"
-        action="{{ route(
-            'admin.invoices.work-orders.store',
-            $invoice->id
-        ) }}"
-        onsubmit="
-            const button = this.querySelector('button');
-            if (button) {
-                button.disabled = true;
-                button.textContent = 'Generating...';
-            }
-        "
-        style="margin:0;"
-    >
-        @csrf
-
-        <button
-            type="submit"
-            class="secondary-button"
-        >
-            Open / Generate SPK
-        </button>
-    </form>
-@endif
-    @endif
-
-    @if (
-        bouncer()->hasPermission('delivery-orders.print')
-    )
-        <a
-            href="{{ route(
-                'admin.delivery-orders.print',
-                $deliveryOrder->id
-            ) }}"
-            target="_blank"
-            rel="noopener"
-            class="secondary-button"
-        >
-            Print Surat Jalan
-        </a>
-    @endif
-@else
-    @if (
-        bouncer()->hasPermission('work-orders.generate')
-    )
-        <form
-            method="POST"
-            action="{{ route(
-                'admin.invoices.work-orders.store',
-                $invoice->id
-            ) }}"
-            style="margin: 0;"
-        >
-            @csrf
-
-            <button
-                type="submit"
-                class="secondary-button"
-            >
-                Generate Surat Perintah Kerja
-            </button>
-        </form>
-    @endif
-@endif
+            @if ($projectWorkOrder && bouncer()->hasPermission('work-orders.view'))
+                <a href="{{ route('admin.invoices.work-orders.open', $invoice->id) }}" class="secondary-button">Buka SPK</a>
+            @elseif (! $projectWorkOrder && bouncer()->hasPermission('work-orders.generate'))
+                <form method="POST" action="{{ route('admin.invoices.work-orders.store', $invoice->id) }}">
+                    @csrf
+                    <button type="submit" class="secondary-button">Buat SPK</button>
+                </form>
+            @endif
+            @if ($deliveryOrder && bouncer()->hasPermission('delivery-orders.print'))
+                <a href="{{ route('admin.delivery-orders.print', $deliveryOrder->id) }}" target="_blank" rel="noopener" class="secondary-button">Print Surat Jalan</a>
+            @endif
+            @if ($invoice->billing_type === 'down_payment' && $invoice->status === 'paid' && bouncer()->hasPermission('invoices.generate'))
+                <a href="{{ route('admin.invoices.billing.create', ['quote_id' => $invoice->quote_id, 'billing_type' => 'settlement']) }}" class="secondary-button">Buat Invoice Pelunasan</a>
+            @endif
+            @if ($invoice->billing_type === 'settlement' && $invoice->dp_invoice_id && bouncer()->hasPermission('invoices.view'))
+                <a href="{{ route('admin.invoices.show', $invoice->dp_invoice_id) }}" class="secondary-button">Buka Invoice DP</a>
+            @endif
         </div>
     </div>
 

@@ -149,4 +149,20 @@ class Invoice extends Model implements InvoiceContract
             'invoice_id'
         );
     }
+
+    /** DP and its settlement have one operational parent. */
+    public function operationalInvoiceId(): int
+    {
+        return $this->billing_type === 'settlement' && $this->dp_invoice_id
+            ? (int) $this->dp_invoice_id
+            : (int) $this->id;
+    }
+
+    public function projectInvoiceIds(): array
+    {
+        $parentId = $this->operationalInvoiceId();
+
+        return static::where('dp_invoice_id', $parentId)->where('billing_type', 'settlement')->where('quote_id', $this->quote_id)
+            ->pluck('id')->push($parentId)->push($this->id)->unique()->all();
+    }
 }

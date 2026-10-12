@@ -9,17 +9,32 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Webkul\Admin\Console\Commands\CrmAttachmentMigrateCommand;
+use Webkul\Admin\Console\Commands\CrmAttachmentStorageAuditCommand;
 use Webkul\Admin\Console\Commands\CrmBackupCommand;
+use Webkul\Admin\Console\Commands\CrmBackupRetentionCommand;
 use Webkul\Admin\Console\Commands\CrmBackupVerifyCommand;
 use Webkul\Admin\Console\Commands\CrmIncidentListCommand;
+use Webkul\Admin\Console\Commands\CrmManagedBackupCommand;
+use Webkul\Admin\Console\Commands\CrmManagedEmailSyncCommand;
+use Webkul\Admin\Console\Commands\CrmOperationalAlertsCommand;
+use Webkul\Admin\Console\Commands\CrmProductionOperationsCheckCommand;
 use Webkul\Admin\Console\Commands\CrmProductionReadinessCommand;
+use Webkul\Admin\Console\Commands\CrmQueueHeartbeatDispatchCommand;
+use Webkul\Admin\Console\Commands\CrmSchedulerHeartbeatCommand;
 use Webkul\Admin\Console\Commands\CrmSecurityAuditCommand;
-use Webkul\Admin\Http\Controllers\System\SystemControlController;
+use Webkul\Admin\Http\Controllers\Invoice\FinanceSalesDashboardController;
+use Webkul\Admin\Http\Controllers\Invoice\FlexibleQuoteBillingController;
+use Webkul\Admin\Http\Controllers\Invoice\SalesCommissionExportController;
 use Webkul\Admin\Http\Controllers\System\CrmBackupController;
+use Webkul\Admin\Http\Controllers\System\SystemControlController;
+use Webkul\Admin\Http\Middleware\CrmSecureUploadMiddleware;
 use Webkul\Admin\Services\CrmAuditService;
 use Webkul\Admin\Services\CrmIncidentService;
 use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
+use Webkul\Admin\Services\FlexibleQuoteBillingService;
 
 class CrmHardeningCoreServiceProvider extends ServiceProvider
 {
@@ -28,14 +43,14 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
         /* CRM_PRODUCTION_OPERATIONS_V2 */
         $this->app['router']->pushMiddlewareToGroup(
             'web',
-            \Webkul\Admin\Http\Middleware\CrmSecureUploadMiddleware::class
+            CrmSecureUploadMiddleware::class
         );
 
         if (
             $this->app->environment('production')
             && config('crm-production-operations.production.force_https', false)
         ) {
-            \Illuminate\Support\Facades\URL::forceScheme('https');
+            URL::forceScheme('https');
         }
         /* CRM_READ_ONLY_ARCHIVE_POLICY_V1
          * Final documents are readable/printable but cannot be modified or
@@ -82,8 +97,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 'updated',
                 'deleted',
                 'restored',
-            ]
-            as $action
+            ] as $action
         ) {
             Event::listen(
                 'eloquent.'.$action.': *',
@@ -172,7 +186,6 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 }
             );
 
-
         /*
          * CRM_FULL_QA_BACKUP_CENTER_V1
          * Backup is POST-only, CSRF protected by web middleware, and the
@@ -210,20 +223,21 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
             );
 
         /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
-        \Illuminate\Support\Facades\Route::middleware('web')
+        Route::middleware('web')
+            ->middleware('user')
             ->prefix('admin/invoice-billing')
             ->controller(
-                \Webkul\Admin\Http\Controllers\Invoice\FlexibleQuoteBillingController::class
+                FlexibleQuoteBillingController::class
             )
             ->group(function () {
-                \Illuminate\Support\Facades\Route::get('create', 'create')
+                Route::get('create', 'create')
                     ->name('admin.invoices.billing.create');
 
-                \Illuminate\Support\Facades\Route::get('quotes/{quoteId}', 'summary')
+                Route::get('quotes/{quoteId}', 'summary')
                     ->whereNumber('quoteId')
                     ->name('admin.invoices.billing.summary');
 
-                \Illuminate\Support\Facades\Route::post('/', 'store')
+                Route::post('/', 'store')
                     ->name('admin.invoices.billing.store');
             });
 
@@ -238,7 +252,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
 
                     if ($model instanceof Model) {
                         app(
-                            \Webkul\Admin\Services\FlexibleQuoteBillingService::class
+                            FlexibleQuoteBillingService::class
                         )->assertMutable(
                             $model,
                             $billingOperation === 'deleting'
@@ -253,24 +267,24 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
         }
 
         /* CRM_FINANCE_SALES_DASHBOARD_V1 */
-        \Illuminate\Support\Facades\Route::middleware('web')
+        Route::middleware('web')
             ->prefix('admin/finance-sales-dashboard')
             ->controller(
-                \Webkul\Admin\Http\Controllers\Invoice\FinanceSalesDashboardController::class
+                FinanceSalesDashboardController::class
             )
             ->group(function () {
-                \Illuminate\Support\Facades\Route::get('/', 'index')
+                Route::get('/', 'index')
                     ->name('admin.finance-sales-dashboard.index');
 
-                \Illuminate\Support\Facades\Route::get('export', 'export')
+                Route::get('export', 'export')
                     ->name('admin.finance-sales-dashboard.export');
             });
         /* CRM_SALES_COMMISSION_PAID_DEALS_EXPORT_V1 */
-        \Illuminate\Support\Facades\Route::middleware('web')
+        Route::middleware('web')
             ->get(
                 'admin/finance-sales-dashboard/commission-export',
                 [
-                    \Webkul\Admin\Http\Controllers\Invoice\SalesCommissionExportController::class,
+                    SalesCommissionExportController::class,
                     'export',
                 ]
             )
@@ -282,16 +296,16 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                 CrmBackupVerifyCommand::class,
                 CrmProductionReadinessCommand::class,
                 CrmIncidentListCommand::class,
-                            \Webkul\Admin\Console\Commands\CrmSchedulerHeartbeatCommand::class,
-                \Webkul\Admin\Console\Commands\CrmQueueHeartbeatDispatchCommand::class,
-                \Webkul\Admin\Console\Commands\CrmManagedEmailSyncCommand::class,
-                \Webkul\Admin\Console\Commands\CrmManagedBackupCommand::class,
-                \Webkul\Admin\Console\Commands\CrmBackupRetentionCommand::class,
-                \Webkul\Admin\Console\Commands\CrmOperationalAlertsCommand::class,
-                \Webkul\Admin\Console\Commands\CrmAttachmentStorageAuditCommand::class,
-                \Webkul\Admin\Console\Commands\CrmAttachmentMigrateCommand::class,
-                \Webkul\Admin\Console\Commands\CrmProductionOperationsCheckCommand::class,
-]);
+                CrmSchedulerHeartbeatCommand::class,
+                CrmQueueHeartbeatDispatchCommand::class,
+                CrmManagedEmailSyncCommand::class,
+                CrmManagedBackupCommand::class,
+                CrmBackupRetentionCommand::class,
+                CrmOperationalAlertsCommand::class,
+                CrmAttachmentStorageAuditCommand::class,
+                CrmAttachmentMigrateCommand::class,
+                CrmProductionOperationsCheckCommand::class,
+            ]);
         }
     }
 }
