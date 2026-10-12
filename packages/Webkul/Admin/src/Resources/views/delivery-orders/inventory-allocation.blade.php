@@ -168,7 +168,7 @@
             </p>
             <div id="scan-message" hidden role="status"></div>
             <details class="mt-4" open>
-                <summary class="cursor-pointer text-sm font-semibold text-green-900">Hasil 20 input terakhir</summary>
+                <summary class="cursor-pointer text-sm font-semibold text-green-900">Hasil input: 20 terakhir dan kode yang perlu dicek</summary>
                 <ol id="scan-history" aria-live="polite" class="mt-2 grid max-h-64 gap-2 overflow-y-auto"></ol>
             </details>
 

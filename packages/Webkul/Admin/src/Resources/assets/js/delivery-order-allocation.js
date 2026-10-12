@@ -160,7 +160,9 @@ export function initAllocationScanner(root, { fetchImpl = (...args) => fetch(...
             const latest = state.entries.at(-1);
             if (latest) lastScan.textContent = `Kode terakhir: ${latest.code}`;
             history.replaceChildren();
-            for (const entry of state.entries.slice(-20).reverse()) {
+            // Keep failures reachable even after many subsequent successful scans.
+            const recent = new Set(state.entries.slice(-20).map((e) => e.id));
+            for (const entry of state.entries.filter((e) => recent.has(e.id) || e.status === 'failed').reverse()) {
                 const row = doc.createElement('li');
                 row.className = 'rounded-md border p-3 text-xs ' + (entry.status === 'failed' ? 'border-red-200 bg-red-50 text-red-800' : 'border-gray-200 bg-white text-gray-800');
                 const text = doc.createElement('span');
