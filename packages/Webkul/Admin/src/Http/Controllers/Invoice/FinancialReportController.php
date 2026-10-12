@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\TopProductReportService;
 use Webkul\Core\Support\BusinessUnit;
 use Webkul\Invoice\Models\Expense;
@@ -19,8 +20,7 @@ class FinancialReportController extends Controller
 {
     public function __construct(
         private readonly TopProductReportService $topProductReport,
-    ) {
-    }
+    ) {}
 
     /**
      * Financial Report page.
@@ -259,6 +259,7 @@ class FinancialReportController extends Controller
                     'Billing Type',
                     'Invoice Date',
                     'Customer',
+                    'Company',
                     'Project / Subject',
                     'Product',
                     'Event Status',
@@ -271,6 +272,7 @@ class FinancialReportController extends Controller
                     'Expense In Period',
                     'Estimated Project Profit',
                     'Cash Surplus In Period',
+                    'PPH',
                 ]);
 
                 foreach ($invoicePerformance as $invoice) {
@@ -282,6 +284,7 @@ class FinancialReportController extends Controller
                         $invoice['issued_at']
                             ?->format('Y-m-d'),
                         $invoice['customer'],
+                        $invoice['company'],
                         $invoice['subject'],
                         $invoice['products'],
                         strtoupper($invoice['event_status']),
@@ -294,6 +297,8 @@ class FinancialReportController extends Controller
                         $invoice['expense_in_period'],
                         $invoice['estimated_profit'],
                         $invoice['cash_surplus_in_period'],
+                        // Reserved for manual entry; no PPH amount is stored yet.
+                        '',
                     ]);
                 }
 
@@ -666,7 +671,7 @@ class FinancialReportController extends Controller
             : collect();
 
         $unbilled = app(
-            \Webkul\Admin\Services\FlexibleQuoteBillingService::class
+            FlexibleQuoteBillingService::class
         )->sumUnbilledForQuoteIds($cohortQuoteIds);
 
         return [
@@ -695,7 +700,8 @@ class FinancialReportController extends Controller
     {
         $query = Invoice::query()
             ->with([
-                'person',
+                'person.organization',
+                'quote.person.organization',
                 'payments',
                 'expenses',
                 'items',
@@ -779,6 +785,7 @@ class FinancialReportController extends Controller
                     'invoice_number' => $invoice->invoice_number,
                     'billing_type' => $invoice->billing_type ?: 'full_payment',
                     'customer' => $invoice->person?->name ?? '-',
+                    'company' => $invoice->billToIdentity()['company_name'] ?? '-',
                     'subject' => $invoice->subject ?? '-',
                     'products' => $productNames->implode('; '),
                     'product_list' => $productNames->all(),
@@ -800,8 +807,7 @@ class FinancialReportController extends Controller
                      */
                     'received_in_period' => $receivedInPeriod,
                     'expense_in_period' => $expenseInPeriod,
-                    'cash_surplus_in_period' =>
-                        $receivedInPeriod - $expenseInPeriod,
+                    'cash_surplus_in_period' => $receivedInPeriod - $expenseInPeriod,
                 ];
             });
     }
