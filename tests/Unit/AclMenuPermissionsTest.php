@@ -23,6 +23,17 @@ function menuAclUser(array $permissions, string $type = 'custom', string $name =
     return $user;
 }
 
+it('groups Proforma under finance using the existing invoice permission', function (): void {
+    $this->actingAs(menuAclUser(['invoices']), 'user');
+    $finance = app(SidebarNavigationService::class)->getGroups()->firstWhere('key', 'finance');
+    expect($finance['label'])->toBe('Keuangan')
+        ->and($finance['items']->map(fn ($item) => $item->getKey())->all())->toBe(['invoices', 'proformas'])
+        ->and($finance['items']->last()->getUrl())->toBe(route('admin.proformas.index'))
+        ->and(bouncer()->hasPermission('invoices.generate'))->toBeFalse();
+    $this->actingAs(menuAclUser(['invoices.financial-report']), 'user');
+    expect((new Menu)->getAdminMenuByKey('proformas'))->toBeNull();
+});
+
 it('shows Financial Report for its checked ACL permission without granting invoice or export access', function (): void {
     $this->actingAs(menuAclUser(['invoices.financial-report']), 'user');
 
@@ -115,6 +126,8 @@ it('resolves the active permitted menu including shared mail routes', function (
     expect((new Menu)->getCurrentActiveMenu('admin')?->getKey())->toBe($key);
 })->with([
     [['inventory.assets'], 'admin.inventory.assets.index', [], 'inventory.assets'],
+    [['invoices'], 'admin.proformas.index', [], 'proformas'],
+    [['invoices', 'invoices.view'], 'admin.proformas.show', [1], 'proformas'],
     [['mail.inbox', 'mail.sent'], 'admin.mail.index', ['route' => 'inbox'], 'mail.inbox'],
 ]);
 
@@ -135,6 +148,8 @@ it('enforces checked permissions on direct URLs without inheriting unchecked act
     [['invoices.financial-report'], 'admin.invoices.financial-report.export', false],
     [['invoices.financial-report.export'], 'admin.invoices.financial-report.export', true],
     [['invoices'], 'admin.invoices.financial-report', false],
+    [['invoices'], 'admin.proformas.index', true],
+    [['invoices.financial-report'], 'admin.proformas.index', false],
     [['inventory.assets'], 'admin.inventory.assets.index', true],
     [['inventory.assets'], 'admin.inventory.assets.update', false],
     [['inventory.assets'], 'admin.inventory.items.index', false],

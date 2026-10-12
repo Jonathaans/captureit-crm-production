@@ -54,6 +54,15 @@ return [
         'icon-class' => 'icon-quote',
     ],
 
+    [
+        'key' => 'proformas',
+        'permission' => 'invoices',
+        'name' => 'Proforma',
+        'route' => 'admin.proformas.index',
+        'sort' => 41,
+        'icon-class' => 'icon-quote',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Financial Report

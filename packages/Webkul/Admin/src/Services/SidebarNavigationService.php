@@ -17,7 +17,7 @@ class SidebarNavigationService
         $definitions = [
             ['key' => 'overview', 'label' => 'Ringkasan', 'items' => ['dashboard', 'inventory-dashboard', 'sales-dashboard', 'operations-dashboard']],
             ['key' => 'sales', 'label' => 'Penjualan', 'items' => ['leads', 'quotes', 'activities']],
-            ['key' => 'finance', 'label' => 'Keuangan', 'items' => ['invoices', 'purchase-orders', 'financial-report']],
+            ['key' => 'finance', 'label' => 'Keuangan', 'items' => ['invoices', 'proformas', 'purchase-orders', 'financial-report']],
             ['key' => 'operations', 'label' => 'Operasional', 'items' => ['work-orders', 'delivery-orders', 'inventory']],
             ['key' => 'master', 'label' => 'Data Master', 'items' => ['contacts', 'products']],
             ['key' => 'communication', 'label' => 'Komunikasi', 'items' => ['my-email', 'mail']],

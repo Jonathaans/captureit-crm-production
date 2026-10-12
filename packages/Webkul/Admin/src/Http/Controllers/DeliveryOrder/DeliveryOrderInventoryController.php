@@ -17,8 +17,7 @@ class DeliveryOrderInventoryController extends Controller
 {
     public function __construct(
         protected DeliveryOrderInventoryAllocationService $allocationService
-    ) {
-    }
+    ) {}
 
     public function edit(int $id): View
     {
@@ -45,12 +44,12 @@ class DeliveryOrderInventoryController extends Controller
 
             if (! $inventoryItem || ($item->requires_inventory && $need <= 0)) {
                 $summaries[$item->id] = [
-                    'tracking_type'  => null,
-                    'need'           => $need,
-                    'allocated'      => 0,
+                    'tracking_type' => null,
+                    'need' => $need,
+                    'allocated' => 0,
                     'free_available' => 0,
-                    'shortage'       => $need,
-                    'complete'       => false,
+                    'shortage' => $need,
+                    'complete' => false,
                 ];
 
                 continue;
@@ -78,12 +77,12 @@ class DeliveryOrderInventoryController extends Controller
                 );
 
                 $summaries[$item->id] = [
-                    'tracking_type'  => 'serialized',
-                    'need'           => $need,
-                    'allocated'      => $allocated,
+                    'tracking_type' => 'serialized',
+                    'need' => $need,
+                    'allocated' => $allocated,
                     'free_available' => $freeAvailable,
-                    'shortage'       => $shortage,
-                    'complete'       => floor($need) === $need
+                    'shortage' => $shortage,
+                    'complete' => floor($need) === $need
                         && $allocated >= (int) $need,
                 ];
 
@@ -115,12 +114,12 @@ class DeliveryOrderInventoryController extends Controller
             );
 
             $summaries[$item->id] = [
-                'tracking_type'  => 'quantity',
-                'need'           => $need,
-                'allocated'      => $allocated,
+                'tracking_type' => 'quantity',
+                'need' => $need,
+                'allocated' => $allocated,
                 'free_available' => $freeAvailable,
-                'shortage'       => $shortage,
-                'complete'       => $allocated + 0.0001 >= $need,
+                'shortage' => $shortage,
+                'complete' => $allocated + 0.0001 >= $need,
             ];
         }
 
@@ -147,189 +146,27 @@ class DeliveryOrderInventoryController extends Controller
         Request $request,
         int $id
     ): JsonResponse|RedirectResponse {
-        $deliveryOrder = $this->findDeliveryOrder($id);
-
-        if (
-            strtolower(
-                $deliveryOrder->status ?: 'draft'
-            ) !== 'draft'
-        ) {
-            throw ValidationException::withMessages([
-                'barcode' => 'Scan Allocation hanya dapat digunakan saat Surat Jalan masih DRAFT.',
-            ]);
-        }
-
-        $validated = $request->validate([
-            'barcode' => [
-                'required',
-                'string',
-                'max:100',
-            ],
-        ]);
-
-        $barcode = trim(
-            $validated['barcode']
+        $validated = $request->validate(['barcode' => ['required', 'string', 'max:255']]);
+        $result = $this->allocationService->allocateByIdentifier(
+            DeliveryOrder::findOrFail($id), $validated['barcode'], auth()->guard('user')->id()
         );
-
-        $asset = InventoryAsset::query()
-            ->with('item')
-            ->where(function ($query) use ($barcode) {
-                $query
-                    ->where('barcode_value', $barcode)
-                    ->orWhere('asset_code', $barcode);
-            })
-            ->first();
-
-        if (! $asset) {
-            throw ValidationException::withMessages([
-                'barcode' => 'QR / Barcode / Asset Code tidak ditemukan: '.$barcode,
-            ]);
-        }
-
-        $existingAllocation = DeliveryOrderInventoryAllocation::query()
-            ->with([
-                'deliveryOrderItem',
-                'inventoryAsset',
-            ])
-            ->where('delivery_order_id', $deliveryOrder->id)
-            ->where('inventory_asset_id', $asset->id)
-            ->whereIn(
-                'status',
-                DeliveryOrderInventoryAllocation::ACTIVE_STATUSES
-            )
-            ->first();
-
-        if ($existingAllocation) {
-            $item = $existingAllocation->deliveryOrderItem;
-            $snapshot = $this->serializedSnapshot(
-                $item
-            );
-
-            $message = sprintf(
-                '%s sudah masuk ke %s.',
-                $asset->asset_code,
-                $item?->name ?: 'Surat Jalan ini'
-            );
-
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'duplicate' => true,
-                    'message' => $message,
-                    'asset' => [
-                        'id' => $asset->id,
-                        'code' => $asset->asset_code,
-                    ],
-                    'item' => $snapshot,
-                ]);
-            }
-
-            return redirect()
-                ->route(
-                    'admin.delivery-orders.inventory-allocation.edit',
-                    $deliveryOrder->id
-                )
-                ->with('success', $message);
-        }
-
-        $matchingItems = $deliveryOrder->items
-            ->filter(function ($item) use ($asset) {
-                return $item->inventoryItem
-                    && $item->inventoryItem->isSerialized()
-                    && (int) $item->inventory_item_id
-                        === (int) $asset->inventory_item_id;
-            })
-            ->values();
-
-        if ($matchingItems->isEmpty()) {
-            throw ValidationException::withMessages([
-                'barcode' => sprintf(
-                    'Asset %s (%s) tidak termasuk request barang Surat Jalan ini.',
-                    $asset->asset_code,
-                    $asset->item?->name ?: 'Inventory Item tidak diketahui'
-                ),
-            ]);
-        }
-
-        $targetItem = $matchingItems
-            ->first(function ($item) {
-                $need = (float) $item->quantity;
-
-                if (floor($need) !== $need) {
-                    return false;
-                }
-
-                $allocated = $item->allocations
-                    ->whereIn(
-                        'status',
-                        DeliveryOrderInventoryAllocation::ACTIVE_STATUSES
-                    )
-                    ->count();
-
-                return $allocated < (int) $need;
-            });
-
-        if (! $targetItem) {
-            throw ValidationException::withMessages([
-                'barcode' => sprintf(
-                    'Request %s sudah lengkap. Asset %s tidak diperlukan.',
-                    $matchingItems->first()?->name
-                        ?: $asset->item?->name
-                        ?: 'Inventory Item ini',
-                    $asset->asset_code
-                ),
-            ]);
-        }
-
-        $this->allocationService->allocateSerializedAsset(
-            $deliveryOrder,
-            $targetItem,
-            $asset,
-            auth()->guard('user')->id()
-        );
-
-        /*
-         * Reload item relationships for a fresh AJAX snapshot.
-         */
-        $targetItem->load([
-            'inventoryItem',
-            'allocations.inventoryAsset',
-        ]);
-
-        $snapshot = $this->serializedSnapshot(
-            $targetItem
-        );
-
-        $message = sprintf(
-            '%s -> %s (%d/%d%s)',
-            $asset->asset_code,
-            $targetItem->name,
-            $snapshot['allocated'],
-            (int) $snapshot['need'],
-            $snapshot['complete']
-                ? ' COMPLETE'
-                : ''
-        );
+        $allocation = $result['allocation'];
+        $allocation->load(['inventoryAsset', 'deliveryOrderItem.inventoryItem', 'deliveryOrderItem.allocations.inventoryAsset']);
+        $asset = $allocation->inventoryAsset;
+        $item = $allocation->deliveryOrderItem;
+        $snapshot = $this->serializedSnapshot($item);
+        $message = $result['duplicate']
+            ? sprintf('%s sudah masuk ke %s.', $asset->asset_code, $item->name)
+            : sprintf('%s -> %s (%d/%d%s)', $asset->asset_code, $item->name, $snapshot['allocated'], (int) $snapshot['need'], $snapshot['complete'] ? ' COMPLETE' : '');
 
         if ($request->expectsJson()) {
             return response()->json([
-                'success' => true,
-                'duplicate' => false,
-                'message' => $message,
-                'asset' => [
-                    'id' => $asset->id,
-                    'code' => $asset->asset_code,
-                ],
-                'item' => $snapshot,
+                'success' => true, 'duplicate' => $result['duplicate'], 'message' => $message,
+                'asset' => ['id' => $asset->id, 'code' => $asset->asset_code], 'item' => $snapshot,
             ]);
         }
 
-        return redirect()
-            ->route(
-                'admin.delivery-orders.inventory-allocation.edit',
-                $deliveryOrder->id
-            )
-            ->with('success', 'SCAN ALLOCATED: '.$message);
+        return redirect()->route('admin.delivery-orders.inventory-allocation.edit', $id)->with('success', $message);
     }
 
     private function serializedSnapshot(
@@ -404,7 +241,7 @@ class DeliveryOrderInventoryController extends Controller
 
         if ($inventoryItem->isSerialized()) {
             $validated = $request->validate([
-                'asset_ids'   => ['nullable', 'array'],
+                'asset_ids' => ['nullable', 'array'],
                 'asset_ids.*' => [
                     'integer',
                     'distinct',

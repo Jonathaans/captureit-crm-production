@@ -13,6 +13,59 @@ use Webkul\Warehouse\Models\InventoryStockMovement;
 
 class DeliveryOrderInventoryAllocationService
 {
+    /** Select the current requirement under the same lock used by edits and release. */
+    public function allocateByIdentifier(DeliveryOrder $deliveryOrder, string $identifier, ?int $performedBy = null): array
+    {
+        return DB::transaction(function () use ($deliveryOrder, $identifier, $performedBy) {
+            $deliveryOrder = DeliveryOrder::query()->lockForUpdate()->findOrFail($deliveryOrder->id);
+            $this->assertDraft($deliveryOrder);
+            $identifier = trim($identifier);
+            if ($identifier === '') {
+                throw ValidationException::withMessages(['barcode' => 'Masukkan kode alat terlebih dahulu.']);
+            }
+            $asset = InventoryAsset::query()
+                ->where(fn ($query) => $query->where('barcode_value', $identifier)->orWhere('asset_code', $identifier))->first();
+            if (! $asset) {
+                $matches = InventoryAsset::query()->where('serial_number', $identifier)->limit(2)->get();
+                if ($matches->count() > 1) {
+                    throw ValidationException::withMessages(['barcode' => 'Serial Number digunakan oleh lebih dari satu asset. Gunakan Asset Code atau barcode yang unik.']);
+                }
+                $asset = $matches->first();
+            }
+            if (! $asset) {
+                throw ValidationException::withMessages(['barcode' => 'QR / Barcode / Asset Code / Serial Number tidak ditemukan: '.$identifier]);
+            }
+
+            // A retry after a lost response must not allocate the asset twice.
+            $existing = DeliveryOrderInventoryAllocation::query()
+                ->where('delivery_order_id', $deliveryOrder->id)->where('inventory_asset_id', $asset->id)
+                ->whereIn('status', DeliveryOrderInventoryAllocation::ACTIVE_STATUSES)->first();
+            if ($existing) {
+                return ['allocation' => $existing, 'duplicate' => true];
+            }
+
+            // Fetch matching requirements only, not every asset on a large order.
+            $matchingItems = DeliveryOrderItem::query()
+                ->where('delivery_order_id', $deliveryOrder->id)->where('inventory_item_id', $asset->inventory_item_id)
+                ->whereHas('inventoryItem', fn ($query) => $query->where('tracking_type', 'serialized'))
+                ->withCount(['activeAllocations as allocated_count' => fn ($query) => $query->where('tracking_type', 'serialized')])
+                ->orderBy('sort_order')->orderBy('id')->get();
+            if ($matchingItems->isEmpty()) {
+                throw ValidationException::withMessages(['barcode' => sprintf('Asset %s tidak termasuk request barang Surat Jalan ini.', $asset->asset_code)]);
+            }
+            $target = $matchingItems->first(function ($item) {
+                $need = (float) $item->quantity;
+
+                return $need > 0 && floor($need) === $need && $item->allocated_count < (int) $need;
+            });
+            if (! $target) {
+                throw ValidationException::withMessages(['barcode' => sprintf('Request %s sudah lengkap atau jumlah request belum valid. Asset %s tidak dapat ditambahkan.', $matchingItems->first()->name, $asset->asset_code)]);
+            }
+
+            return ['allocation' => $this->allocateSerializedAsset($deliveryOrder, $target, $asset, $performedBy), 'duplicate' => false];
+        }, 3);
+    }
+
     /**
      * Allocate satu serialized asset dari hasil scan QR / barcode.
      *
