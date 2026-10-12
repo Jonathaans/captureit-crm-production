@@ -23,6 +23,10 @@ class Menu
      */
     private string $currentKey = '';
 
+    private ?string $cacheKey = null;
+
+    private ?Collection $resolvedItems = null;
+
     /**
      * Menu area for admin.
      */
@@ -50,39 +54,48 @@ class Menu
             throw new \Exception('Area must be provided to get menu items.');
         }
 
-        static $items;
+        $user = auth()->guard('user')->user();
+        $cacheKey = json_encode([
+            $area,
+            config("menu.$area"),
+            app()->getLocale(),
+            request()->fullUrl(),
+            $user?->getAuthIdentifier(),
+            $user?->role?->permission_type,
+            $user?->role?->permissions,
+        ]);
 
-        if ($items) {
-            return $items;
+        if ($this->cacheKey === $cacheKey && $this->resolvedItems !== null) {
+            return $this->resolvedItems;
         }
 
-        $configMenu = collect(config("menu.$area"))->map(function ($item) {
+        $this->items = [];
+        $this->currentKey = '';
+
+        $this->configMenu = collect(config("menu.$area"))->map(function ($item) use ($area) {
+            $permission = $item['permission'] ?? $item['key'];
+            $routePermission = acl()->getRoles()->get($item['route'], $permission);
+
+            // Mail folders share a route name, but have separate ACL entries.
+            if ($item['route'] === 'admin.mail.index') {
+                $routePermission = 'mail.'.($item['params']['route'] ?? 'inbox');
+            }
+
             return Arr::except([
                 ...$item,
                 'url' => route($item['route'], $item['params'] ?? []),
+                'allowed' => $area !== self::ADMIN || (
+                    bouncer()->hasPermission($permission)
+                    && bouncer()->hasPermission($routePermission)
+                ),
             ], ['params']);
-        });
+        })->toArray();
 
-        switch ($area) {
-            case self::ADMIN:
-                $this->configMenu = $configMenu
-                    ->filter(fn ($item) => bouncer()->hasPermission($item['key']))
-                    ->toArray();
-                break;
+        $this->prepareMenuItems();
+        $this->cacheKey = $cacheKey;
 
-            default:
-                $this->configMenu = $configMenu->toArray();
-
-                break;
-        }
-
-        if (! $this->items) {
-            $this->prepareMenuItems();
-        }
-
-        $items = collect($this->items)->sortBy(fn ($item) => $item->getPosition());
-
-        return $items;
+        return $this->resolvedItems = collect($this->items)
+            ->sortBy(fn ($item) => $item->getPosition());
     }
 
     /**
@@ -105,10 +118,16 @@ class Menu
     private function prepareMenuItems(): void
     {
         $menuWithDotNotation = [];
+        $matchedUrlLength = 0;
 
         foreach ($this->configMenu as $item) {
-            if (strpos(request()->url(), route($item['route'])) !== false) {
+            if (
+                $item['allowed']
+                && request()->fullUrlIs($item['url'].'*')
+                && strlen($item['url']) >= $matchedUrlLength
+            ) {
                 $this->currentKey = $item['key'];
+                $matchedUrlLength = strlen($item['url']);
             }
 
             $menuWithDotNotation[$item['key']] = $item;
@@ -116,17 +135,10 @@ class Menu
 
         $menu = Arr::undot(Arr::dot($menuWithDotNotation));
 
-        foreach ($menu as $menuItemKey => $menuItem) {
-            $this->addItem(new MenuItem(
-                key: $menuItemKey,
-                name: trans($menuItem['name']),
-                route: $menuItem['route'],
-                url: $menuItem['url'],
-                sort: $menuItem['sort'],
-                icon: $menuItem['icon-class'],
-                info: trans($menuItem['info'] ?? ''),
-                children: $this->processSubMenuItems($menuItem),
-            ));
+        foreach ($menu as $menuItem) {
+            if ($item = $this->buildMenuItem($menuItem)) {
+                $this->addItem($item);
+            }
         }
     }
 
@@ -136,22 +148,34 @@ class Menu
     private function processSubMenuItems($menuItem): Collection
     {
         return collect($menuItem)
-            ->sortBy('sort')
             ->filter(fn ($value) => is_array($value))
-            ->map(function ($subMenuItem) {
-                $subSubMenuItems = $this->processSubMenuItems($subMenuItem);
+            ->sortBy('sort')
+            ->map(fn ($subMenuItem) => $this->buildMenuItem($subMenuItem))
+            ->filter();
+    }
 
-                return new MenuItem(
-                    key: $subMenuItem['key'],
-                    name: trans($subMenuItem['name']),
-                    route: $subMenuItem['route'],
-                    url: $subMenuItem['url'],
-                    sort: $subMenuItem['sort'],
-                    icon: $subMenuItem['icon-class'],
-                    info: trans($subMenuItem['info'] ?? ''),
-                    children: $subSubMenuItems,
-                );
-            });
+    private function buildMenuItem(array $menuItem): ?MenuItem
+    {
+        $children = $this->processSubMenuItems($menuItem);
+
+        if (! $menuItem['allowed'] && $children->isEmpty()) {
+            return null;
+        }
+
+        // Keep ancestors as navigation containers only. Never grant their ACL
+        // permissions or send users to a parent's unauthorized default page.
+        $firstChild = $menuItem['allowed'] ? null : $children->first();
+
+        return new MenuItem(
+            key: $menuItem['key'],
+            name: trans($menuItem['name']),
+            route: $firstChild?->getRoute() ?? $menuItem['route'],
+            url: $firstChild?->getUrl() ?? $menuItem['url'],
+            sort: $menuItem['sort'],
+            icon: $menuItem['icon-class'],
+            info: trans($menuItem['info'] ?? ''),
+            children: $children,
+        );
     }
 
     /**
@@ -159,9 +183,10 @@ class Menu
      */
     public function getCurrentActiveMenu(?string $area = null): ?MenuItem
     {
+        $items = $this->getItems($area);
         $currentKey = implode('.', array_slice(explode('.', $this->currentKey), 0, 2));
 
-        return $this->findMatchingItem($this->getItems($area), $currentKey);
+        return $this->findMatchingItem($items, $currentKey);
     }
 
     /**
@@ -170,7 +195,7 @@ class Menu
     private function findMatchingItem($items, $currentKey): ?MenuItem
     {
         foreach ($items as $item) {
-            if ($item->key == $currentKey) {
+            if ($item->getKey() == $currentKey) {
                 return $item;
             }
 

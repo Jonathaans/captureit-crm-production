@@ -10,19 +10,11 @@ class Bouncer
      * Checks if user allowed or not for certain action
      *
      * @param  string  $permission
-     * @return void
+     * @return bool
      */
     public function hasPermission($permission)
     {
-        if (auth()->guard('user')->check() && auth()->guard('user')->user()->role->permission_type == 'all') {
-            return true;
-        } else {
-            if (! auth()->guard('user')->check() || ! auth()->guard('user')->user()->hasPermission($permission)) {
-                return false;
-            }
-        }
-
-        return true;
+        return auth()->guard('user')->user()?->hasPermission($permission) ?? false;
     }
 
     /**

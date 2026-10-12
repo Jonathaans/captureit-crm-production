@@ -78,6 +78,12 @@ class Bouncer
      */
     public function checkIfAuthorized()
     {
+        if (Route::currentRouteName() === 'admin.mail.index') {
+            bouncer()->allow('mail.'.(request()->route('route') ?: 'inbox'));
+
+            return;
+        }
+
         if (
             Route::currentRouteName() === 'admin.products.store'
             && request()->has('quick_add')
