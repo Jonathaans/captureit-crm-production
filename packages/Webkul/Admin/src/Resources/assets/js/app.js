@@ -5,6 +5,7 @@ import.meta.glob(["../images/**", "../fonts/**"]);
 
 /* INTERNAL_CHAT_WEBSOCKET_REVERB_V1 */
 import "./internal-chat-realtime";
+import { initAllocationScanner } from "./delivery-order-allocation";
 
 /**
  * Main vue bundler.
@@ -35,6 +36,11 @@ window.app = createApp({
         this.handleScrollDirection();
     },
 
+    mounted() {
+        // Vue replaces the original Blade nodes during mount.
+        this.allocationScanner = initAllocationScanner(document.querySelector('[data-allocation-scanner]'));
+    },
+
     beforeDestroy() {
         window.removeEventListener('click', this.handleFocusOut);
         window.removeEventListener('scroll', this.handleScrollDirection);
@@ -42,6 +48,7 @@ window.app = createApp({
     },
 
     beforeUnmount() {
+        this.allocationScanner?.destroy();
         window.removeEventListener('click', this.handleFocusOut);
         window.removeEventListener('scroll', this.handleScrollDirection);
         document.body.classList.remove('is-scrolling-down');
