@@ -91,7 +91,7 @@ public function index()
          *
          * Revenue hanya invoice CONFIRM.
          */
-        $monthlyRevenue = Invoice::query()
+        $monthlyRevenue = Invoice::query()->notVoided()
             ->selectRaw(
                 'MONTH(issued_at) as month, SUM(grand_total) as total'
             )
@@ -131,7 +131,7 @@ public function index()
          * PARTIAL ikut dihitung.
          * PAID ikut dihitung.
          */
-        $monthlyReceived = Payment::query()
+        $monthlyReceived = Payment::query()->notVoided()
             ->selectRaw(
                 'MONTH(paid_at) as month, SUM(amount) as total'
             )
@@ -217,7 +217,7 @@ public function index()
 
             $monthlyProjectedExpense = collect();
         } else {
-            $monthlyProjectedRevenue = Invoice::query()
+            $monthlyProjectedRevenue = Invoice::query()->notVoided()
                 ->selectRaw(
                     'MONTH(issued_at) as month, SUM(grand_total) as total'
                 )
@@ -422,7 +422,7 @@ public function index()
          * PROJECT / INVOICE PERFORMANCE
          * ========================================================
          */
-        $invoicePerformance = Invoice::query()
+        $invoicePerformance = Invoice::query()->notVoided()
             ->with([
                 'person',
             ])
@@ -527,7 +527,7 @@ public function index()
          * AVAILABLE YEARS
          * ========================================================
          */
-        $invoiceYears = Invoice::query()
+        $invoiceYears = Invoice::query()->notVoided()
             ->whereNotNull(
                 'issued_at'
             )
@@ -539,7 +539,7 @@ public function index()
                 'year'
             );
 
-        $paymentYears = Payment::query()
+        $paymentYears = Payment::query()->notVoided()
             ->whereNotNull(
                 'paid_at'
             )
@@ -585,7 +585,7 @@ public function index()
          * INVOICE PAYMENT STATISTICS
          * ========================================================
          */
-        $invoiceStatsQuery = Invoice::query()
+        $invoiceStatsQuery = Invoice::query()->notVoided()
             ->whereNotNull(
                 'issued_at'
             )
@@ -669,7 +669,7 @@ public function index()
             $eventStatus
         );
 
-        $invoices = Invoice::query()
+        $invoices = Invoice::query()->notVoided()
             ->with([
                 'person',
             ])
@@ -2372,7 +2372,7 @@ public function generateDeliveryOrder(
          * Prospect belum dianggap actual revenue.
          * Cancel tidak dianggap revenue.
          */
-        $revenueQuery = Invoice::query()
+        $revenueQuery = Invoice::query()->notVoided()
             ->whereNotNull(
                 'issued_at'
             )
@@ -2412,7 +2412,7 @@ public function generateDeliveryOrder(
          * - PARTIAL
          * - PAID
          */
-        $paymentQuery = Payment::query()
+        $paymentQuery = Payment::query()->notVoided()
             ->whereNotNull(
                 'paid_at'
             )
@@ -2448,7 +2448,7 @@ public function generateDeliveryOrder(
          * Prospect belum menjadi actual receivable.
          * Cancel tidak mempunyai outstanding aktif.
          */
-        $outstandingQuery = Invoice::query()
+        $outstandingQuery = Invoice::query()->notVoided()
             ->whereNotNull(
                 'issued_at'
             )
@@ -2524,7 +2524,7 @@ public function generateDeliveryOrder(
             $projectedExpense = 0;
         } else {
             $projectedRevenue =
-                (float) Invoice::query()
+                (float) Invoice::query()->notVoided()
                     ->whereNotNull(
                         'issued_at'
                     )

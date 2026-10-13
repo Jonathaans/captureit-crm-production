@@ -34,6 +34,9 @@
             <p class="mt-3 text-sm text-gray-500">Proforma belum menjadi invoice aktual. Admin Sales memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.</p>
         </div>
         @if ($proforma->invoice)
+            @if ($proforma->invoice->status === 'void')
+                <p class="rounded border border-red-200 bg-red-50 p-4 text-red-800">Invoice hasil konversi sudah VOID. Catatan pembayaran sebelumnya dibatalkan sebagai salah input, tanpa uang diterima. Proforma ini disimpan sebagai riwayat.</p>
+            @endif
             <div class="rounded-xl bg-green-50 p-5 text-green-800">
                 Invoice {{ $proforma->billingLabel() }}: <strong>{{ $proforma->invoice->invoice_number }}</strong> · {{ strtoupper($proforma->invoice->status) }}
                 @if (bouncer()->hasPermission('invoices.view'))
@@ -42,7 +45,7 @@
                 @if ($proforma->billing_type === 'down_payment' && $proforma->invoice->status === 'paid' && bouncer()->hasPermission('invoices.generate'))
                     <a class="ml-3 underline" href="{{ route('admin.invoices.billing.create', ['quote_id' => $proforma->quote_id, 'billing_type' => 'settlement']) }}">Buat proforma pelunasan</a>
                 @endif
-                <p class="mt-3 text-sm">Alasan: {{ $proforma->conversion_reason === 'event_confirmed' ? 'Event sudah deal / oke' : 'Pembayaran diterima' }}. Dipindahkan {{ $proforma->converted_at?->format('d/m/Y H:i') }} oleh {{ $proforma->converter?->name ?? '-' }}.</p>
+                <p class="mt-3 text-sm">Alasan konversi semula: {{ $proforma->conversion_reason === 'event_confirmed' ? 'Event sudah deal / oke' : 'Pembayaran diterima' }}. Dipindahkan {{ $proforma->converted_at?->format('d/m/Y H:i') }} oleh {{ $proforma->converter?->name ?? '-' }}.</p>
                 @if ($proforma->conversion_note)<p class="mt-2 text-sm">{{ $proforma->conversion_note }}</p>@endif
             </div>
         @endif

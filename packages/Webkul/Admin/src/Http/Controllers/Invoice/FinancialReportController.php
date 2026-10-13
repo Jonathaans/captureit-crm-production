@@ -436,7 +436,7 @@ class FinancialReportController extends Controller
      */
     private function buildFinancialSummary(array $filters): array
     {
-        $invoices = Invoice::query()->whereNotNull('issued_at')->where('event_status', 'confirm');
+        $invoices = Invoice::query()->notVoided()->whereNotNull('issued_at')->where('event_status', 'confirm');
         $this->applyInvoicePeriod($invoices, $filters);
         $this->applyInvoiceDimensions($invoices, $filters);
         $invoiced = (float) (clone $invoices)->sum('grand_total');
@@ -444,7 +444,7 @@ class FinancialReportController extends Controller
             fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)
         );
 
-        $payments = Payment::query()->whereNotNull('paid_at');
+        $payments = Payment::query()->notVoided()->whereNotNull('paid_at');
         $this->applyTransactionPeriod($payments, 'paid_at', $filters);
         $this->applyTransactionInvoiceDimensions($payments, $filters);
         $received = (float) $payments->sum('amount');
@@ -469,6 +469,9 @@ class FinancialReportController extends Controller
         $rows = collect();
         foreach ([Payment::class => 'paid_at', Expense::class => 'expense_date'] as $model => $dateColumn) {
             $query = $model::query()->with(['invoice.person.organization', 'invoice.quote.person.organization'])->whereNotNull($dateColumn);
+            if ($model === Payment::class) {
+                $query->notVoided();
+            }
             $this->applyTransactionPeriod($query, $dateColumn, $filters);
             $this->applyTransactionInvoiceDimensions($query, $filters);
             foreach ($query->get() as $transaction) {
@@ -497,7 +500,7 @@ class FinancialReportController extends Controller
     /** Current project position for projects with a confirmed invoice in the chosen period. */
     private function buildProjectPerformance(array $filters): Collection
     {
-        $cohort = Invoice::query()->whereNotNull('issued_at')->where('event_status', 'confirm');
+        $cohort = Invoice::query()->notVoided()->whereNotNull('issued_at')->where('event_status', 'confirm');
         $this->applyInvoicePeriod($cohort, $filters);
         $this->applyInvoiceDimensions($cohort, $filters);
         $references = $cohort->get(['id', 'quote_id']);
@@ -507,7 +510,7 @@ class FinancialReportController extends Controller
         $quoteIds = $references->pluck('quote_id')->filter()->unique()->values();
         $standaloneIds = $references->whereNull('quote_id')->pluck('id');
 
-        return Invoice::query()
+        return Invoice::query()->notVoided()
             ->with(['person.organization', 'quote.person.organization'])
             ->withSum('payments', 'amount')->withSum('expenses', 'amount')
             ->whereNotNull('issued_at')
@@ -563,7 +566,7 @@ class FinancialReportController extends Controller
      */
     private function buildInvoicePerformance(array $filters)
     {
-        $query = Invoice::query()
+        $query = Invoice::query()->notVoided()
             ->with([
                 'person.organization',
                 'quote.person.organization',
@@ -682,7 +685,7 @@ class FinancialReportController extends Controller
      */
     private function buildInvoiceStats(array $filters): array
     {
-        $query = Invoice::query()
+        $query = Invoice::query()->notVoided()
             ->whereNotNull('issued_at');
 
         $this->applyInvoicePeriod(
@@ -765,7 +768,7 @@ class FinancialReportController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $revenueQuery = Invoice::query()
+        $revenueQuery = Invoice::query()->notVoided()
             ->selectRaw(
                 'MONTH(issued_at) as month, SUM(grand_total) as total'
             )
@@ -802,7 +805,7 @@ class FinancialReportController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $receivedQuery = Payment::query()
+        $receivedQuery = Payment::query()->notVoided()
             ->selectRaw(
                 'MONTH(paid_at) as month, SUM(amount) as total'
             )
@@ -1017,13 +1020,13 @@ class FinancialReportController extends Controller
      */
     private function availableYears()
     {
-        $invoiceYears = Invoice::query()
+        $invoiceYears = Invoice::query()->notVoided()
             ->whereNotNull('issued_at')
             ->selectRaw('YEAR(issued_at) as year')
             ->distinct()
             ->pluck('year');
 
-        $paymentYears = Payment::query()
+        $paymentYears = Payment::query()->notVoided()
             ->whereNotNull('paid_at')
             ->selectRaw('YEAR(paid_at) as year')
             ->distinct()

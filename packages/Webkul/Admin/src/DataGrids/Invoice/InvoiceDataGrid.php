@@ -446,11 +446,16 @@ $this->addColumn([
                     'label' => 'Paid',
                     'value' => 'paid',
                 ],
+                [
+                    'label' => 'Void',
+                    'value' => 'void',
+                ],
             ],
             'closure' => function ($row) {
                 $status = strtolower($row->status ?: 'unpaid');
 
                 [$background, $color, $border] = match ($status) {
+                    'void' => ['#f3f4f6', '#4b5563', '#d1d5db'],
                     'paid' => ['#dcfce7', '#15803d', '#86efac'],
                     'partial' => ['#fef3c7', '#b45309', '#fcd34d'],
                     default => ['#fee2e2', '#b91c1c', '#fca5a5'],

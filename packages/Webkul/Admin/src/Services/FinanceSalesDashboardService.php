@@ -93,7 +93,7 @@ class FinanceSalesDashboardService
 
         $knownValues = $masterOptions->pluck('value')->all();
 
-        $historicalOptions = Invoice::query()
+        $historicalOptions = Invoice::query()->notVoided()
             ->whereNotNull('business_unit')
             ->where('business_unit', '!=', '')
             ->distinct()
@@ -151,7 +151,7 @@ class FinanceSalesDashboardService
 
     private function baseInvoiceQuery(): Builder
     {
-        return Invoice::query()
+        return Invoice::query()->notVoided()
             ->select('invoices.*')
             ->with([
                 'person:id,name',
@@ -244,7 +244,7 @@ class FinanceSalesDashboardService
             ->unique()
             ->values();
 
-        $blockedQuoteIds = Invoice::query()
+        $blockedQuoteIds = Invoice::query()->notVoided()
             ->whereIn('quote_id', $quoteIds)
             ->whereIn('billing_type', ['settlement', 'full_payment', 'full'])
             ->where(function (Builder $active) {

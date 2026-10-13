@@ -28,6 +28,10 @@ class PaymentService
                 ->lockForUpdate()
                 ->findOrFail($invoice->id);
 
+            if ($invoice->status === 'void') {
+                throw \Illuminate\Validation\ValidationException::withMessages(['invoice' => 'Invoice VOID tidak dapat menerima pembayaran.']);
+            }
+
             /**
              * Validate payment amount.
              */

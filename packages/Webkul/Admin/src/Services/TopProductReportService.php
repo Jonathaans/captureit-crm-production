@@ -39,7 +39,7 @@ class TopProductReportService
             ? $periodStart->addMonth()
             : $periodStart->addYear();
 
-        $invoices = Invoice::query()
+        $invoices = Invoice::query()->notVoided()
             ->with(['items', 'payments'])
             ->where('event_status', 'confirm')
             ->where('issued_at', '>=', $periodStart)

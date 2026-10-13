@@ -67,6 +67,7 @@ class AdminServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 \Webkul\Admin\Console\Commands\CrmInvoiceCorrectCommand::class,
+                \Webkul\Admin\Console\Commands\CrmInvoiceVoidCommand::class,
                 \Webkul\Admin\Console\Commands\CrmCatalogReviewCommand::class,
                 \Webkul\Admin\Console\Commands\CrmPhotoboothCatalogCommand::class,
             ]);

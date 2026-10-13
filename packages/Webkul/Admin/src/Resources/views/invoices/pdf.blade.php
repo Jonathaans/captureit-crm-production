@@ -117,6 +117,7 @@
          * Payment status.
          */
         $paymentStatus = match ($invoice->status) {
+            'void' => 'VOID / DIBATALKAN',
             'paid' => 'PAID',
             'partial' => 'PARTIAL',
             default => 'UNPAID',
@@ -520,6 +521,13 @@
 </head>
 
 <body>
+@if ($invoice->status === 'void')
+    <div style="border: 3px solid #991b1b; padding: 12px; margin-bottom: 14px; color: #991b1b;">
+        <strong>VOID / DIBATALKAN — BUKAN TAGIHAN AKTIF</strong><br>
+        Riwayat salah input pembayaran dibatalkan tanpa uang diterima.<br>
+        {{ $invoice->voidCorrection?->reason ?? 'Koreksi invoice' }}
+    </div>
+@endif
 
 @php
     /*

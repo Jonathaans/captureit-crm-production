@@ -7,7 +7,7 @@
     $totalExpense = (float) $invoice->expenses->sum('amount');
 
     $estimatedProfit =
-        (float) $invoice->grand_total
+        ($invoice->status === 'void' ? 0 : (float) $invoice->grand_total)
         - $totalExpense;
 
     $projectWorkOrder = app(\Webkul\Invoice\Services\WorkOrderService::class)->findForInvoice($invoice);
@@ -61,7 +61,9 @@
                         {{ $billingTypeLabel }}
                     </span>
                 @endif
-                @if ($invoice->status === 'paid')
+                @if ($invoice->status === 'void')
+                    <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">VOID / DIBATALKAN</span>
+                @elseif ($invoice->status === 'paid')
                     <span class="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
                         PAID
                     </span>
@@ -106,7 +108,7 @@
                     </a>
             @if ($projectWorkOrder && bouncer()->hasPermission('work-orders.view'))
                 <a href="{{ route('admin.invoices.work-orders.open', $invoice->id) }}" class="secondary-button">Buka SPK</a>
-            @elseif (! $projectWorkOrder && bouncer()->hasPermission('work-orders.generate'))
+            @elseif ($invoice->status !== 'void' && ! $projectWorkOrder && bouncer()->hasPermission('work-orders.generate'))
                 <form method="POST" action="{{ route('admin.invoices.work-orders.store', $invoice->id) }}">
                     @csrf
                     <button type="submit" class="secondary-button">Buat SPK</button>
@@ -128,6 +130,15 @@
     <!-- ========================================================= -->
     <!-- PROJECT & INVOICE INFORMATION -->
     <!-- ========================================================= -->
+
+    @if ($invoice->status === 'void')
+        <div class="my-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+            <p class="font-semibold">Invoice dibatalkan karena koreksi. Dokumen ini bukan tagihan aktif.</p>
+            <p>Seluruh pembayaran di bawah adalah riwayat salah input dan tidak dihitung sebagai penerimaan. SPK, DO, dan stok tetap menyimpan riwayat pekerjaan yang sudah terlaksana.</p>
+            <p class="mt-2">Alasan: {{ $invoice->voidCorrection?->reason ?? '-' }}</p>
+            <p>Dicatat: {{ $invoice->voidCorrection?->created_at?->format('d M Y H:i') ?? '-' }} · Pengguna CRM #{{ $invoice->voidCorrection?->actor_id ?? '-' }}</p>
+        </div>
+    @endif
 
     <section
         class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900"
@@ -300,6 +311,7 @@
             </div>
         </div>
 
+        @if ($invoice->status !== 'void')
         <form
             method="POST"
             action="{{ route('admin.invoices.event-status.update', $invoice->id) }}"
@@ -348,6 +360,7 @@
                 Update Event Status
             </button>
         </form>
+        @endif
     </div>
 </div>
 </section>
@@ -657,7 +670,7 @@
                         </h2>
 
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            Semua pembayaran yang sudah diterima dari customer.
+                            {{ $invoice->status === 'void' ? 'DIBATALKAN: riwayat salah input, tanpa uang diterima.' : 'Semua pembayaran yang sudah diterima dari customer.' }}
                         </p>
                     </div>
 
@@ -1265,7 +1278,9 @@
                     </div>
                 </div>
 
-                @if ($invoice->status === 'paid')
+                @if ($invoice->status === 'void')
+                    <p class="p-4 font-semibold text-red-700">Invoice VOID tidak dapat menerima pembayaran.</p>
+                @elseif ($invoice->status === 'paid')
                     <div class="mt-5 rounded-lg bg-green-50 p-4 dark:bg-green-900/20">
                         <p class="font-medium text-green-700 dark:text-green-400">
                             Invoice sudah lunas.
@@ -1547,10 +1562,10 @@
                     </div>
                 </div>
 
-                @if ($invoice->event_status === 'cancel')
+                @if ($invoice->event_status === 'cancel' || $invoice->status === 'void')
                     <div class="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-900/10">
                         <p class="font-semibold text-red-700 dark:text-red-300">
-                            Expense dinonaktifkan untuk event Cancel.
+                            Expense dinonaktifkan untuk event Cancel atau invoice VOID.
                         </p>
 
                         <p class="mt-1 text-sm text-red-600 dark:text-red-400">

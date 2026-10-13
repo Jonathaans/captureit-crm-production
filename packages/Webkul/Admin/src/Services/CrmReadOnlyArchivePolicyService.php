@@ -14,6 +14,13 @@ class CrmReadOnlyArchivePolicyService
     {
         $table = $model->getTable();
 
+        // Voided billing keeps historical operational documents, but cannot gain
+        // new financial obligations or operational children through another route.
+        if (in_array($table, ['expenses', 'purchase_orders', 'work_orders', 'delivery_orders'], true)
+            && $this->parentStatusReason($model, 'invoice_id', 'invoices', ['void'], 'Invoice') !== null) {
+            throw ValidationException::withMessages(['archive' => 'Invoice VOID dan dokumen terkait tidak dapat diubah atau ditambah.']);
+        }
+
         if ($this->isQuoteIdentityCorrection($model, $operation)) {
             return;
         }
@@ -124,14 +131,13 @@ class CrmReadOnlyArchivePolicyService
                 ['returned', 'completed', 'cancelled', 'canceled', 'archived'],
                 'Surat Jalan'
             ),
-            'delivery_order_items', 'delivery_order_inventory_allocations' =>
-                $this->parentStatusReason(
-                    $model,
-                    'delivery_order_id',
-                    'delivery_orders',
-                    ['returned', 'completed', 'cancelled', 'canceled', 'archived'],
-                    'Surat Jalan'
-                ),
+            'delivery_order_items', 'delivery_order_inventory_allocations' => $this->parentStatusReason(
+                $model,
+                'delivery_order_id',
+                'delivery_orders',
+                ['returned', 'completed', 'cancelled', 'canceled', 'archived'],
+                'Surat Jalan'
+            ),
             default => null,
         };
     }
