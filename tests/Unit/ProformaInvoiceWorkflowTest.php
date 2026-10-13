@@ -11,6 +11,7 @@ use Tests\TestCase;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\InvoiceVoidService;
 use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Installer\Http\Middleware\CanInstall;
@@ -425,6 +426,224 @@ function proformaFinancialCsv(array $filters = []): string
 
     return TestResponse::fromBaseResponse($response)->streamedContent();
 }
+
+/** Legacy DP entered before the proforma workflow, with a completed event. */
+function invoiceVoidFixture($test): Invoice
+{
+    (require base_path('database/migrations/2026_10_07_000000_create_crm_data_corrections_table.php'))->up();
+    Schema::table('expenses', fn (Blueprint $table) => $table->timestamps());
+    Schema::create('purchase_orders', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('invoice_id');
+    });
+    Schema::create('delivery_orders', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('invoice_id');
+        $table->unsignedInteger('work_order_id');
+        $table->string('delivery_order_number');
+        $table->string('status');
+    });
+    Schema::create('delivery_order_inventory_allocations', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('delivery_order_id');
+        $table->string('status');
+    });
+    Schema::create('inventory_assets', function (Blueprint $table) {
+        $table->increments('id');
+        $table->string('status');
+    });
+    Schema::create('inventory_stock_movements', function (Blueprint $table) {
+        $table->increments('id');
+        $table->string('type');
+    });
+    DB::table('users')->insert(['id' => 7, 'name' => 'Finance correction actor']);
+    DB::table('quotes')->where('id', $test->quote->id)->update(['grand_total' => 7500000, 'event_date' => '2026-10-08']);
+    $invoice = Invoice::create([
+        'invoice_number' => 'INV 2610-0019', 'quote_id' => $test->quote->id, 'project_code' => 'PRJ-2026-00042',
+        'subject' => 'Completed event', 'business_unit' => 'capture_it', 'event_date' => '2026-10-08',
+        'grand_total' => 3750000, 'balance_due' => 3750000, 'paid_amount' => 0,
+        'status' => 'unpaid', 'event_status' => 'confirm', 'issued_at' => '2026-10-08',
+    ]);
+    $invoice->items()->create(['name' => 'Photobooth', 'unit' => 'day', 'quantity' => 1, 'price' => 3750000, 'total' => 3750000]);
+    DB::table('payments')->insert(['id' => 6, 'invoice_id' => $invoice->id, 'amount' => 3750000, 'paid_at' => '2026-09-30 16:22:00', 'created_by' => 7]);
+    DB::table('invoices')->where('id', $invoice->id)->update(['status' => 'paid', 'paid_amount' => 3750000, 'balance_due' => 0, 'billing_type' => 'down_payment']);
+    $invoice->refresh();
+    $spk = app(WorkOrderService::class)->createFromInvoice($invoice);
+    $spk->update(['status' => 'completed']);
+    foreach ([1, 2] as $id) {
+        DB::table('delivery_orders')->insert(['id' => $id, 'invoice_id' => $invoice->id, 'work_order_id' => $spk->id, 'delivery_order_number' => 'DO-'.$id, 'status' => 'returned']);
+        DB::table('delivery_order_inventory_allocations')->insert(['delivery_order_id' => $id, 'status' => 'returned']);
+    }
+    DB::table('inventory_assets')->insert(['status' => 'available']);
+    DB::table('inventory_stock_movements')->insert([['type' => 'out'], ['type' => 'return']]);
+
+    return $invoice;
+}
+
+function invoiceVoidProtectedHistory(): array
+{
+    return collect(['quotes', 'quote_items', 'invoice_items', 'payments', 'work_orders', 'work_order_items', 'delivery_orders', 'delivery_order_inventory_allocations', 'inventory_assets', 'inventory_stock_movements'])
+        ->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all();
+}
+
+it('voids fictitious payment with one completed SPK and two returned DOs without rewriting history or stock', function () {
+    $invoice = invoiceVoidFixture($this);
+    $service = app(InvoiceVoidService::class);
+    $before = invoiceVoidProtectedHistory();
+    $preview = $service->preview($invoice->invoice_number);
+    expect($preview['blockers'])->toBeEmpty()->and($preview['work_orders'])->toHaveCount(1)
+        ->and($preview['delivery_orders'])->toHaveCount(2)->and($preview['payment_total_to_void'])->toBe(3750000.0)
+        ->and(invoiceVoidProtectedHistory())->toBe($before)->and($invoice->fresh()->status)->toBe('paid');
+    $result = $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Salah input pembayaran dan nominal quote; uang tidak diterima', 7, true);
+    $invoice->refresh();
+    expect($result['payment_total_voided'])->toBe(3750000.0)->and($invoice->status)->toBe('void')
+        ->and((float) $invoice->paid_amount)->toBe(0.0)->and((float) $invoice->balance_due)->toBe(0.0)
+        ->and((float) $invoice->grand_total)->toBe(3750000.0)->and($invoice->event_status)->toBe('confirm')
+        ->and(invoiceVoidProtectedHistory())->toBe($before)->and(Invoice::count())->toBe(1)->and(Payment::count())->toBe(1)
+        ->and($invoice->voidCorrection->actor_id)->toBe(7)
+        ->and($invoice->voidCorrection->snapshot['payments'][0]['amount'])->toEqual(3750000)
+        ->and($invoice->voidCorrection->snapshot['invoice']['status'])->toBe('paid');
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Pengulangan koreksi', 7, true))->toThrow(RuntimeException::class);
+    expect(DB::table('crm_data_corrections')->count())->toBe(1);
+});
+
+it('preserves and labels the converted source proforma when the invoice is voided through the command', function () {
+    $invoice = invoiceVoidFixture($this);
+    $proforma = ProformaInvoice::create([
+        'proforma_number' => 'PF-ORIGINAL', 'quote_id' => $invoice->quote_id, 'invoice_id' => $invoice->id,
+        'amount' => 3750000, 'billing_type' => 'down_payment', 'billing_method' => 'nominal', 'billing_percentage' => 50,
+        'status' => 'converted', 'issued_at' => '2026-09-29', 'due_at' => '2026-09-30',
+        'quote_snapshot' => ['attributes' => $this->quote->getAttributes()], 'conversion_reason' => 'payment_received',
+    ]);
+    $source = $proforma->fresh()->getAttributes();
+    $service = app(InvoiceVoidService::class);
+    $this->artisan('crm:invoice-void', [
+        'invoice' => $invoice->invoice_number, '--apply' => true, '--no-money-received' => true,
+        '--expect' => $service->preview($invoice->invoice_number)['fingerprint'], '--actor' => 7,
+        '--reason' => 'Pembayaran salah input tanpa uang diterima',
+    ])->assertSuccessful();
+    expect($proforma->fresh()->getAttributes())->toBe($source)
+        ->and(view('admin::invoices.proformas.print', ['proforma' => $proforma->fresh()])->render())->toContain('INVOICE HASIL KONVERSI SUDAH VOID');
+});
+
+it('excludes void billing from every financial report section and prior month cash while retaining unrelated receipts', function () {
+    $invoice = invoiceVoidFixture($this);
+    expect(proformaFinancialData(['month' => 9])['financialSummary']['received'])->toBe(3750000.0)
+        ->and(proformaFinancialData()['financialSummary']['invoiced'])->toBe(3750000.0);
+    $service = app(InvoiceVoidService::class);
+    $service->apply($invoice->invoice_number, $service->preview($invoice->invoice_number)['fingerprint'], 'Pembayaran fiktif dan nominal invoice salah', 7, true);
+    foreach ([['month' => 9], ['month' => 10], ['month' => 'all'], ['month' => 10, 'event_status' => 'confirm']] as $filters) {
+        $report = proformaFinancialData($filters);
+        expect($report['financialSummary'])->toBe(['invoiced' => 0.0, 'received' => 0.0, 'outstanding' => 0.0, 'expense' => 0.0, 'cash_surplus' => 0.0])
+            ->and($report['invoicePerformance'])->toBeEmpty()->and($report['projectPerformance'])->toBeEmpty()
+            ->and($report['cashTransactions'])->toBeEmpty()->and($report['topProducts'])->toBeEmpty()
+            ->and($report['invoiceStats']['total'])->toBe(0)
+            ->and(proformaFinancialCsv($filters))->not->toContain($invoice->invoice_number);
+    }
+    $replacementQuote = $this->quote->replicate();
+    $replacementQuote->quote_number = 'Q-REVISED';
+    $replacementQuote->description = 'Pengganti INV 2610-0019; pekerjaan menggunakan SPK dan DO lama.';
+    $replacementQuote->save();
+    $replacementQuote->items()->create(['name' => 'Photobooth', 'unit' => 'day', 'quantity' => 1, 'price' => 10000000, 'total' => 10000000]);
+    $newInvoice = $this->billing->approveProforma($this->billing->createFromQuote($replacementQuote, array_replace($this->input, ['billing_type' => 'full_payment'])));
+    app(PaymentService::class)->addPayment($newInvoice, ['amount' => 2000000, 'paid_at' => '2026-10-12']);
+    expect(proformaFinancialData()['financialSummary']['invoiced'])->toBe(10000000.0)
+        ->and(proformaFinancialData()['financialSummary']['received'])->toBe(2000000.0)
+        ->and(proformaFinancialData()['financialSummary']['outstanding'])->toBe(8000000.0)
+        ->and(WorkOrder::count())->toBe(1)->and(DB::table('delivery_orders')->count())->toBe(2)
+        ->and(Payment::count())->toBe(2)->and((float) Payment::notVoided()->sum('amount'))->toBe(2000000.0);
+});
+
+it('blocks void while operational or financial dependencies remain unresolved', function (string $case) {
+    $invoice = invoiceVoidFixture($this);
+    match ($case) {
+        'spk' => DB::table('work_orders')->update(['status' => 'released']),
+        'do' => DB::table('delivery_orders')->where('id', 1)->update(['status' => 'delivered']),
+        'allocation' => DB::table('delivery_order_inventory_allocations')->where('id', 1)->update(['status' => 'return_pending']),
+        'expense' => DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 500, 'expense_date' => '2026-10-08']),
+        'po' => DB::table('purchase_orders')->insert(['invoice_id' => $invoice->id]),
+        'settlement' => DB::table('invoices')->insert(['invoice_number' => 'SETTLEMENT', 'quote_id' => $invoice->quote_id, 'dp_invoice_id' => $invoice->id]),
+        'cash period' => DB::table('financial_period_locks')->insert(['period' => '2026-09', 'starts_at' => '2026-09-01', 'ends_at' => '2026-09-30']),
+        'invoice period' => DB::table('financial_period_locks')->insert(['period' => '2026-10', 'starts_at' => '2026-10-01', 'ends_at' => '2026-10-31']),
+        'payment mismatch' => DB::table('payments')->update(['amount' => 3000000]),
+        'proforma settlement' => ProformaInvoice::create([
+            'proforma_number' => 'PF-SETTLEMENT', 'quote_id' => $invoice->quote_id, 'dp_invoice_id' => $invoice->id,
+            'amount' => 3750000, 'billing_type' => 'settlement', 'billing_method' => 'nominal', 'billing_percentage' => 50,
+            'status' => 'issued', 'issued_at' => '2026-10-08', 'due_at' => '2026-10-12', 'quote_snapshot' => [],
+        ]),
+    };
+    $before = invoiceVoidProtectedHistory();
+    $service = app(InvoiceVoidService::class);
+    $preview = $service->preview($invoice->invoice_number);
+    expect($preview['blockers'])->not->toBeEmpty();
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Uji pembatasan koreksi', 7, true))->toThrow(RuntimeException::class);
+    expect($invoice->fresh()->status)->toBe('paid')->and(invoiceVoidProtectedHistory())->toBe($before)
+        ->and(DB::table('crm_data_corrections')->count())->toBe(0);
+})->with(['spk', 'do', 'allocation', 'expense', 'po', 'settlement', 'cash period', 'invoice period', 'payment mismatch', 'proforma settlement']);
+
+it('requires a current preview including returned inventory and period state', function (string $case) {
+    $invoice = invoiceVoidFixture($this);
+    $service = app(InvoiceVoidService::class);
+    $preview = $service->preview($invoice->invoice_number);
+    match ($case) {
+        'payment' => DB::table('payments')->update(['notes' => 'Edited after review']),
+        'do' => DB::table('delivery_orders')->where('id', 1)->update(['delivery_order_number' => 'DO-REVIEWED']),
+        'lock' => DB::table('financial_period_locks')->insert(['period' => '2026-09', 'starts_at' => '2026-09-01', 'ends_at' => '2026-09-30']),
+    };
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Koreksi dengan preview lama', 7, true))->toThrow(RuntimeException::class, 'Data berubah');
+    expect($invoice->fresh()->status)->toBe('paid')->and(DB::table('crm_data_corrections')->count())->toBe(0);
+})->with(['payment', 'do', 'lock']);
+
+it('rolls back audit and billing together on a failed void without touching operational history', function () {
+    $invoice = invoiceVoidFixture($this);
+    $before = invoiceVoidProtectedHistory();
+    $service = app(InvoiceVoidService::class);
+    $preview = $service->preview($invoice->invoice_number);
+    DB::unprepared("CREATE TRIGGER fail_void BEFORE UPDATE ON invoices WHEN NEW.status = 'void' BEGIN SELECT RAISE(ABORT, 'simulated failure'); END");
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Uji rollback pembatalan', 7, true))->toThrow(QueryException::class);
+    expect($invoice->fresh()->status)->toBe('paid')->and(invoiceVoidProtectedHistory())->toBe($before)
+        ->and(DB::table('crm_data_corrections')->count())->toBe(0);
+});
+
+it('keeps invoice void preview read only and requires explicit wrong payment acknowledgement and audit actor', function () {
+    $invoice = invoiceVoidFixture($this);
+    $service = app(InvoiceVoidService::class);
+    $preview = $service->preview($invoice->invoice_number);
+    $this->artisan('crm:invoice-void', ['invoice' => $invoice->invoice_number])->assertSuccessful();
+    $this->artisan('crm:invoice-void', ['invoice' => $invoice->invoice_number, '--apply' => true])->assertFailed();
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'Uji actor tidak valid', 999, true))->toThrow(RuntimeException::class);
+    expect(fn () => $service->apply($invoice->invoice_number, '', 'Alasan valid', 7, true))->toThrow(RuntimeException::class);
+    expect(fn () => $service->apply($invoice->invoice_number, $preview['fingerprint'], 'x', 7, true))->toThrow(RuntimeException::class);
+    expect($invoice->fresh()->status)->toBe('paid')->and(DB::table('crm_data_corrections')->count())->toBe(0);
+});
+
+it('keeps void invoice immutable and labels its PDF without disabling ordinary paid invoice expenses', function () {
+    $invoice = invoiceVoidFixture($this);
+    $service = app(InvoiceVoidService::class);
+    $service->apply($invoice->invoice_number, $service->preview($invoice->invoice_number)['fingerprint'], 'Admin salah input pembayaran, uang tidak masuk', 7, true);
+    $invoice->refresh();
+    expect(fn () => $invoice->update(['event_status' => 'cancel']))->toThrow(ValidationException::class);
+    expect(fn () => app(PaymentService::class)->addPayment($invoice, ['amount' => 1]))->toThrow(ValidationException::class);
+    expect(fn () => app(WorkOrderService::class)->createFromInvoice($invoice))->toThrow(ValidationException::class);
+    expect(fn () => $invoice->expenses()->create(['amount' => 100, 'expense_date' => '2026-10-12']))->toThrow(ValidationException::class);
+    expect(fn () => $invoice->voidCorrection->delete())->toThrow(LogicException::class);
+    $invoice->refresh();
+    expect(view('admin::invoices.pdf', compact('invoice'))->render())->toContain('VOID / DIBATALKAN', 'BUKAN TAGIHAN AKTIF', 'Admin salah input pembayaran, uang tidak masuk');
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices', 'invoices.view', 'work-orders.view']]);
+    $this->actingAs((new User)->forceFill(['id' => 7, 'name' => 'Finance', 'status' => 1])->setRelation('role', $role), 'user');
+    $this->get(route('admin.invoices.show', $invoice->id))->assertOk()
+        ->assertSee('VOID / DIBATALKAN')->assertSee('Buka SPK')
+        ->assertSee('Admin salah input pembayaran, uang tidak masuk')
+        ->assertDontSee('action="'.route('admin.invoices.payments.store', $invoice->id).'"', false)
+        ->assertDontSee('action="'.route('admin.invoices.event-status.update', $invoice->id).'"', false);
+    // Historical link remains available even though new SPK generation is blocked.
+    expect(app(WorkOrderService::class)->findForInvoice($invoice)->status)->toBe('completed');
+    $other = Invoice::create(['invoice_number' => 'INV-PAID-OTHER', 'grand_total' => 1000, 'status' => 'paid', 'event_status' => 'confirm']);
+    $expense = $other->expenses()->create(['amount' => 100, 'expense_date' => '2026-10-12']);
+    expect($expense->exists)->toBeTrue();
+});
 
 it('shows pending proforma only in follow-up and never in financial values or exports', function () {
     $proforma = $this->proformas->create($this->quote, $this->input);

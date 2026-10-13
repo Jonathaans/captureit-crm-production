@@ -49,7 +49,7 @@ class FlexibleQuoteBillingService
     {
         $quoteTotal = round((float) $quote->grand_total, self::SCALE);
 
-        $activeInvoices = Invoice::query()
+        $activeInvoices = Invoice::query()->notVoided()
             ->where('quote_id', $quote->id)
             ->where(function ($query) {
                 $query
@@ -566,7 +566,7 @@ class FlexibleQuoteBillingService
             return;
         }
 
-        $otherInvoicesTotal = Invoice::query()
+        $otherInvoicesTotal = Invoice::query()->notVoided()
             ->where('quote_id', $invoice->quote_id)
             ->where('id', '<>', $invoice->id)
             ->where(function ($query) {
@@ -622,7 +622,7 @@ class FlexibleQuoteBillingService
             ->whereIn('id', $ids)
             ->pluck('grand_total', 'id');
 
-        $agreedTotals = Invoice::query()
+        $agreedTotals = Invoice::query()->notVoided()
             ->whereIn('quote_id', $ids)
             ->where('billing_type', self::TYPE_DOWN_PAYMENT)
             ->where('quote_total_snapshot', '>', 0)
@@ -630,7 +630,7 @@ class FlexibleQuoteBillingService
             ->orderByDesc('id')
             ->pluck('quote_total_snapshot', 'quote_id');
 
-        $invoiceTotals = Invoice::query()
+        $invoiceTotals = Invoice::query()->notVoided()
             ->whereIn('quote_id', $ids)
             ->where(function ($query) {
                 $query

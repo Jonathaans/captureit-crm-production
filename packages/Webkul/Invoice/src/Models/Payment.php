@@ -2,6 +2,7 @@
 
 namespace Webkul\Invoice\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Webkul\Invoice\Contracts\Payment as PaymentContract;
 use Webkul\User\Models\UserProxy;
@@ -27,6 +28,12 @@ class Payment extends Model implements PaymentContract
     public function invoice()
     {
         return $this->belongsTo(InvoiceProxy::modelClass());
+    }
+
+    /** Wrong entries remain visible in history but are not actual receipts. */
+    public function scopeNotVoided(Builder $query): Builder
+    {
+        return $query->whereHas('invoice', fn (Builder $invoice) => $invoice->notVoided());
     }
 
     public function creator()

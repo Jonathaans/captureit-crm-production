@@ -27,6 +27,7 @@
         {{ $proforma->proforma_number }}
         @if ($proforma->status === 'cancelled')<strong> · DIBATALKAN</strong>@endif
         @if ($proforma->status === 'converted')<strong> · SUDAH DIPINDAHKAN KE INVOICE</strong>@endif
+        @if ($proforma->invoice?->status === 'void')<p><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat. Catatan pembayaran pada invoice tersebut dibatalkan sebagai salah input.</p>@endif
     </header>
     <table>
         <tr><td><strong>Kepada</strong><br>

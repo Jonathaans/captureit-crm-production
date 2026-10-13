@@ -37,6 +37,10 @@ class WorkOrderService
                         ->lockForUpdate()
                         ->firstOrFail();
 
+                if ($invoice->status === 'void' || $source->status === 'void') {
+                    throw ValidationException::withMessages(['invoice' => 'Invoice VOID tidak dapat membuat SPK baru.']);
+                }
+
                 if ($source->id !== $invoice->id && (
                     (int) $source->quote_id !== (int) $invoice->quote_id
                     || $invoice->billing_type !== 'down_payment'

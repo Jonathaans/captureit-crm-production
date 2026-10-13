@@ -65,6 +65,10 @@ class DeliveryOrderService
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                if ($invoice->status === 'void') {
+                    throw new \LogicException('Invoice VOID tidak dapat membuat Surat Jalan baru.');
+                }
+
                 $existingDeliveryOrderCount =
                     DeliveryOrder::query()
                         ->where(

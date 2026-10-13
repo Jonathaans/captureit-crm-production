@@ -28,7 +28,7 @@ class SalesCommissionExportService
     {
         $filters = $this->normalizeFilters($filters);
 
-        $invoices = Invoice::query()
+        $invoices = Invoice::query()->notVoided()
             ->with([
                 'items',
                 'payments',

@@ -2,6 +2,7 @@
 
 namespace Webkul\Invoice\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Webkul\Contact\Models\PersonProxy;
 use Webkul\Invoice\Contracts\Invoice as InvoiceContract;
@@ -40,7 +41,7 @@ class Invoice extends Model implements InvoiceContract
 
         /**
          * Payment status:
-         * unpaid / partial / paid
+         * unpaid / partial / paid / void
          */
         'status',
 
@@ -135,6 +136,20 @@ class Invoice extends Model implements InvoiceContract
     public function payments()
     {
         return $this->hasMany(PaymentProxy::modelClass());
+    }
+
+    /** Financial queries exclude voids; document lookups keep the original history. */
+    public function scopeNotVoided(Builder $query): Builder
+    {
+        $column = $this->qualifyColumn('status');
+
+        return $query->where(fn (Builder $query) => $query->whereNull($column)->orWhere($column, '!=', 'void'));
+    }
+
+    public function voidCorrection()
+    {
+        return $this->hasOne(InvoiceVoidRecord::class, 'invoice_number', 'invoice_number')
+            ->where('kind', 'invoice_void');
     }
 
     public function expenses()
