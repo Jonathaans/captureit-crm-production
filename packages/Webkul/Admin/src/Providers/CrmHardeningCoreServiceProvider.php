@@ -223,8 +223,9 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
             );
 
         /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
-        Route::middleware('web')
-            ->middleware('user')
+        // Repeated middleware() calls on a route group replace the previous list.
+        // Load the session and CSRF protection before checking the user's access.
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix('admin/invoice-billing')
             ->controller(
                 FlexibleQuoteBillingController::class

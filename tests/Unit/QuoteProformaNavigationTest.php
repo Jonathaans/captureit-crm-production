@@ -1,13 +1,25 @@
 <?php
 
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Blade;
 use Tests\TestCase;
+use Webkul\Admin\Http\Middleware\Bouncer;
 use Webkul\Quote\Models\Quote;
 use Webkul\User\Models\Role;
 use Webkul\User\Models\User;
 
 uses(TestCase::class);
+
+it('restores the browser session before authorizing every billing endpoint', function (string $name): void {
+    $route = app('router')->getRoutes()->getByName($name);
+    $middleware = app('router')->gatherRouteMiddleware($route);
+
+    expect($middleware)->toContain(EncryptCookies::class, StartSession::class, ValidateCsrfToken::class, Bouncer::class)
+        ->and(array_search(StartSession::class, $middleware, true))->toBeLessThan(array_search(Bouncer::class, $middleware, true));
+})->with(['admin.invoices.billing.create', 'admin.invoices.billing.summary', 'admin.invoices.billing.store']);
 
 it('opens proforma creation for the saved quote without submitting the quote form', function (string $permissionType, array $permissions, bool $visible): void {
     $role = (new Role)->forceFill(['permission_type' => $permissionType, 'permissions' => $permissions]);

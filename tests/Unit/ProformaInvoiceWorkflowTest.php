@@ -4,7 +4,9 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -306,11 +308,11 @@ it('routes every generate form choice to proforma before an invoice exists', fun
     $user = (new User)->forceFill(['id' => 1, 'status' => 1])->setRelation('role', $role);
     $this->actingAs($user, 'user');
     $this->postJson(route('admin.invoices.generate', $this->quote->id))->assertRedirect(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]));
-    $this->get(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]))
+    $page = $this->get(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]))
         ->assertOk()
-        ->assertViewIs('admin::invoices.billing-create')
-        ->assertViewHas('selectedQuote', fn (Quote $quote) => $quote->is($this->quote))
         ->assertSee('Buat Proforma dari Penawaran');
+    // The web UI middleware injects content and replaces the original View object.
+    expect($page->getContent())->toMatch('/<option\b[^>]*value="'.$this->quote->id.'"[^>]*\bselected[^>]*>/s');
     expect(Invoice::count())->toBe(0)->and(ProformaInvoice::count())->toBe(0);
     $this->postJson(route('admin.invoices.billing.store'), array_merge($this->input, [
         'quote_id' => $this->quote->id, 'billing_method' => 'percentage', 'billing_percentage' => 30, 'billing_amount' => null,
@@ -322,6 +324,110 @@ it('routes every generate form choice to proforma before an invoice exists', fun
         'quote_id' => $this->quote->id, 'billing_type' => 'full_payment',
     ]))->assertRedirect(route('admin.proformas.show', 2));
     expect(Invoice::count())->toBe(0)->and((float) ProformaInvoice::findOrFail(2)->amount)->toBe(10000000.0)->and(Payment::count())->toBe(0);
+});
+
+describe('billing with a persisted browser session', function () {
+    beforeEach(function () {
+        $this->withoutMiddleware(CanInstall::class);
+        // Unlike actingAs/withSession, only the cookie survives into each request.
+        // Enable CSRF checks too, as they are normally skipped in unit tests.
+        $this->app->instance('env', 'local');
+        $this->sessionDirectory = sys_get_temp_dir().'/crm-proforma-session-'.Str::uuid();
+        File::makeDirectory($this->sessionDirectory, 0755, true);
+        config([
+            'app.key' => str_repeat('a', 32), 'app.debug' => true,
+            'session.driver' => 'file', 'session.files' => $this->sessionDirectory,
+        ]);
+
+        Schema::create('roles', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('name');
+            $table->string('permission_type');
+            $table->text('permissions')->nullable();
+        });
+        Schema::table('users', function (Blueprint $table) {
+            $table->unsignedInteger('role_id');
+            $table->boolean('status')->default(true);
+            $table->string('view_permission')->default('global');
+        });
+        DB::table('roles')->insert([
+            'id' => 1, 'name' => 'Admin Sales', 'permission_type' => 'custom',
+            'permissions' => json_encode(['invoices', 'invoices.view', 'invoices.generate', 'invoices.payment']),
+        ]);
+        DB::table('users')->insert(['id' => 1, 'name' => 'Sales Tester', 'role_id' => 1, 'status' => true]);
+
+        app('auth')->forgetGuards();
+        app('session')->forgetDrivers();
+        app()->forgetInstance('session.store');
+        $loginKey = auth()->guard('user')->getName();
+        $session = app('session')->driver();
+        $session->start();
+        $session->put($loginKey, 1);
+        $this->csrfToken = $session->token();
+        $session->save();
+        $this->withCookie($session->getName(), $session->getId());
+
+        $this->browserRequest = function (string $method, string $url, array $data = [], array $headers = []) {
+            app('auth')->forgetGuards();
+            app('session')->forgetDrivers();
+            app()->forgetInstance('session.store');
+
+            return $method === 'GET' ? $this->get($url, $headers) : $this->post($url, $data, $headers);
+        };
+    });
+
+    afterEach(function () {
+        File::deleteDirectory($this->sessionDirectory);
+    });
+
+    it('opens both entry points and converts the saved proforma to one invoice', function (string $type, string $conversion): void {
+        ($this->browserRequest)('GET', route('admin.invoices.billing.create'))
+            ->assertOk()->assertSee('Buat Proforma dari Penawaran');
+        $page = ($this->browserRequest)('GET', route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]))
+            ->assertOk()->assertSee('Buat Proforma dari Penawaran');
+        expect($page->getContent())->toMatch('/<option\b[^>]*value="'.$this->quote->id.'"[^>]*\bselected[^>]*>/s');
+        ($this->browserRequest)('GET', route('admin.invoices.billing.summary', $this->quote->id), [], ['Accept' => 'application/json'])
+            ->assertOk()->assertJsonPath('data.eligibility.full_payment', true);
+
+        ($this->browserRequest)('POST', route('admin.invoices.billing.store'), array_replace($this->input, [
+            '_token' => $this->csrfToken, 'quote_id' => $this->quote->id, 'billing_type' => $type,
+        ]))->assertRedirect(route('admin.proformas.show', 1));
+        $proforma = ProformaInvoice::firstOrFail();
+        expect(Invoice::count())->toBe(0)->and($proforma->created_by)->toBe(1);
+
+        ($this->browserRequest)('GET', route('admin.proformas.show', $proforma->id))
+            ->assertOk()->assertSee('Event sudah deal')->assertSee('Pembayaran diterima');
+        $url = route('admin.proformas.'.$conversion, $proforma->id);
+        $payload = $conversion === 'approve'
+            ? ['event_confirmed' => 1, 'confirmation_note' => 'Customer sudah menyetujui event']
+            : array_replace($this->receipt, ['amount' => $proforma->amount]);
+        $payload['_token'] = $this->csrfToken;
+        ($this->browserRequest)('POST', $url, $payload)->assertRedirect(route('admin.proformas.show', $proforma->id));
+
+        $invoice = Invoice::firstOrFail();
+        expect($proforma->fresh()->status)->toBe('converted')
+            ->and($proforma->fresh()->invoice_id)->toBe($invoice->id)
+            ->and($proforma->fresh()->converted_by)->toBe(1)
+            ->and($invoice->status)->toBe($conversion === 'approve' ? 'unpaid' : 'paid')
+            ->and((float) $invoice->grand_total)->toBe((float) $proforma->amount)
+            ->and(Payment::count())->toBe($conversion === 'approve' ? 0 : 1);
+        ($this->browserRequest)('GET', route('admin.proformas.show', $proforma->id))
+            ->assertOk()->assertSee('Buka Invoice')->assertSee($invoice->invoice_number);
+        ($this->browserRequest)('POST', $url, $payload)->assertRedirect(route('admin.proformas.show', $proforma->id));
+        expect(Invoice::count())->toBe(1)->and(Payment::count())->toBe($conversion === 'approve' ? 0 : 1);
+    })->with([
+        'DP event confirmed' => ['down_payment', 'approve'],
+        'Full event confirmed' => ['full_payment', 'approve'],
+        'DP payment received' => ['down_payment', 'payment'],
+        'Full payment received' => ['full_payment', 'payment'],
+    ]);
+
+    it('rejects a billing submission without the session CSRF token', function () {
+        ($this->browserRequest)('POST', route('admin.invoices.billing.store'), array_replace($this->input, [
+            'quote_id' => $this->quote->id,
+        ]), ['Accept' => 'application/json'])->assertStatus(419);
+        expect(ProformaInvoice::count())->toBe(0)->and(Invoice::count())->toBe(0);
+    });
 });
 
 it('lets Admin Sales move a deal to invoice without fabricating a payment', function (string $type) {
