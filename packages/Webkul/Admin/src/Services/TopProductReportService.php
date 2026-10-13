@@ -12,10 +12,9 @@ use Webkul\Invoice\Models\Invoice;
 /**
  * CRM_TOP_PRODUCT_REPORT_V1
  *
- * A quote is one commercial deal even when it is billed through separate DP
- * and settlement invoices. Product quantities and values therefore come from
- * quote items whenever possible, while payments come from all confirmed
- * invoices belonging to the deal.
+ * Only issued, confirmed invoices and their frozen items contribute value.
+ * DP and settlement share one project count, but each contributes only its
+ * actual billed value in the selected invoice period. No quote/proforma values.
  */
 class TopProductReportService
 {
@@ -40,75 +39,56 @@ class TopProductReportService
             ? $periodStart->addMonth()
             : $periodStart->addYear();
 
-        /*
-         * Select quote deals by their first confirmed invoice date. This keeps
-         * the period stable and avoids loading every historical invoice.
-         */
-        $quoteIds = Invoice::query()
-            ->select('quote_id')
-            ->whereNotNull('quote_id')
-            ->whereNotNull('issued_at')
-            ->where('event_status', 'confirm')
-            ->groupBy('quote_id')
-            ->havingRaw(
-                'MIN(issued_at) >= ? AND MIN(issued_at) < ?',
-                [
-                    $periodStart->toDateTimeString(),
-                    $periodEnd->toDateTimeString(),
-                ]
-            )
-            ->pluck('quote_id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
         $invoices = Invoice::query()
-            ->with([
-                'items',
-                'payments',
-                'quote.items',
-            ])
+            ->with(['items', 'payments'])
             ->where('event_status', 'confirm')
-            ->whereNotNull('issued_at')
-            ->where(function ($query) use ($quoteIds, $periodStart, $periodEnd): void {
-                $query->where(function ($standalone) use ($periodStart, $periodEnd): void {
-                    $standalone
-                        ->whereNull('quote_id')
-                        ->where('issued_at', '>=', $periodStart)
-                        ->where('issued_at', '<', $periodEnd);
-                });
-
-                if ($quoteIds !== []) {
-                    $query->orWhereIn('quote_id', $quoteIds);
-                }
-            })
+            ->where('issued_at', '>=', $periodStart)
+            ->where('issued_at', '<', $periodEnd)
+            ->when(! empty($filters['business_unit']), fn ($query) => $query->where('business_unit', $filters['business_unit']))
             ->orderBy('issued_at')
             ->orderBy('id')
             ->get();
 
-        $deals = collect();
+        $projectProducts = [];
+        foreach ($invoices as $invoice) {
+            $projectKey = $invoice->quote_id ? 'quote:'.$invoice->quote_id : 'invoice:'.$invoice->id;
+            // Allocate each invoice independently: different billing stages may have different item weights.
+            foreach ($this->rankDeals([$this->standaloneDeal($invoice)], $filters) as $row) {
+                $key = $projectKey.'|'.$row['product_key'];
+                if (! isset($projectProducts[$key])) {
+                    $projectProducts[$key] = $row;
 
-        $invoices
-            ->whereNotNull('quote_id')
-            ->groupBy(fn (Invoice $invoice): int => (int) $invoice->quote_id)
-            ->each(function (Collection $dealInvoices) use ($deals): void {
-                $deal = $this->quoteDeal($dealInvoices);
-
-                if ($deal !== null) {
-                    $deals->push($deal);
+                    continue;
                 }
-            });
-
-        $invoices
-            ->whereNull('quote_id')
-            ->each(function (Invoice $invoice) use ($deals): void {
-                $deal = $this->standaloneDeal($invoice);
-
-                if ($deal !== null) {
-                    $deals->push($deal);
+                $projectProducts[$key]['sales_value'] += $row['sales_value'];
+                $projectProducts[$key]['received_allocated'] += $row['received_allocated'];
+                // Billing the same equipment twice does not mean a second project/quantity sold.
+                $projectProducts[$key]['quantity'] = max($projectProducts[$key]['quantity'], $row['quantity']);
+                foreach (SalesLineItem::UNITS as $unit) {
+                    $projectProducts[$key]['quantity_units'][$unit] = max(
+                        $projectProducts[$key]['quantity_units'][$unit], $row['quantity_units'][$unit]
+                    );
                 }
-            });
+            }
+        }
 
-        return $this->rankDeals($deals->all(), $filters);
+        $products = [];
+        foreach ($projectProducts as $row) {
+            $key = $row['product_key'];
+            if (! isset($products[$key])) {
+                $products[$key] = $row;
+
+                continue;
+            }
+            foreach (['deal_count', 'quantity', 'sales_value', 'received_allocated'] as $metric) {
+                $products[$key][$metric] += $row[$metric];
+            }
+            foreach (SalesLineItem::UNITS as $unit) {
+                $products[$key]['quantity_units'][$unit] += $row['quantity_units'][$unit];
+            }
+        }
+
+        return $this->rankRows($products);
     }
 
     /**
@@ -209,6 +189,11 @@ class TopProductReportService
             }
         }
 
+        return $this->rankRows($products);
+    }
+
+    private function rankRows(array $products): Collection
+    {
         return collect(array_values($products))
             ->map(function (array $row): array {
                 $row['quantity'] = round((float) $row['quantity'], 2);
@@ -241,42 +226,6 @@ class TopProductReportService
             });
     }
 
-    /** @param  Collection<int, Invoice>  $invoices */
-    private function quoteDeal(Collection $invoices): ?array
-    {
-        /** @var Invoice|null $first */
-        $first = $invoices
-            ->sortBy(fn (Invoice $invoice): string => $invoice->issued_at?->format('Y-m-d H:i:s.u') ?? '')
-            ->first();
-
-        if ($first === null || $first->issued_at === null) {
-            return null;
-        }
-
-        $quote = $invoices->pluck('quote')->filter()->first();
-        $items = $quote?->items;
-
-        if ($items === null || $items->isEmpty()) {
-            $sourceInvoice = $this->bestItemSnapshot($invoices);
-            $items = $sourceInvoice?->items ?? collect();
-        }
-
-        $quoteTotal = max(0.0, (float) ($quote?->grand_total ?? 0));
-        $snapshotTotal = max(0.0, (float) $invoices->max('quote_total_snapshot'));
-        $dealValue = $quoteTotal > 0
-            ? $quoteTotal
-            : ($snapshotTotal > 0 ? $snapshotTotal : max(0.0, (float) $invoices->sum('grand_total')));
-
-        return [
-            'deal_key' => 'quote:'.(int) $first->quote_id,
-            'deal_date' => $first->issued_at->toDateString(),
-            'business_unit' => trim((string) ($quote?->business_unit ?? $first->business_unit ?? '')),
-            'deal_value' => $dealValue,
-            'received' => $this->received($invoices),
-            'items' => $this->normalizeItems($items),
-        ];
-    }
-
     private function standaloneDeal(Invoice $invoice): ?array
     {
         if ($invoice->issued_at === null) {
@@ -291,20 +240,6 @@ class TopProductReportService
             'received' => $this->received(collect([$invoice])),
             'items' => $this->normalizeItems($invoice->items),
         ];
-    }
-
-    /** @param  Collection<int, Invoice>  $invoices */
-    private function bestItemSnapshot(Collection $invoices): ?Invoice
-    {
-        return $invoices->first(
-            fn (Invoice $invoice): bool => in_array(
-                $this->normalizeBillingType($invoice->billing_type),
-                ['full_payment', 'settlement'],
-                true
-            ) && $invoice->items->isNotEmpty()
-        ) ?? $invoices->first(
-            fn (Invoice $invoice): bool => $invoice->items->isNotEmpty()
-        );
     }
 
     /** @param  Collection<int, Invoice>  $invoices */
@@ -391,17 +326,5 @@ class TopProductReportService
     private function normalizeName(string $value): string
     {
         return mb_strtolower(trim($value));
-    }
-
-    private function normalizeBillingType(mixed $value): string
-    {
-        $type = mb_strtolower(trim((string) $value));
-
-        return match ($type) {
-            '', 'full', 'full payment' => 'full_payment',
-            'down payment', 'dp' => 'down_payment',
-            'pelunasan' => 'settlement',
-            default => str_replace([' ', '-'], '_', $type),
-        };
     }
 }

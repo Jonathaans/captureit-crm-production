@@ -5,11 +5,12 @@ namespace Webkul\Admin\Http\Controllers\Invoice;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
-use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\TopProductReportService;
 use Webkul\Core\Support\BusinessUnit;
 use Webkul\Invoice\Models\Expense;
@@ -23,28 +24,11 @@ class FinancialReportController extends Controller
     ) {}
 
     /**
-     * Financial Report page.
-     *
-     * Filter semantics:
-     *
-     * - Revenue:
-     *   Confirmed invoices whose issued_at is inside the selected period.
-     *
-     * - Payment Received:
-     *   Actual payment transactions whose paid_at is inside the selected period.
-     *
-     * - Expense:
-     *   Actual expense transactions whose expense_date is inside the selected period.
-     *
-     * - Outstanding:
-     *   Current outstanding of confirmed invoices issued inside the selected period.
-     *
-     * - Estimated Profit:
-     *   Confirm + Prospect invoice value issued inside the selected period,
-     *   minus ALL project expenses linked to those invoices.
-     *
-     * - Cash Surplus:
-     *   Payment Received in period - Expense in period.
+     * Official values come from issued invoices and their payment/expense rows.
+     * Invoice totals use issued_at; cash movements use the transaction date.
+     * Receivable is the current balance of invoices issued in the chosen period.
+     * Project margin is current, grouped across actual invoices of selected projects.
+     * Pending proformas are operational follow-up only and never enter exports/totals.
      */
     public function index(Request $request): View
     {
@@ -98,6 +82,10 @@ class FinancialReportController extends Controller
                 'monthlyPerformance' => $monthlyPerformance,
                 'topProducts' => $topProducts->take(10)->values(),
                 'topProductTotal' => $topProducts->count(),
+                'cashTransactions' => $this->buildCashTransactions($filters),
+                'projectPerformance' => $this->buildProjectPerformance($filters),
+                'proformaFollowUp' => bouncer()->hasPermission('invoices')
+                    ? app(ProformaFollowUpService::class)->summary($filters) : null,
             ]
         );
     }
@@ -117,13 +105,17 @@ class FinancialReportController extends Controller
 
         $invoicePerformance = $this->buildInvoicePerformance($filters);
 
+        $cashTransactions = $this->buildCashTransactions($filters);
+        $projectPerformance = $this->buildProjectPerformance($filters);
         $fileName = $this->buildExportFileName($filters);
 
         return response()->streamDownload(
             function () use (
                 $filters,
                 $financialSummary,
-                $invoicePerformance
+                $invoicePerformance,
+                $cashTransactions,
+                $projectPerformance
             ) {
                 $handle = fopen('php://output', 'w');
 
@@ -219,18 +211,13 @@ class FinancialReportController extends Controller
                 ]);
 
                 $writeRow($handle, [
-                    'Revenue / Cash Received - Actual Payment in Period',
+                    'Cash Received - Actual Invoice Payments in Period',
                     $financialSummary['received'],
                 ]);
 
                 $writeRow($handle, [
                     'Receivable - Current Confirmed Invoice Balance',
                     $financialSummary['outstanding'],
-                ]);
-
-                $writeRow($handle, [
-                    'Unbilled - Quote Value Not Yet Invoiced',
-                    $financialSummary['unbilled'],
                 ]);
 
                 $writeRow($handle, [
@@ -244,6 +231,7 @@ class FinancialReportController extends Controller
                 ]);
 
                 $writeRow($handle, []);
+                $this->writeSupportingExport($handle, $writeRow, $cashTransactions, $projectPerformance);
                 $writeRow($handle, []);
 
                 /*
@@ -268,9 +256,9 @@ class FinancialReportController extends Controller
                     'Paid To Date',
                     'Payment Received In Period',
                     'Outstanding Current',
-                    'Project Expense Total',
+                    'Expenses Linked to This Invoice',
                     'Expense In Period',
-                    'Estimated Project Profit',
+                    'Invoice Margin - Invoice Value minus Linked Expenses',
                     'Cash Surplus In Period',
                     'PPH',
                 ]);
@@ -370,15 +358,15 @@ class FinancialReportController extends Controller
                 $writeRow($handle, ['Product', $filters['product'] ?: 'ALL PRODUCTS']);
                 $writeRow($handle, [
                     'Rule',
-                    'One confirmed quote/project is counted once; DP and settlement invoices are not duplicated.',
+                    'One project/product is counted once within the selected period. Values use actual confirmed invoices only; quote and proforma values are excluded.',
                 ]);
                 $writeRow($handle, [
                     'Period Basis',
-                    'Date of the first confirmed invoice in each deal.',
+                    'Issue date of each confirmed invoice. DP and settlement contribute their own billed values in their respective periods.',
                 ]);
                 $writeRow($handle, [
                     'Payment Allocation',
-                    'Payments received to date are allocated proportionally using each product value in the deal.',
+                    'Payments received to date on selected invoices, allocated using each invoice item snapshot. This is not period cash flow.',
                 ]);
                 $writeRow($handle, []);
                 $writeRow($handle, [
@@ -387,7 +375,7 @@ class FinancialReportController extends Controller
                     'SKU',
                     'Confirmed Projects',
                     'Quantity',
-                    'Allocated Deal Value',
+                    'Allocated Invoice Value',
                     'Allocated Payment Received',
                     'Collection Rate (%)',
                 ]);
@@ -448,246 +436,123 @@ class FinancialReportController extends Controller
      */
     private function buildFinancialSummary(array $filters): array
     {
-        /*
-        |--------------------------------------------------------------------------
-        | REVENUE
-        |--------------------------------------------------------------------------
-        |
-        | Confirm only.
-        | Period = invoice issued_at.
-        |
-        */
-
-        $revenueQuery = Invoice::query()
-            ->whereNotNull('issued_at')
-            ->where('event_status', 'confirm');
-
-        $this->applyInvoicePeriod(
-            $revenueQuery,
-            $filters
+        $invoices = Invoice::query()->whereNotNull('issued_at')->where('event_status', 'confirm');
+        $this->applyInvoicePeriod($invoices, $filters);
+        $this->applyInvoiceDimensions($invoices, $filters);
+        $invoiced = (float) (clone $invoices)->sum('grand_total');
+        $outstanding = (float) (clone $invoices)->withSum('payments', 'amount')->get()->sum(
+            fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)
         );
 
-        $this->applyInvoiceDimensions(
-            $revenueQuery,
-            $filters
-        );
+        $payments = Payment::query()->whereNotNull('paid_at');
+        $this->applyTransactionPeriod($payments, 'paid_at', $filters);
+        $this->applyTransactionInvoiceDimensions($payments, $filters);
+        $received = (float) $payments->sum('amount');
 
-        /*
-         * When user explicitly filters Prospect/Cancel,
-         * confirmed revenue should correctly become zero.
-         */
-        if (
-            $filters['event_status']
-            && $filters['event_status'] !== 'confirm'
-        ) {
-            $revenue = 0.0;
-        } else {
-            $revenue = (float) $revenueQuery
-                ->sum('grand_total');
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | PAYMENT RECEIVED
-        |--------------------------------------------------------------------------
-        |
-        | Actual cash-in.
-        | Period = payments.paid_at.
-        |
-        */
-
-        $paymentQuery = Payment::query()
-            ->whereNotNull('paid_at');
-
-        $this->applyTransactionPeriod(
-            $paymentQuery,
-            'paid_at',
-            $filters
-        );
-
-        $this->applyTransactionInvoiceDimensions(
-            $paymentQuery,
-            $filters
-        );
-
-        $received = (float) $paymentQuery
-            ->sum('amount');
-
-        /*
-        |--------------------------------------------------------------------------
-        | EXPENSE
-        |--------------------------------------------------------------------------
-        |
-        | Actual cash-out.
-        | Period = expenses.expense_date.
-        |
-        */
-
-        $expenseQuery = Expense::query()
-            ->whereNotNull('expense_date');
-
-        $this->applyTransactionPeriod(
-            $expenseQuery,
-            'expense_date',
-            $filters
-        );
-
-        $this->applyTransactionInvoiceDimensions(
-            $expenseQuery,
-            $filters
-        );
-
-        $expense = (float) $expenseQuery
-            ->sum('amount');
-
-        /*
-        |--------------------------------------------------------------------------
-        | OUTSTANDING
-        |--------------------------------------------------------------------------
-        |
-        | Current outstanding for CONFIRMED invoices
-        | issued in selected period.
-        |
-        | Derived from actual payment rows instead of trusting
-        | invoice.balance_due blindly, so calculation cannot drift
-        | if a cached aggregate column becomes stale.
-        |
-        */
-
-        $outstandingQuery = Invoice::query()
-            ->withSum('payments', 'amount')
-            ->whereNotNull('issued_at')
-            ->where('event_status', 'confirm');
-
-        $this->applyInvoicePeriod(
-            $outstandingQuery,
-            $filters
-        );
-
-        $this->applyInvoiceDimensions(
-            $outstandingQuery,
-            $filters
-        );
-
-        if (
-            $filters['event_status']
-            && $filters['event_status'] !== 'confirm'
-        ) {
-            $outstanding = 0.0;
-        } else {
-            $outstanding = (float) $outstandingQuery
-                ->get()
-                ->sum(function (Invoice $invoice) {
-                    $paid = (float) (
-                        $invoice->payments_sum_amount
-                        ?? 0
-                    );
-
-                    return max(
-                        0,
-                        (float) $invoice->grand_total
-                            - $paid
-                    );
-                });
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | ESTIMATED PROJECT PROFIT
-        |--------------------------------------------------------------------------
-        |
-        | Project cohort = invoices issued inside selected period.
-        | Confirm + Prospect are included.
-        | Cancel is excluded.
-        |
-        | IMPORTANT:
-        | Project expense here is ALL expense rows linked to each
-        | selected invoice, regardless of when the expense was entered.
-        | This prevents project profit from being overstated simply
-        | because a project expense was posted in another month.
-        |
-        */
-
-        $projectedStatuses = $this->projectedEventStatuses(
-            $filters['event_status']
-        );
-
-        if (empty($projectedStatuses)) {
-            $estimatedProfit = 0.0;
-        } else {
-            $projectQuery = Invoice::query()
-                ->withSum('expenses', 'amount')
-                ->whereNotNull('issued_at')
-                ->whereIn(
-                    'event_status',
-                    $projectedStatuses
-                );
-
-            $this->applyInvoicePeriod(
-                $projectQuery,
-                $filters
-            );
-
-            /*
-             * Event status has already been represented by
-             * $projectedStatuses, so only Business Unit is applied here.
-             */
-            if ($filters['business_unit']) {
-                $projectQuery->where(
-                    'business_unit',
-                    $filters['business_unit']
-                );
-            }
-
-            $this->applyInvoiceProductDimension(
-                $projectQuery,
-                $filters
-            );
-
-            $estimatedProfit = (float) $projectQuery
-                ->get()
-                ->sum(function (Invoice $invoice) {
-                    $projectExpense = (float) (
-                        $invoice->expenses_sum_amount
-                        ?? 0
-                    );
-
-                    return (float) $invoice->grand_total
-                        - $projectExpense;
-                });
-        }
-
-        /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
-        $invoiced = $revenue;
-
-        $cohortQuoteIds = (
-            ! $filters['event_status']
-            || $filters['event_status'] === 'confirm'
-        )
-            ? (clone $revenueQuery)
-                ->whereNotNull('quote_id')
-                ->pluck('quote_id')
-                ->unique()
-            : collect();
-
-        $unbilled = app(
-            FlexibleQuoteBillingService::class
-        )->sumUnbilledForQuoteIds($cohortQuoteIds);
+        $expenses = Expense::query()->whereNotNull('expense_date');
+        $this->applyTransactionPeriod($expenses, 'expense_date', $filters);
+        $this->applyTransactionInvoiceDimensions($expenses, $filters);
+        $expense = (float) $expenses->sum('amount');
 
         return [
-            /*
-             * Revenue/Cash In is recognized from actual Payment rows.
-             * Quote itself is never counted as revenue.
-             */
-            'revenue' => $received,
             'invoiced' => $invoiced,
             'received' => $received,
             'outstanding' => $outstanding,
-            'unbilled' => $unbilled,
             'expense' => $expense,
-            'estimated_profit' => $received - $expense,
             'cash_surplus' => $received - $expense,
         ];
+    }
+
+    /** Every receipt/expense in the period, even if its invoice was issued earlier. */
+    private function buildCashTransactions(array $filters): Collection
+    {
+        $rows = collect();
+        foreach ([Payment::class => 'paid_at', Expense::class => 'expense_date'] as $model => $dateColumn) {
+            $query = $model::query()->with(['invoice.person.organization', 'invoice.quote.person.organization'])->whereNotNull($dateColumn);
+            $this->applyTransactionPeriod($query, $dateColumn, $filters);
+            $this->applyTransactionInvoiceDimensions($query, $filters);
+            foreach ($query->get() as $transaction) {
+                $invoice = $transaction->invoice;
+                $identity = $invoice->billToIdentity();
+                $rows->push([
+                    'type' => $model === Payment::class ? 'Payment' : 'Expense',
+                    'date' => $transaction->{$dateColumn},
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'project_code' => $invoice->project_code ?: '-',
+                    'business_unit' => BusinessUnit::label($invoice->business_unit),
+                    'customer' => $identity['person_name'] ?? '-',
+                    'company' => $identity['company_name'] ?? '-',
+                    'reference' => $transaction->reference_number ?: '-',
+                    'description' => $transaction->description ?? $transaction->notes ?? '-',
+                    'cash_in' => $model === Payment::class ? (float) $transaction->amount : 0.0,
+                    'cash_out' => $model === Expense::class ? (float) $transaction->amount : 0.0,
+                ]);
+            }
+        }
+
+        return $rows->sortBy('date')->values();
+    }
+
+    /** Current project position for projects with a confirmed invoice in the chosen period. */
+    private function buildProjectPerformance(array $filters): Collection
+    {
+        $cohort = Invoice::query()->whereNotNull('issued_at')->where('event_status', 'confirm');
+        $this->applyInvoicePeriod($cohort, $filters);
+        $this->applyInvoiceDimensions($cohort, $filters);
+        $references = $cohort->get(['id', 'quote_id']);
+        if ($references->isEmpty()) {
+            return collect();
+        }
+        $quoteIds = $references->pluck('quote_id')->filter()->unique()->values();
+        $standaloneIds = $references->whereNull('quote_id')->pluck('id');
+
+        return Invoice::query()
+            ->with(['person.organization', 'quote.person.organization'])
+            ->withSum('payments', 'amount')->withSum('expenses', 'amount')
+            ->whereNotNull('issued_at')
+            ->where(fn (Builder $query) => $query->whereIn('quote_id', $quoteIds)->orWhereIn('id', $standaloneIds))
+            ->orderBy('issued_at')->orderBy('id')->get()
+            ->groupBy(fn (Invoice $invoice): string => $invoice->quote_id ? 'quote:'.$invoice->quote_id : 'invoice:'.$invoice->id)
+            ->map(function (Collection $invoices): array {
+                $confirmed = $invoices->where('event_status', 'confirm');
+                $first = $confirmed->first();
+                $invoiced = (float) $confirmed->sum('grand_total');
+                $expense = (float) $invoices->sum('expenses_sum_amount');
+
+                return [
+                    'project_code' => $first->project_code ?: '-',
+                    'subject' => $first->subject ?: '-',
+                    'company' => $first->billToIdentity()['company_name'] ?? '-',
+                    'invoice_numbers' => $confirmed->pluck('invoice_number')->implode('; '),
+                    'invoice_count' => $confirmed->count(),
+                    'invoiced' => $invoiced,
+                    'received' => (float) $confirmed->sum('payments_sum_amount'),
+                    'outstanding' => (float) $confirmed->sum(fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)),
+                    'expense' => $expense,
+                    'margin' => $invoiced - $expense,
+                ];
+            })->values();
+    }
+
+    private function writeSupportingExport($handle, callable $writeRow, Collection $cashTransactions, Collection $projects): void
+    {
+        $writeRow($handle, ['CASH TRANSACTIONS IN PERIOD']);
+        $writeRow($handle, ['Basis', 'Transaction dates; includes payments/expenses on invoices issued outside this period.']);
+        $writeRow($handle, ['Transaction Type', 'Transaction Date', 'Invoice', 'Project', 'Business Unit', 'Customer', 'Company', 'Reference', 'Description', 'Cash In', 'Cash Out']);
+        foreach ($cashTransactions as $row) {
+            $writeRow($handle, [$row['type'], $row['date']->format('Y-m-d'), $row['invoice_number'], $row['project_code'], $row['business_unit'], $row['customer'], $row['company'], $row['reference'], $row['description'], $row['cash_in'], $row['cash_out']]);
+        }
+        $writeRow($handle, []);
+        $writeRow($handle, ['PROJECT POSITION - CURRENT']);
+        $writeRow($handle, ['Basis', 'Projects with a confirmed invoice in the selected period; all issued project invoices to date. Confirmed invoice values minus expenses on project invoices. Not a historical closing balance.']);
+        $writeRow($handle, ['Project', 'Subject', 'Company', 'Confirmed Invoices', 'Invoice Count', 'Total Invoiced', 'Paid To Date', 'Outstanding Current', 'Project Expenses', 'Invoiced Project Margin']);
+        foreach ($projects as $row) {
+            $writeRow($handle, [$row['project_code'], $row['subject'], $row['company'], $row['invoice_numbers'], $row['invoice_count'], $row['invoiced'], $row['received'], $row['outstanding'], $row['expense'], $row['margin']]);
+        }
+        $writeRow($handle, []);
+        $writeRow($handle, ['INVOICES ISSUED IN PERIOD']);
+        $writeRow($handle, ['Basis', 'Invoice issue dates; outstanding and linked expenses are current. Unissued quote/proforma values are excluded.']);
     }
 
     /**
@@ -771,9 +636,9 @@ class FinancialReportController extends Controller
                     )
                     : 0.0;
 
-                $estimatedProfit = $invoice->event_status === 'cancel'
-                    ? 0.0
-                    : $invoiceValue - $projectExpense;
+                $estimatedProfit = $invoice->event_status === 'confirm'
+                    ? $invoiceValue - $projectExpense
+                    : 0.0;
 
                 return [
                     'id' => $invoice->id,
@@ -975,69 +840,12 @@ class FinancialReportController extends Controller
             ->groupByRaw('MONTH(expense_date)')
             ->pluck('total', 'month');
 
-        /*
-        |--------------------------------------------------------------------------
-        | PROJECT PROFIT BY INVOICE MONTH
-        |--------------------------------------------------------------------------
-        |
-        | Use invoice cohort month + all project expenses.
-        |
-        */
-
-        $projectedStatuses = $this->projectedEventStatuses(
-            $filters['event_status']
-        );
-
-        if (empty($projectedStatuses)) {
-            $monthlyProfit = collect();
-        } else {
-            $projectQuery = Invoice::query()
-                ->withSum('expenses', 'amount')
-                ->whereNotNull('issued_at')
-                ->whereYear('issued_at', $filters['year'])
-                ->whereIn(
-                    'event_status',
-                    $projectedStatuses
-                );
-
-            if ($filters['business_unit']) {
-                $projectQuery->where(
-                    'business_unit',
-                    $filters['business_unit']
-                );
-            }
-
-            $this->applyInvoiceProductDimension(
-                $projectQuery,
-                $filters
-            );
-
-            $monthlyProfit = $projectQuery
-                ->get()
-                ->groupBy(function (Invoice $invoice) {
-                    return (int) $invoice
-                        ->issued_at
-                        ->format('n');
-                })
-                ->map(function ($invoices) {
-                    return (float) $invoices
-                        ->sum(function (Invoice $invoice) {
-                            return (float) $invoice->grand_total
-                                - (float) (
-                                    $invoice->expenses_sum_amount
-                                    ?? 0
-                                );
-                        });
-                });
-        }
-
         return collect(range(1, 12))
             ->map(function ($month) use (
                 $filters,
                 $monthlyRevenue,
                 $monthlyReceived,
-                $monthlyExpense,
-                $monthlyProfit
+                $monthlyExpense
             ) {
                 $received = (float) $monthlyReceived
                     ->get($month, 0);
@@ -1066,9 +874,6 @@ class FinancialReportController extends Controller
                     'received' => $received,
 
                     'expense' => $expense,
-
-                    'profit' => (float) $monthlyProfit
-                        ->get($month, 0),
 
                     'cash_surplus' => $received - $expense,
                 ];
@@ -1150,17 +955,11 @@ class FinancialReportController extends Controller
         Builder $query,
         array $filters
     ): void {
-        if (
-            ! $filters['business_unit']
-            && ! $filters['event_status']
-            && ! $filters['product']
-        ) {
-            return;
-        }
-
         $query->whereHas(
             'invoice',
             function (Builder $invoiceQuery) use ($filters) {
+                $invoiceQuery->whereNotNull('issued_at');
+
                 if ($filters['business_unit']) {
                     $invoiceQuery->where(
                         'business_unit',
@@ -1360,27 +1159,6 @@ class FinancialReportController extends Controller
         return $product !== ''
             ? $product
             : null;
-    }
-
-    private function projectedEventStatuses(
-        ?string $eventStatus
-    ): array {
-        return match ($eventStatus) {
-            'confirm' => [
-                'confirm',
-            ],
-
-            'prospect' => [
-                'prospect',
-            ],
-
-            'cancel' => [],
-
-            default => [
-                'confirm',
-                'prospect',
-            ],
-        };
     }
 
     private function normalizeBusinessUnit(
