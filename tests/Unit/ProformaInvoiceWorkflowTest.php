@@ -2,11 +2,16 @@
 
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
+use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
+use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Installer\Http\Middleware\CanInstall;
 use Webkul\Invoice\Models\Invoice;
@@ -30,6 +35,8 @@ beforeEach(function (): void {
     DB::setDefaultConnection('proforma_test');
     Schema::clearResolvedInstance('db.schema');
     $this->travelTo(now()->parse('2026-10-12 12:00:00'));
+    DB::connection()->getPdo()->sqliteCreateFunction('YEAR', fn ($date) => (int) substr($date, 0, 4));
+    DB::connection()->getPdo()->sqliteCreateFunction('MONTH', fn ($date) => (int) substr($date, 5, 2));
 
     Schema::create('attributes', function (Blueprint $table) {
         $table->increments('id');
@@ -97,6 +104,15 @@ beforeEach(function (): void {
         $table->timestamp('paid_at');
         $table->unsignedInteger('created_by')->nullable();
         $table->timestamps();
+    });
+    Schema::create('expenses', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('invoice_id');
+        $table->decimal('amount', 16, 4);
+        $table->dateTime('expense_date');
+        $table->string('category')->nullable();
+        $table->string('description')->nullable();
+        $table->string('reference_number')->nullable();
     });
     Schema::create('persons', function (Blueprint $table) {
         $table->increments('id');
@@ -386,4 +402,184 @@ it('upgrades earlier DP proformas without losing their type or conversion histor
     expect($proforma->fresh()->billing_type)->toBe('down_payment')
         ->and($proforma->fresh()->conversion_reason)->toBe('payment_received')
         ->and(Invoice::count())->toBe(1)->and(Payment::count())->toBe(1);
+});
+
+function proformaFinancialData(array $filters = []): array
+{
+    return app(FinancialReportController::class)->index(Request::create('/', 'GET', array_merge([
+        'year' => 2026, 'month' => 10,
+    ], $filters)))->getData();
+}
+
+function proformaFinancialCsv(array $filters = []): string
+{
+    $response = app(FinancialReportController::class)->export(Request::create('/', 'GET', array_merge([
+        'year' => 2026, 'month' => 10,
+    ], $filters)));
+
+    return TestResponse::fromBaseResponse($response)->streamedContent();
+}
+
+it('shows pending proforma only in follow-up and never in financial values or exports', function () {
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $report = proformaFinancialData();
+    expect($report['financialSummary'])->toBe([
+        'invoiced' => 0.0, 'received' => 0.0, 'outstanding' => 0.0, 'expense' => 0.0, 'cash_surplus' => 0.0,
+    ])->and($report['invoicePerformance'])->toBeEmpty()
+        ->and($report['projectPerformance'])->toBeEmpty()->and($report['topProducts'])->toBeEmpty()
+        ->and($report['cashTransactions'])->toBeEmpty();
+    $monitor = app(ProformaFollowUpService::class)->summary();
+    expect($monitor['count'])->toBe(1)->and($monitor['amount'])->toBe(3000000.0)
+        ->and($monitor['rows']->first()->id)->toBe($proforma->id);
+    expect(proformaFinancialCsv())->not->toContain($proforma->proforma_number, 'Unbilled', 'Company Awal');
+});
+
+it('reports only the actual 3 million DP then 7 million settlement and groups their project costs once', function () {
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $dp = $this->billing->approveProforma($proforma);
+    $report = proformaFinancialData();
+    expect($report['financialSummary']['invoiced'])->toBe(3000000.0)
+        ->and($report['financialSummary']['outstanding'])->toBe(3000000.0)
+        ->and($report['financialSummary']['received'])->toBe(0.0)
+        ->and($report['topProducts'][0]['sales_value'])->toBe(3000000.0)
+        ->and(app(ProformaFollowUpService::class)->summary()['count'])->toBe(0);
+    app(PaymentService::class)->addPayment($dp, $this->receipt);
+    $settlementProforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement']));
+    $report = proformaFinancialData();
+    expect($report['financialSummary']['invoiced'])->toBe(3000000.0)
+        ->and($report['financialSummary']['received'])->toBe(3000000.0)
+        ->and($report['financialSummary']['outstanding'])->toBe(0.0)
+        ->and($report['projectPerformance'][0]['invoiced'])->toBe(3000000.0)
+        ->and(app(ProformaFollowUpService::class)->summary()['amount'])->toBe(7000000.0);
+    $settlement = $this->billing->approveProforma($settlementProforma);
+    DB::table('expenses')->insert(['invoice_id' => $dp->id, 'amount' => 6000000, 'expense_date' => '2026-10-12']);
+    $report = proformaFinancialData();
+    expect($report['financialSummary']['invoiced'])->toBe(10000000.0)
+        ->and($report['financialSummary']['outstanding'])->toBe(7000000.0)
+        ->and($report['projectPerformance'])->toHaveCount(1)
+        ->and($report['projectPerformance'][0]['invoice_count'])->toBe(2)
+        ->and($report['projectPerformance'][0]['expense'])->toBe(6000000.0)
+        ->and($report['projectPerformance'][0]['margin'])->toBe(4000000.0)
+        ->and($report['topProducts'][0]['sales_value'])->toBe(10000000.0)
+        ->and($report['topProducts'][0]['deal_count'])->toBe(1)
+        ->and($report['topProducts'][0]['quantity_label'])->toBe('2 Day');
+    app(PaymentService::class)->addPayment($settlement, ['amount' => 7000000]);
+    $this->billing->approveProforma($settlementProforma);
+    $report = proformaFinancialData();
+    expect($report['financialSummary']['received'])->toBe(10000000.0)
+        ->and($report['financialSummary']['outstanding'])->toBe(0.0)
+        ->and($report['financialSummary']['cash_surplus'])->toBe(4000000.0)
+        ->and($report['invoiceStats']['total'])->toBe(2)
+        ->and(app(ProformaFollowUpService::class)->summary()['count'])->toBe(0);
+    expect(proformaFinancialCsv())->toContain('PROJECT POSITION - CURRENT', '4000000', 'Company Awal');
+});
+
+it('keeps top products on actual invoice snapshots when a quote is revised before conversion', function () {
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $this->quote->update(['grand_total' => 20000000, 'business_unit' => 'varbel']);
+    $this->quote->items()->update(['name' => 'Changed Product', 'quantity' => 99]);
+    $this->billing->approveProforma($proforma);
+    $report = proformaFinancialData(['business_unit' => 'capture_it']);
+    expect($report['topProducts'])->toHaveCount(1)
+        ->and($report['topProducts'][0]['product_name'])->toBe('Photobooth')
+        ->and($report['topProducts'][0]['sales_value'])->toBe(3000000.0)
+        ->and($report['topProducts'][0]['quantity_label'])->toBe('2 Day')
+        ->and($report['projectPerformance'][0]['invoiced'])->toBe(3000000.0);
+    expect(proformaFinancialCsv(['section' => 'top-products']))->toContain('Allocated Invoice Value', '3000000')->not->toContain('Changed Product', '20000000');
+});
+
+it('reconciles cash received and expenses on older invoices with the period export', function () {
+    $proforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment']));
+    $invoice = $this->billing->approveProforma($proforma);
+    $this->travelTo(now()->parse('2026-11-03 12:00:00'));
+    app(PaymentService::class)->addPayment($invoice, ['amount' => 10000000, 'paid_at' => '2026-11-03', 'reference_number' => 'NOV-RECEIPT']);
+    DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 6000000, 'expense_date' => '2026-11-02', 'reference_number' => 'NOV-COST']);
+    $report = proformaFinancialData(['month' => 11]);
+    expect($report['financialSummary']['invoiced'])->toBe(0.0)
+        ->and($report['invoicePerformance'])->toBeEmpty()
+        ->and($report['financialSummary']['received'])->toBe(10000000.0)
+        ->and($report['financialSummary']['expense'])->toBe(6000000.0)
+        ->and($report['cashTransactions'])->toHaveCount(2)
+        ->and($report['cashTransactions']->sum('cash_in'))->toBe(10000000.0)
+        ->and($report['cashTransactions']->sum('cash_out'))->toBe(6000000.0);
+    $csv = proformaFinancialCsv(['month' => 11]);
+    expect($csv)->toContain('CASH TRANSACTIONS IN PERIOD', 'NOV-RECEIPT', 'NOV-COST', $invoice->invoice_number);
+    $annual = proformaFinancialData(['month' => '']);
+    expect($annual['monthlyPerformance'][9]['revenue'])->toBe(10000000.0)
+        ->and($annual['monthlyPerformance'][10]['received'])->toBe(10000000.0)
+        ->and($annual['monthlyPerformance'][10]['expense'])->toBe(6000000.0);
+    expect(proformaFinancialData(['month' => 10])['financialSummary']['outstanding'])->toBe(0.0);
+});
+
+it('attributes DP and settlement values to their invoice months while keeping one current project position', function () {
+    $dp = $this->billing->confirmProformaPayment($this->proformas->create($this->quote, $this->input), $this->receipt);
+    $this->travelTo(now()->parse('2026-11-02 12:00:00'));
+    $settlement = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, [
+        'billing_type' => 'settlement', 'issued_at' => '2026-11-02', 'due_at' => '2026-11-10',
+    ])));
+    DB::table('expenses')->insert(['invoice_id' => $dp->id, 'amount' => 6000000, 'expense_date' => '2026-11-02']);
+    $october = proformaFinancialData(['month' => 10]);
+    $november = proformaFinancialData(['month' => 11]);
+    expect($october['topProducts'][0]['sales_value'])->toBe(3000000.0)
+        ->and($november['topProducts'][0]['sales_value'])->toBe(7000000.0)
+        ->and($november['projectPerformance'][0]['margin'])->toBe(4000000.0)
+        ->and($november['projectPerformance'][0]['outstanding'])->toBe(7000000.0)
+        ->and($november['projectPerformance'][0]['invoice_numbers'])->toContain($dp->invoice_number, $settlement->invoice_number);
+    $annual = proformaFinancialData(['month' => '']);
+    expect($annual['topProducts'][0]['sales_value'])->toBe(10000000.0)->and($annual['topProducts'][0]['deal_count'])->toBe(1);
+});
+
+it('keeps older pending proformas visible and filters them by frozen unit and product', function () {
+    $proforma = $this->proformas->create($this->quote, array_replace($this->input, ['issued_at' => '2026-09-01', 'due_at' => '2026-09-10']));
+    $this->quote->update(['business_unit' => 'varbel', 'grand_total' => 20000000]);
+    $this->quote->items()->update(['name' => 'Changed Product']);
+    $service = app(ProformaFollowUpService::class);
+    $monitor = $service->summary(['year' => 2027, 'month' => 1, 'event_status' => 'cancel', 'business_unit' => 'capture_it', 'product' => 'Photobooth']);
+    expect($monitor['count'])->toBe(1)->and($monitor['amount'])->toBe(3000000.0)->and($monitor['overdue_count'])->toBe(1);
+    expect($service->summary(['business_unit' => 'varbel'])['count'])->toBe(0)
+        ->and($service->summary(['product' => 'Changed Product'])['count'])->toBe(0);
+    $this->proformas->cancel($proforma, 'Tidak jadi event');
+    expect($service->summary()['count'])->toBe(0);
+});
+
+it('respects role permissions for follow-up visibility and links without granting conversion rights', function () {
+    $this->proformas->create($this->quote, $this->input);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices.financial-report', 'invoices.financial-report.export']]);
+    $user = (new User)->forceFill(['id' => 17, 'status' => 1])->setRelation('role', $role);
+    $this->actingAs($user, 'user');
+    expect(proformaFinancialData()['proformaFollowUp'])->toBeNull();
+    $role->permissions = ['invoices', 'invoices.financial-report'];
+    $report = proformaFinancialData();
+    expect($report['proformaFollowUp']['count'])->toBe(1);
+    $html = view('admin::invoices.proformas.follow-up', $report)->render();
+    expect($html)->toContain('Proforma Belum Menjadi Invoice', '3.000.000')->not->toContain('Periksa proforma');
+    $role->permissions = ['invoices', 'invoices.view', 'invoices.financial-report'];
+    expect(view('admin::invoices.proformas.follow-up', proformaFinancialData())->render())->toContain('Periksa proforma');
+    expect(bouncer()->hasPermission('invoices.generate'))->toBeFalse();
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $this->postJson(route('admin.proformas.approve', 1), ['event_confirmed' => 1])->assertUnauthorized();
+});
+
+it('lists only pending proformas when following the monitoring link', function () {
+    $first = $this->proformas->create($this->quote, $this->input);
+    $this->proformas->cancel($first, 'Diganti');
+    $second = $this->proformas->create($this->quote, $this->input);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices']]);
+    $this->actingAs((new User)->forceFill(['id' => 17, 'status' => 1])->setRelation('role', $role), 'user');
+    $data = app(ProformaInvoiceController::class)->index(Request::create('/', 'GET', ['status' => 'issued']), app(ProformaFollowUpService::class))->getData();
+    expect($data['proformas']->total())->toBe(1)->and($data['proformas']->first()->id)->toBe($second->id);
+});
+
+it('renders the financial report and pending list for an authorized finance user', function () {
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices', 'invoices.view', 'invoices.financial-report', 'invoices.financial-report.export']]);
+    $this->actingAs((new User)->forceFill(['id' => 17, 'name' => 'Finance', 'status' => 1])->setRelation('role', $role), 'user');
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $this->get(route('admin.invoices.financial-report', ['year' => 2026, 'month' => 10]))
+        ->assertOk()->assertSee('Proforma Belum Menjadi Invoice')->assertSee($proforma->proforma_number)
+        ->assertSee('Rincian Uang Masuk dan Keluar')->assertDontSee('Unbilled Remainder');
+    $this->get(route('admin.proformas.index', ['status' => 'issued']))
+        ->assertOk()->assertSee('Belum menjadi Invoice')->assertSee($proforma->proforma_number);
 });

@@ -32,6 +32,11 @@ class ProformaInvoice extends Model
         return $this->belongsTo(UserProxy::modelClass(), 'converted_by');
     }
 
+    public function creator()
+    {
+        return $this->belongsTo(UserProxy::modelClass(), 'created_by');
+    }
+
     public function billingLabel(): string
     {
         return match ($this->billing_type) {

@@ -7,17 +7,29 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Invoice\Models\ProformaInvoice;
 
 class ProformaInvoiceController extends Controller
 {
-    public function index(): View
+    public function index(Request $request, ProformaFollowUpService $followUp): View
     {
         $this->assertPermission('invoices');
+        $validated = $request->validate(['status' => ['nullable', 'in:issued,converted,cancelled']]);
+        $status = $validated['status'] ?? null;
+
+        $query = ProformaInvoice::query()->with('creator')->when($status, fn ($query) => $query->where('status', $status));
+        if ($status === 'issued') {
+            $query->whereNull('invoice_id')->orderBy('issued_at')->orderBy('id');
+        } else {
+            $query->latest('id');
+        }
 
         return view('admin::invoices.proformas.index', [
-            'proformas' => ProformaInvoice::latest('id')->paginate(25),
+            'proformas' => $query->paginate(25)->withQueryString(),
+            'status' => $status,
+            'proformaFollowUp' => $followUp->summary(),
         ]);
     }
 

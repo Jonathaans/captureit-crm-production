@@ -29,7 +29,7 @@
                 <div>
                     <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Financial Report</h1>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Invoice value, cash received, receivable, unbilled remainder, expense, and cash margin.
+                        Laporan resmi berdasarkan invoice dan transaksi terkait. Proforma dipantau terpisah untuk tindak lanjut.
                     </p>
                 </div>
 
@@ -222,7 +222,7 @@
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Revenue / Cash Received</div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Received</div>
                 <div class="mt-2 text-3xl font-bold text-green-600 dark:text-green-400">{{ $rupiah($financialSummary['received']) }}</div>
                 <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pembayaran aktual yang diterima pada periode</div>
             </div>
@@ -230,13 +230,7 @@
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
                 <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Receivable</div>
                 <div class="mt-2 text-3xl font-bold text-red-600 dark:text-red-400">{{ $rupiah($financialSummary['outstanding']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Invoice aktif dikurangi seluruh payment</div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Unbilled Remainder</div>
-                <div class="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">{{ $rupiah($financialSummary['unbilled']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Grand Total Quote dikurangi Invoice aktif</div>
+                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Saldo saat ini untuk invoice confirmed yang terbit pada periode ini</div>
             </div>
 
             <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -253,6 +247,13 @@
                 <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash Received dikurangi Expense</div>
             </div>
         </div>
+        @if ($proformaFollowUp !== null)
+            @include('admin::invoices.proformas.follow-up')
+        @endif
+
+        @include('admin::invoices.financial-cash-transactions')
+        @include('admin::invoices.financial-project-position')
+
         {{-- Invoice cohort --}}
         <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -273,7 +274,7 @@
                         Peringkat berdasarkan jumlah proyek confirmed. Invoice DP dan pelunasan dari proyek yang sama dihitung satu kali.
                     </p>
                     <p class="text-xs leading-5 text-gray-400 dark:text-gray-500">
-                        Periode memakai tanggal invoice confirmed pertama; pembayaran diterima dialokasikan proporsional per produk.
+                        Nilai mengikuti invoice yang terbit pada periode ini. Produk memakai snapshot invoice; pembayaran hingga saat ini dialokasikan per produk pada invoice tersebut.
                     </p>
                 </div>
 
@@ -303,7 +304,7 @@
                             <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Product</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Confirmed Projects</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qty</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Deal Value</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Value</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payment Received</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Collection</th>
                         </tr>
@@ -353,7 +354,7 @@
                 <div>
                     <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Invoice Performance</h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Project metrics plus cash activity for the selected period.
+                        Invoice yang terbit pada periode ini. Transaksi untuk invoice dari bulan lain ada pada Rincian Uang Masuk dan Keluar. Margin di tabel ini hanya untuk masing-masing invoice.
                     </p>
                 </div>
 
@@ -373,7 +374,7 @@
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Received</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Outstanding</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Est. Profit</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Margin</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Surplus</th>
                             <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Action</th>
@@ -435,7 +436,7 @@
 
                                 <td class="px-6 py-5 text-right align-top">
                                     <div class="font-semibold text-orange-600 dark:text-orange-400">{{ $rupiah($invoice['expense_in_period']) }}</div>
-                                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Project: {{ $rupiah($invoice['project_expense']) }}</div>
+                                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Invoice: {{ $rupiah($invoice['project_expense']) }}</div>
                                 </td>
 
                                 <td class="px-6 py-5 text-right align-top font-semibold {{ (float) $invoice['estimated_profit'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">{{ $rupiah($invoice['estimated_profit']) }}</td>
@@ -486,7 +487,6 @@
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Invoiced</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Received</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Est. Profit</th>
                                 <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Surplus</th>
                             </tr>
                         </thead>
@@ -497,7 +497,6 @@
                                     <td class="px-6 py-4 text-right text-gray-800 dark:text-gray-200">{{ $rupiah($row['revenue']) }}</td>
                                     <td class="px-6 py-4 text-right text-green-600 dark:text-green-400">{{ $rupiah($row['received']) }}</td>
                                     <td class="px-6 py-4 text-right text-orange-600 dark:text-orange-400">{{ $rupiah($row['expense']) }}</td>
-                                    <td class="px-6 py-4 text-right text-gray-800 dark:text-gray-200">{{ $rupiah($row['profit']) }}</td>
                                     <td class="px-6 py-4 text-right text-gray-800 dark:text-gray-200">{{ $rupiah($row['cash_surplus']) }}</td>
                                 </tr>
                             @endforeach
@@ -534,7 +533,7 @@
             <div class="grid gap-4 border-t border-gray-200 p-5 sm:grid-cols-2 dark:border-gray-800">
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Total Invoiced</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Invoice value from confirmed invoice cohort.</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Nilai invoice confirmed berdasarkan tanggal terbit. Proforma dan sisa penawaran tidak disertakan.</div>
                 </div>
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Payment Received</div>
@@ -542,15 +541,15 @@
                 </div>
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Outstanding</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Remaining balance of confirmed invoices in the selected cohort.</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Saldo saat ini dari invoice confirmed yang terbit pada periode terpilih; bukan saldo pada akhir periode tersebut.</div>
                 </div>
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Expense</div>
                     <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Actual recorded expenses in the selected period.</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Estimated Project Profit</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Confirm + Prospect minus all project expenses. Cancel is excluded.</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Margin Proyek dari Invoice</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Seluruh invoice confirmed pada proyek dikurangi biaya yang tercatat pada invoice proyek. DP/pelunasan satu proyek digabung. Proforma dan nilai penawaran tidak diakui.</div>
                 </div>
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Cash Surplus</div>
