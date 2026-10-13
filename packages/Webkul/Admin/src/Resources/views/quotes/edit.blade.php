@@ -32,14 +32,13 @@
         {!! view_render_event('admin.contacts.quotes.edit.save_button.before', ['quote' => $quote]) !!}
 
         @if (bouncer()->hasPermission('invoices.generate'))
-        <!-- Generate Proforma -->
-        <button
-            type="submit"
-            form="generate-invoice-form"
+        <!-- Open the billing form without submitting the quote. -->
+        <a
+            href="{{ route('admin.invoices.billing.create', ['quote_id' => $quote->id]) }}"
             class="secondary-button"
         >
             Buat Proforma
-        </button>
+        </a>
         @endif
 
         <!-- Save Quote -->
@@ -87,15 +86,6 @@
             </v-quote>
         </div>
     </x-admin::form>
-
-    <form
-    id="generate-invoice-form"
-    method="POST"
-    action="{{ route('admin.invoices.generate', $quote->id) }}"
-    class="hidden"
->
-    @csrf
-</form>
 
     {!! view_render_event('admin.contacts.quotes.edit.form_controls.after', ['quote' => $quote]) !!}
 

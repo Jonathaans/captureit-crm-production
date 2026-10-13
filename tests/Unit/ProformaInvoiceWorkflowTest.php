@@ -289,6 +289,7 @@ it('checks generate and payment permissions on direct requests', function () {
     $role = (new Role)->forceFill(['name' => 'Superadministrator', 'permission_type' => 'custom', 'permissions' => ['invoices', 'invoices.view']]);
     $user = (new User)->forceFill(['id' => 1, 'status' => 1])->setRelation('role', $role);
     $this->actingAs($user, 'user');
+    $this->getJson(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]))->assertUnauthorized();
     $this->postJson(route('admin.invoices.billing.store'), array_merge($this->input, ['quote_id' => $this->quote->id]))->assertUnauthorized();
     $proforma = $this->proformas->create($this->quote, $this->input);
     $this->postJson(route('admin.proformas.payment', $proforma->id), $this->receipt)->assertUnauthorized();
@@ -305,7 +306,12 @@ it('routes every generate form choice to proforma before an invoice exists', fun
     $user = (new User)->forceFill(['id' => 1, 'status' => 1])->setRelation('role', $role);
     $this->actingAs($user, 'user');
     $this->postJson(route('admin.invoices.generate', $this->quote->id))->assertRedirect(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]));
-    expect(Invoice::count())->toBe(0);
+    $this->get(route('admin.invoices.billing.create', ['quote_id' => $this->quote->id]))
+        ->assertOk()
+        ->assertViewIs('admin::invoices.billing-create')
+        ->assertViewHas('selectedQuote', fn (Quote $quote) => $quote->is($this->quote))
+        ->assertSee('Buat Proforma dari Penawaran');
+    expect(Invoice::count())->toBe(0)->and(ProformaInvoice::count())->toBe(0);
     $this->postJson(route('admin.invoices.billing.store'), array_merge($this->input, [
         'quote_id' => $this->quote->id, 'billing_method' => 'percentage', 'billing_percentage' => 30, 'billing_amount' => null,
     ]))->assertRedirect(route('admin.proformas.show', 1));
