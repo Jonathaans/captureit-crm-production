@@ -1,124 +1,55 @@
 <x-admin::layouts>
-    <x-slot:title>
-        Financial Report
-    </x-slot:title>
-
+    <x-slot:title>Financial Report</x-slot:title>
+    @include('admin::invoices.partials.workspace-styles')
     @php
         $rupiah = static fn ($value) => 'Rp '.number_format((float) $value, 0, ',', '.');
-
-        $periodLabel = $month
-            ? \Carbon\Carbon::createFromDate($year, $month, 1)->format('F Y')
-            : (string) $year;
-
-        $businessUnitLabel = $businessUnit
-            ? ($businessUnitOptions[$businessUnit] ?? '-')
-            : 'All Business Units';
-
-        $eventStatusLabel = $eventStatus
-            ? ucfirst($eventStatus)
-            : 'All Events';
-
-        $productLabel = $product
-            ?: 'All Products';
+        $periodLabel = $month ? \Carbon\Carbon::createFromDate($year, $month, 1)->locale('id')->translatedFormat('F Y') : (string) $year;
+        $businessUnitLabel = $businessUnit ? ($businessUnitOptions[$businessUnit] ?? '-') : 'Semua unit bisnis';
+        $eventStatusLabel = $eventStatus ? ucfirst($eventStatus) : 'Semua status event';
+        $productLabel = $product ?: 'Semua produk';
+        $exportFilters = ['year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product];
     @endphp
-
-    <div class="space-y-5">
-        {{-- Header --}}
-        <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Financial Report</h1>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Laporan resmi berdasarkan invoice dan transaksi terkait. Proforma dipantau terpisah untuk tindak lanjut.
-                    </p>
-                </div>
-
-                <div class="flex flex-wrap gap-2">
-                    <span class="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        {{ $periodLabel }}
-                    </span>
-                    <span class="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        {{ $businessUnitLabel }}
-                    </span>
-                    <span class="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        {{ $eventStatusLabel }}
-                    </span>
-                    <span class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                        {{ $productLabel }}
-                    </span>
-                </div>
+    <div class="crm-finance-workspace">
+        <header class="fw-header">
+            <div>
+                <p class="fw-eyebrow">Finance / Laporan</p>
+                <h1>Financial Report</h1>
+                <p class="fw-subtitle">Gambaran tagihan, penerimaan, dan pengeluaran dalam satu tampilan.</p>
             </div>
-        </div>
-
-        {{-- Modern Filter --}}
-        <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="mb-4 flex items-center justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Filters</h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Filter by period, business unit, event status, and product.
-                    </p>
-                </div>
-
-                {{-- CRM_FINANCE_SALES_DASHBOARD_UI_HOTFIX_V1_1 --}}
-                {{-- CRM_FINANCE_SALES_DASHBOARD_V1 --}}
-                {{-- CRM_FINANCIAL_REPORT_EXPENSE_HOTFIX_V1_3 --}}
-                <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto">
-                    @if (bouncer()->hasPermission('invoices.financial-report.export'))
-                        <a
-                            href="{{ route('admin.invoices.financial-report.export', ['year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
-                            class="secondary-button rounded-lg px-4 py-2.5 text-sm"
-                        >
-                            Export Financial Report
-                        </a>
-                    @endif
-
-                    <a
-                        href="{{ route('admin.finance-sales-dashboard.index') }}"
-                        class="secondary-button rounded-lg px-4 py-2.5 text-sm"
-                    >
-                        Finance & Sales Dashboard
-                    </a>
-
-                    @if (bouncer()->hasPermission('invoices.expense.export-all'))
-                        <a
-                            href="{{ route('admin.invoices.expenses.export-all') }}"
-                            class="primary-button rounded-lg px-4 py-2.5 text-sm"
-                        >
-                            Export All Expenses
-                        </a>
-                    @endif
-                </div>
+            <div class="fw-actions">
+                @if (bouncer()->hasPermission('invoices') || bouncer()->hasPermission('invoices.view') || bouncer()->hasPermission('invoices.financial-report'))
+                    <a href="{{ route('admin.finance-sales-dashboard.index') }}" class="fw-link">Dashboard penjualan &rarr;</a>
+                @endif
+                @if (bouncer()->hasPermission('invoices.financial-report.export') || bouncer()->hasPermission('invoices.expense.export-all'))
+                    <details class="fw-export">
+                        <summary>Ekspor <span aria-hidden="true">⌄</span></summary>
+                        <div class="fw-export-menu">
+                            @if (bouncer()->hasPermission('invoices.financial-report.export'))
+                                <a href="{{ route('admin.invoices.financial-report.export', $exportFilters) }}">Financial Report<small>Seluruh rincian sesuai filter aktif</small></a>
+                                <a href="{{ route('admin.invoices.financial-report.export', array_merge($exportFilters, ['section' => 'top-products'])) }}">Produk teratas<small>Seluruh produk sesuai filter aktif</small></a>
+                            @endif
+                            @if (bouncer()->hasPermission('invoices.expense.export-all'))
+                                <a href="{{ route('admin.invoices.expenses.export-all') }}">Seluruh pengeluaran<small>Semua periode, tanpa filter laporan</small></a>
+                            @endif
+                        </div>
+                    </details>
+                @endif
             </div>
-
-            <style>
-                .crm-fr-v11-filter-grid {
-                    display: grid;
-                    grid-template-columns: repeat(5, minmax(0, 1fr));
-                    gap: 16px;
-                }
-
-                @media (max-width: 1180px) {
-                    .crm-fr-v11-filter-grid {
-                        grid-template-columns: repeat(2, minmax(0, 1fr));
-                    }
-                }
-
-                @media (max-width: 680px) {
-                    .crm-fr-v11-filter-grid {
-                        grid-template-columns: 1fr;
-                    }
-                }
-            </style>
-
+        </header>
+        <details class="fw-card fw-details">
+            <summary>
+                <span><span class="fw-title">{{ $periodLabel }}</span><span class="fw-muted block">{{ $businessUnitLabel }} · {{ $eventStatusLabel }} · {{ $productLabel }}</span></span>
+                <span class="fw-badge" style="margin-left:auto">Ubah filter</span>
+            </summary>
+            <div class="fw-pad">
             <form method="GET" action="{{ route('admin.invoices.financial-report') }}">
-                <div class="crm-fr-v11-filter-grid">
+                <div class="fw-filter-grid">
                     <div>
-                        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Year
+                        <label for="report-year" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Tahun
                         </label>
                         <select
-                            name="year"
+                            id="report-year" name="year"
                             class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                         >
                             @foreach ($availableYears as $availableYear)
@@ -130,14 +61,14 @@
                     </div>
 
                     <div>
-                        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Month
+                        <label for="report-month" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Bulan
                         </label>
                         <select
-                            name="month"
+                            id="report-month" name="month"
                             class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                         >
-                            <option value="">All Months</option>
+                            <option value="">Semua bulan</option>
                             @foreach (range(1, 12) as $monthNumber)
                                 <option value="{{ $monthNumber }}" @selected((int) ($month ?? 0) === $monthNumber)>
                                     {{ \Carbon\Carbon::createFromDate($year, $monthNumber, 1)->format('F') }}
@@ -147,14 +78,14 @@
                     </div>
 
                     <div>
-                        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Business Unit
+                        <label for="report-business_unit" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Unit bisnis
                         </label>
                         <select
-                            name="business_unit"
+                            id="report-business_unit" name="business_unit"
                             class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                         >
-                            <option value="">All Business Units</option>
+                            <option value="">Semua unit bisnis</option>
                             @foreach ($businessUnitOptions as $value => $label)
                                 <option value="{{ $value }}" @selected($businessUnit === $value)>
                                     {{ $label }}
@@ -164,14 +95,14 @@
                     </div>
 
                     <div>
-                        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Event Status
+                        <label for="report-event_status" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Status event
                         </label>
                         <select
-                            name="event_status"
+                            id="report-event_status" name="event_status"
                             class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                         >
-                            <option value="">All Events</option>
+                            <option value="">Semua status event</option>
                             <option value="confirm" @selected($eventStatus === 'confirm')>Confirm</option>
                             <option value="prospect" @selected($eventStatus === 'prospect')>Prospect</option>
                             <option value="cancel" @selected($eventStatus === 'cancel')>Cancel</option>
@@ -179,14 +110,14 @@
                     </div>
 
                     <div>
-                        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Product
+                        <label for="report-product" class="mb-2 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Produk
                         </label>
                         <select
-                            name="product"
+                            id="report-product" name="product"
                             class="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                         >
-                            <option value="">All Products</option>
+                            <option value="">Semua produk</option>
 
                             @foreach ($productOptions as $productOption)
                                 <option
@@ -202,7 +133,7 @@
 
                 <div class="mt-4 flex flex-wrap gap-3">
                     <button type="submit" class="primary-button rounded-lg px-5 py-2.5 text-sm">
-                        Apply Filter
+                        Terapkan filter
                     </button>
 
                     <a href="{{ route('admin.invoices.financial-report') }}" class="secondary-button rounded-lg px-5 py-2.5 text-sm">
@@ -210,103 +141,56 @@
                     </a>
                 </div>
             </form>
-        </div>
-
-        {{-- Summary cards --}}
-        {{-- CRM_INVOICE_FLEXIBLE_BILLING_V1 --}}
-        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Invoiced</div>
-                <div class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">{{ $rupiah($financialSummary['invoiced']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">DP + Pelunasan, atau Full Payment; Cancel dikecualikan</div>
             </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Received</div>
-                <div class="mt-2 text-3xl font-bold text-green-600 dark:text-green-400">{{ $rupiah($financialSummary['received']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pembayaran aktual yang diterima pada periode</div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Receivable</div>
-                <div class="mt-2 text-3xl font-bold text-red-600 dark:text-red-400">{{ $rupiah($financialSummary['outstanding']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Saldo saat ini untuk invoice confirmed yang terbit pada periode ini</div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</div>
-                <div class="mt-2 text-3xl font-bold text-orange-600 dark:text-orange-400">{{ $rupiah($financialSummary['expense']) }}</div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash out aktual pada periode</div>
-            </div>
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Margin</div>
-                <div class="mt-2 text-3xl font-bold {{ (float) $financialSummary['cash_surplus'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
-                    {{ $rupiah($financialSummary['cash_surplus']) }}
+        </details>
+        <section aria-label="Ringkasan keuangan" class="fw-metrics">
+            @foreach ([
+                ['Total invoice', 'invoiced', 'Invoice confirmed terbit pada periode ini', ''],
+                ['Uang masuk', 'received', 'Pembayaran aktual pada periode ini', 'fw-positive'],
+                ['Piutang saat ini', 'outstanding', 'Saldo invoice terbit pada periode ini', 'fw-negative'],
+                ['Pengeluaran', 'expense', 'Uang keluar aktual pada periode ini', ''],
+                ['Surplus kas', 'cash_surplus', 'Uang masuk dikurangi pengeluaran', (float) $financialSummary['cash_surplus'] >= 0 ? 'fw-positive' : 'fw-negative'],
+            ] as [$label, $key, $description, $tone])
+                <div class="fw-metric {{ $key === 'cash_surplus' ? 'fw-highlight' : '' }}">
+                    <p class="fw-metric-label">{{ $label }}</p>
+                    <p class="fw-value {{ $tone }}">{{ $rupiah($financialSummary[$key]) }}</p>
+                    <small>{{ $description }}</small>
                 </div>
-                <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">Cash Received dikurangi Expense</div>
+            @endforeach
+        </section>
+        <div class="fw-between">
+            <div class="fw-inline-stats" aria-label="Status invoice periode terpilih">
+                <span><strong>{{ $invoiceStats['total'] }}</strong> invoice</span>
+                <span><strong>{{ $invoiceStats['paid'] }}</strong> lunas</span>
+                <span><strong>{{ $invoiceStats['partial'] }}</strong> dibayar sebagian</span>
+                <span><strong>{{ $invoiceStats['unpaid'] }}</strong> belum dibayar</span>
             </div>
+            <span class="fw-muted">Proforma tidak masuk angka laporan.</span>
         </div>
         @if ($proformaFollowUp !== null)
             @include('admin::invoices.proformas.follow-up')
         @endif
-
+        <div>
+            <p class="fw-eyebrow">Rincian laporan</p>
+            <p class="fw-muted">Buka bagian yang ingin diperiksa.</p>
+        </div>
         @include('admin::invoices.financial-cash-transactions')
         @include('admin::invoices.financial-project-position')
-
-        {{-- Invoice cohort --}}
-        <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-                <span class="font-semibold text-gray-800 dark:text-white">Invoice Cohort</span>
-                <span class="text-gray-600 dark:text-gray-300">Total: <strong>{{ $invoiceStats['total'] }}</strong></span>
-                <span class="text-green-600 dark:text-green-400">Paid: <strong>{{ $invoiceStats['paid'] }}</strong></span>
-                <span class="text-yellow-600 dark:text-yellow-400">Partial: <strong>{{ $invoiceStats['partial'] }}</strong></span>
-                <span class="text-red-600 dark:text-red-400">Unpaid: <strong>{{ $invoiceStats['unpaid'] }}</strong></span>
-            </div>
-        </div>
-
         {{-- CRM_TOP_PRODUCT_REPORT_V1 --}}
-        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="flex flex-col gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Top Product</h2>
-                    <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
-                        Peringkat berdasarkan jumlah proyek confirmed. Invoice DP dan pelunasan dari proyek yang sama dihitung satu kali.
-                    </p>
-                    <p class="text-xs leading-5 text-gray-400 dark:text-gray-500">
-                        Nilai mengikuti invoice yang terbit pada periode ini. Produk memakai snapshot invoice; pembayaran hingga saat ini dialokasikan per produk pada invoice tersebut.
-                    </p>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-3">
-                    @if ($topProductTotal > 10)
-                        <span class="text-xs text-gray-500 dark:text-gray-400">
-                            Menampilkan 10 dari {{ $topProductTotal }} produk
-                        </span>
-                    @endif
-
-                    @if (bouncer()->hasPermission('invoices.financial-report.export'))
-                        <a
-                            href="{{ route('admin.invoices.financial-report.export', ['section' => 'top-products', 'year' => $year, 'month' => $month, 'business_unit' => $businessUnit, 'event_status' => $eventStatus, 'product' => $product]) }}"
-                            class="secondary-button rounded-lg px-4 py-2.5 text-sm"
-                        >
-                            Export Top Product
-                        </a>
-                    @endif
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[980px]">
+        <details class="fw-card fw-details">
+            <summary><span><span class="fw-title">Produk teratas</span><span class="fw-muted block">{{ $topProductTotal }} produk · berdasarkan proyek confirmed</span></span></summary>
+            <p class="fw-section-note">Invoice DP dan pelunasan dalam proyek yang sama dihitung satu kali. Nilai mengikuti invoice terbit pada periode ini; penerimaan sampai saat ini dialokasikan per produk. Menampilkan maksimal 10 produk, seluruhnya tersedia di menu Ekspor.</p>
+            <div class="fw-scroll">
+                <table class="fw-table" style="min-width:900px">
                     <thead>
                         <tr class="bg-gray-50 dark:bg-gray-950">
-                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Rank</th>
-                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Product</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Confirmed Projects</th>
+                            <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Urutan</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Produk</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Proyek confirmed</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qty</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Value</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Payment Received</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Collection</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nilai invoice</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Diterima</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tertagih</th>
                         </tr>
                     </thead>
 
@@ -346,38 +230,26 @@
                     </tbody>
                 </table>
             </div>
-        </div>
+        </details>
 
         {{-- Invoice performance --}}
-        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="flex flex-col gap-2 border-b border-gray-200 px-5 py-4 dark:border-gray-800 md:flex-row md:items-center md:justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800 dark:text-white">Invoice Performance</h2>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Invoice yang terbit pada periode ini. Transaksi untuk invoice dari bulan lain ada pada Rincian Uang Masuk dan Keluar. Margin di tabel ini hanya untuk masing-masing invoice.
-                    </p>
-                </div>
-
-                <div class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ $periodLabel }} · {{ $businessUnitLabel }}
-                </div>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full min-w-[1450px]">
+        <details class="fw-card fw-details">
+            <summary><span><span class="fw-title">Rincian invoice</span><span class="fw-muted block">{{ $invoiceStats['total'] }} invoice terbit pada periode terpilih</span></span></summary>
+            <p class="fw-section-note">Penerimaan dan biaya periode ini ditampilkan bersama posisi invoice saat ini. Transaksi untuk invoice bulan lain ada pada Rincian Uang Masuk dan Keluar.</p>
+            <div class="fw-scroll">
+                <table class="fw-table" style="min-width:1280px">
                     <thead>
                         <tr class="bg-gray-50 dark:bg-gray-950">
-                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice / Project</th>
-                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Customer / Subject</th>
-                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Product</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Value</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Received</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Outstanding</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice Margin</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Surplus</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Invoice / Proyek</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pelanggan / Acara</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Produk</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nilai invoice</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Diterima periode ini</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Piutang saat ini</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pengeluaran</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Margin invoice</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Surplus kas</th>
                             <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Action</th>
                         </tr>
                     </thead>
 
@@ -385,9 +257,11 @@
                         @forelse ($invoicePerformance as $invoice)
                             <tr class="border-t border-gray-100 dark:border-gray-800">
                                 <td class="px-6 py-5 align-top">
-                                    <a href="{{ route('admin.invoices.show', $invoice['id']) }}" class="text-base font-semibold text-blue-600 hover:underline dark:text-blue-400">
+                                    @if (bouncer()->hasPermission('invoices.view'))
+                                        <a href="{{ route('admin.invoices.show', $invoice['id']) }}" class="fw-link">{{ $invoice['invoice_number'] }}</a>
+                                    @else
                                         {{ $invoice['invoice_number'] }}
-                                    </a>
+                                    @endif
                                     <div class="mt-2">
                                         <span class="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                                             {{ str_replace('_', ' ', $invoice['billing_type']) }}
@@ -429,7 +303,7 @@
 
                                 <td class="px-6 py-5 text-right align-top">
                                     <div class="font-semibold text-green-600 dark:text-green-400">{{ $rupiah($invoice['received_in_period']) }}</div>
-                                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">To date: {{ $rupiah($invoice['paid_to_date']) }}</div>
+                                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Hingga kini: {{ $rupiah($invoice['paid_to_date']) }}</div>
                                 </td>
 
                                 <td class="px-6 py-5 text-right align-top font-semibold text-red-600 dark:text-red-400">{{ $rupiah($invoice['outstanding']) }}</td>
@@ -453,41 +327,35 @@
                                         </span>
                                     </div>
                                 </td>
-
-                                <td class="px-6 py-5 text-right align-top">
-                                    <a href="{{ route('admin.invoices.show', $invoice['id']) }}" class="inline-flex rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60">
-                                        View
-                                    </a>
-                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="11" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-                                    No invoice data for the selected filters.
+                                <td colspan="10" class="px-6 py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    Belum ada invoice yang sesuai dengan filter ini.
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
                 </table>
             </div>
-        </div>
+        </details>
 
         {{-- Monthly analytics --}}
         @if (! $month)
-            <details class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900" open>
+            <details class="fw-card fw-details">
                 <summary class="cursor-pointer px-5 py-4 text-base font-semibold text-gray-800 dark:text-white">
-                    Monthly Analytics — {{ $year }}
+                    Ringkasan bulanan · {{ $year }}
                 </summary>
 
                 <div class="overflow-x-auto border-t border-gray-200 dark:border-gray-800">
-                    <table class="w-full min-w-[920px]">
+                    <table class="fw-table" style="min-width:800px">
                         <thead>
                             <tr class="bg-gray-50 dark:bg-gray-950">
-                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Month</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total Invoiced</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Received</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Expense</th>
-                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Cash Surplus</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Bulan</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total invoice</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Diterima periode ini</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pengeluaran</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Surplus kas</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -507,9 +375,9 @@
         @endif
 
         {{-- Expense breakdown --}}
-        <details class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <details class="fw-card fw-details">
             <summary class="cursor-pointer px-5 py-4 text-base font-semibold text-gray-800 dark:text-white">
-                Expense Breakdown
+                Pengeluaran per kategori
             </summary>
 
             <div class="border-t border-gray-200 p-5 dark:border-gray-800">
@@ -519,41 +387,41 @@
                         <span class="text-base font-semibold text-orange-600 dark:text-orange-400">{{ $rupiah($expense['total']) }}</span>
                     </div>
                 @empty
-                    <p class="text-sm text-gray-500 dark:text-gray-400">No expense in this selected period.</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Belum ada pengeluaran pada periode ini.</p>
                 @endforelse
             </div>
         </details>
 
         {{-- How calculations work --}}
-        <details class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <details class="fw-card fw-details">
             <summary class="cursor-pointer px-5 py-4 text-base font-semibold text-gray-800 dark:text-white">
-                Financial Calculation
+                Cara membaca angka
             </summary>
 
             <div class="grid gap-4 border-t border-gray-200 p-5 sm:grid-cols-2 dark:border-gray-800">
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Total Invoiced</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Total invoice</div>
                     <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Nilai invoice confirmed berdasarkan tanggal terbit. Proforma dan sisa penawaran tidak disertakan.</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Payment Received</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">All payment transactions actually received in the selected period.</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Diterima</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Pembayaran aktual berdasarkan tanggal transaksi pada periode terpilih.</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Outstanding</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Piutang saat ini</div>
                     <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Saldo saat ini dari invoice confirmed yang terbit pada periode terpilih; bukan saldo pada akhir periode tersebut.</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Expense</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Actual recorded expenses in the selected period.</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Pengeluaran</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Pengeluaran aktual berdasarkan tanggal transaksi pada periode terpilih.</div>
                 </div>
                 <div>
                     <div class="font-semibold text-gray-800 dark:text-white">Margin Proyek dari Invoice</div>
                     <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Seluruh invoice confirmed pada proyek dikurangi biaya yang tercatat pada invoice proyek. DP/pelunasan satu proyek digabung. Proforma dan nilai penawaran tidak diakui.</div>
                 </div>
                 <div>
-                    <div class="font-semibold text-gray-800 dark:text-white">Cash Surplus</div>
-                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Payment received in period minus expense in the same period.</div>
+                    <div class="font-semibold text-gray-800 dark:text-white">Surplus kas</div>
+                    <div class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">Uang masuk dikurangi pengeluaran pada periode yang sama.</div>
                 </div>
             </div>
         </details>

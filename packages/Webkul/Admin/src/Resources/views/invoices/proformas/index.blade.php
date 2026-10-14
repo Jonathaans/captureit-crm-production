@@ -1,59 +1,68 @@
 <x-admin::layouts>
     <x-slot:title>Proforma Invoice</x-slot>
-    <div class="flex flex-wrap items-center justify-between gap-4">
-        <div>
-            <h1 class="text-2xl font-bold dark:text-white">Proforma Invoice</h1>
-            <p class="mt-2 text-sm text-gray-500">Semua tagihan dari penawaran masuk di sini. Admin Sales memindahkannya ke Invoice setelah event deal/oke atau pembayaran diterima.</p>
-        </div>
-        @if (bouncer()->hasPermission('invoices.generate'))
-            <a class="primary-button" href="{{ route('admin.invoices.billing.create') }}">+ Buat dari penawaran</a>
-        @endif
-    </div>
-    <div class="mt-5">
+    @include('admin::invoices.partials.workspace-styles')
+    <div class="crm-finance-workspace">
+        <header class="fw-header">
+            <div>
+                <p class="fw-eyebrow">Penawaran / Penagihan</p>
+                <h1>Proforma Invoice</h1>
+                <p class="fw-subtitle">Kelola permintaan pembayaran, lalu terbitkan invoice saat event disetujui atau pembayaran diterima.</p>
+            </div>
+            @if (bouncer()->hasPermission('invoices.generate'))
+                <a class="primary-button" href="{{ route('admin.invoices.billing.create') }}">+ Buat dari penawaran</a>
+            @endif
+        </header>
         @include('admin::invoices.proformas.follow-up', ['showProformaRows' => false])
-    </div>
-    <div class="mt-5 overflow-x-auto rounded-xl border bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-        <form class="mb-4 flex flex-wrap items-center gap-3" method="GET" action="{{ route('admin.proformas.index') }}">
-            <label for="proforma-status" class="text-sm dark:text-white">Status dokumen</label>
-            <select id="proforma-status" name="status" class="rounded border px-3 py-2 dark:bg-gray-900 dark:text-white">
-                <option value="">Semua status</option>
-                <option value="issued" @selected($status === 'issued')>Belum menjadi Invoice</option>
-                <option value="converted" @selected($status === 'converted')>Sudah menjadi Invoice</option>
-                <option value="cancelled" @selected($status === 'cancelled')>Dibatalkan</option>
-            </select>
-            <button class="secondary-button" type="submit">Tampilkan</button>
-        </form>
-        <table class="w-full text-left text-sm dark:text-white">
-            <thead><tr class="border-b"><th class="p-3">Proforma / Tanggal</th><th class="p-3">Penawaran / Proyek</th><th class="p-3">Company</th><th class="p-3">Jenis / Nominal</th><th class="p-3">Umur / Jatuh tempo</th><th class="p-3">Dibuat oleh</th><th class="p-3">Status</th></tr></thead>
-            <tbody>
-                @forelse ($proformas as $proforma)
-                    @php($snapshot = $proforma->quote_snapshot['attributes'])
-                    <tr class="border-b dark:border-gray-800">
-                        <td class="p-3">
-                            @if (bouncer()->hasPermission('invoices.view'))
-                                <a class="text-brandColor underline" href="{{ route('admin.proformas.show', $proforma->id) }}">{{ $proforma->proforma_number }}</a>
-                            @else
-                                {{ $proforma->proforma_number }}
-                            @endif
-                            <div class="mt-1 text-xs text-gray-500">{{ $proforma->issued_at?->format('d/m/Y') }}</div>
-                        </td>
-                        <td class="p-3">{{ $snapshot['quote_number'] ?? '-' }}<br>{{ $snapshot['subject'] ?? '-' }}</td>
-                        <td class="p-3">{{ $snapshot['bill_to_company_name'] ?? '-' }}</td>
-                        <td class="p-3 whitespace-nowrap">{{ $proforma->billingLabel() }}<br>Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</td>
-                        <td class="p-3">
-                            @if ($proforma->status === 'issued')
-                                {{ max(0, (int) $proforma->issued_at?->diffInDays(today(), false)) }} hari<br>
-                            @endif
-                            {{ $proforma->due_at?->format('d/m/Y') }}
-                        </td>
-                        <td class="p-3">{{ $proforma->creator?->name ?? '-' }}</td>
-                        <td class="p-3">{{ ['issued' => 'Menunggu Admin Sales', 'converted' => 'Sudah masuk Invoice', 'cancelled' => 'Dibatalkan'][$proforma->status] ?? $proforma->status }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="7" class="p-6 text-center text-gray-500">Belum ada proforma.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-        <div class="mt-4">{{ $proformas->links() }}</div>
+        <section class="fw-card" aria-label="Daftar proforma">
+            <div class="fw-between" style="padding-right:20px">
+                <nav class="fw-tabs" aria-label="Filter status proforma">
+                    @foreach (['' => 'Semua', 'issued' => 'Belum menjadi Invoice', 'converted' => 'Sudah menjadi Invoice', 'cancelled' => 'Dibatalkan'] as $value => $label)
+                        <a href="{{ route('admin.proformas.index', $value ? ['status' => $value] : []) }}" @if ((string) $status === (string) $value) aria-current="page" @endif>{{ $label }}</a>
+                    @endforeach
+                </nav>
+                <span class="fw-muted">{{ $proformas->total() }} dokumen</span>
+            </div>
+            <div class="fw-scroll">
+                <table class="fw-table" style="min-width:1020px">
+                    <thead><tr><th>Proforma</th><th>Penawaran / Proyek</th><th>Pelanggan</th><th class="fw-number">Nominal</th><th>Jatuh tempo</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @forelse ($proformas as $proforma)
+                            @php
+                                $snapshot = $proforma->quote_snapshot['attributes'];
+                                $isOverdue = $proforma->status === 'issued' && $proforma->due_at?->lt(today());
+                            @endphp
+                            <tr>
+                                <td>
+                                    @if (bouncer()->hasPermission('invoices.view'))
+                                        <a class="fw-link" href="{{ route('admin.proformas.show', $proforma->id) }}">{{ $proforma->proforma_number }}</a>
+                                    @else
+                                        {{ $proforma->proforma_number }}
+                                    @endif
+                                    <small>{{ $proforma->issued_at?->format('d M Y') }}<br>Oleh {{ $proforma->creator?->name ?? '-' }}</small>
+                                </td>
+                                <td><strong>{{ $snapshot['subject'] ?? '-' }}</strong><small>{{ $snapshot['quote_number'] ?? '-' }} · {{ $snapshot['project_code'] ?? '-' }}</small></td>
+                                <td>
+                                    {{ ($snapshot['bill_to_company_name'] ?? '') ?: ($snapshot['bill_to_person_name'] ?? '-') }}
+                                    @if (! empty($snapshot['bill_to_company_name']) && ! empty($snapshot['bill_to_person_name']))
+                                        <small>{{ $snapshot['bill_to_person_name'] }}</small>
+                                    @endif
+                                </td>
+                                <td class="fw-number"><strong>Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</strong><small>{{ $proforma->billingLabel() }}</small></td>
+                                <td>
+                                    <span class="{{ $isOverdue ? 'fw-negative' : '' }}">{{ $proforma->due_at?->format('d M Y') }}</span>
+                                    @if ($proforma->status === 'issued')
+                                        <small>{{ $isOverdue ? 'Lewat jatuh tempo · ' : '' }}Umur {{ max(0, (int) $proforma->issued_at?->diffInDays(today(), false)) }} hari</small>
+                                    @endif
+                                </td>
+                                <td><span class="fw-badge fw-badge-{{ $proforma->status }}">{{ ['issued' => 'Menunggu Admin Sales', 'converted' => 'Sudah masuk Invoice', 'cancelled' => 'Dibatalkan'][$proforma->status] ?? $proforma->status }}</span></td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="6" class="fw-empty"><strong>Belum ada proforma pada status ini.</strong><br>Proforma yang dibuat dari penawaran akan muncul di sini.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <div class="fw-pad">{{ $proformas->links() }}</div>
+        </section>
     </div>
 </x-admin::layouts>

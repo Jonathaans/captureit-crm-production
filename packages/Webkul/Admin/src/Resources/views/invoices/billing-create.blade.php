@@ -1,4 +1,5 @@
 <x-admin::layouts>
+    @include('admin::invoices.partials.workspace-styles')
     {{-- CRM_INVOICE_FLEXIBLE_BILLING_UI_HOTFIX_V1_2 --}}
     <x-slot:title>
         Buat Proforma dari Penawaran
@@ -15,15 +16,15 @@
         $initialPercentage = old('billing_percentage', '');
     @endphp
 
-    <div class="mx-auto flex max-w-6xl flex-col gap-5">
-        <div class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div class="crm-finance-workspace fw-billing">
+        <div class="fw-card fw-pad">
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <a
-                        href="{{ route('admin.invoices.index') }}"
+                        href="{{ route('admin.proformas.index') }}"
                         class="text-sm font-semibold text-brandColor hover:underline"
                     >
-                        &larr; Kembali ke Invoice
+                        &larr; Daftar proforma
                     </a>
 
                     <h1 class="mt-3 text-2xl font-bold text-gray-900 dark:text-white">
@@ -62,7 +63,7 @@
             @csrf
 
             <div class="space-y-5">
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <section class="fw-card fw-pad">
                     <div class="mb-5">
                         <div class="text-xs font-semibold uppercase tracking-[.18em] text-brandColor">
                             01 &middot; Quote
@@ -102,7 +103,7 @@
                     </div>
                 </section>
 
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <section class="fw-card fw-pad">
                     <div class="mb-5">
                         <div class="text-xs font-semibold uppercase tracking-[.18em] text-brandColor">
                             02 &middot; Jenis dokumen
@@ -208,7 +209,7 @@
                     </div>
                 </section>
 
-                <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                <section class="fw-card fw-pad">
                     <div class="mb-5">
                         <div class="text-xs font-semibold uppercase tracking-[.18em] text-brandColor">
                             03 &middot; Tanggal
