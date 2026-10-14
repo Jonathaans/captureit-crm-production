@@ -138,6 +138,11 @@ class Invoice extends Model implements InvoiceContract
         return $this->hasMany(PaymentProxy::modelClass());
     }
 
+    public function activePayments()
+    {
+        return $this->payments()->whereDoesntHave('voidRecord');
+    }
+
     /** Financial queries exclude voids; document lookups keep the original history. */
     public function scopeNotVoided(Builder $query): Builder
     {

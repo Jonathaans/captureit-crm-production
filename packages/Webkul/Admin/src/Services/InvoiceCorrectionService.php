@@ -94,6 +94,7 @@ class InvoiceCorrectionService
             ? (array) DB::table('quotes')->where('id', $invoice->quote_id)->first(['id', 'quote_number', 'grand_total'])
             : null;
         $snapshot['dependencies'] = [];
+        $snapshot['dependencies']['payment_voids'] = DB::table('payment_voids')->where('invoice_id', $invoice->id)->count();
         if (Schema::hasTable('proforma_invoices')) {
             $snapshot['dependencies']['proformas'] = DB::table('proforma_invoices')->where(fn ($query) => $query->where('invoice_id', $invoice->id)->orWhere('dp_invoice_id', $invoice->id))->count();
         }

@@ -1692,6 +1692,7 @@ if ($request->input('person_id') === '__new__') {
             $invoice = Invoice::with([
                 'items',
                 'payments.creator',
+                'payments.voidRecord.actor',
                 'expenses.creator',
                 'quote.person.organization',
                 'person.organization',

@@ -440,7 +440,7 @@ class FinancialReportController extends Controller
         $this->applyInvoicePeriod($invoices, $filters);
         $this->applyInvoiceDimensions($invoices, $filters);
         $invoiced = (float) (clone $invoices)->sum('grand_total');
-        $outstanding = (float) (clone $invoices)->withSum('payments', 'amount')->get()->sum(
+        $outstanding = (float) (clone $invoices)->withSum('activePayments as payments_sum_amount', 'amount')->get()->sum(
             fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)
         );
 
@@ -512,7 +512,7 @@ class FinancialReportController extends Controller
 
         return Invoice::query()->notVoided()
             ->with(['person.organization', 'quote.person.organization'])
-            ->withSum('payments', 'amount')->withSum('expenses', 'amount')
+            ->withSum('activePayments as payments_sum_amount', 'amount')->withSum('expenses', 'amount')
             ->whereNotNull('issued_at')
             ->where(fn (Builder $query) => $query->whereIn('quote_id', $quoteIds)->orWhereIn('id', $standaloneIds))
             ->orderBy('issued_at')->orderBy('id')->get()
@@ -570,7 +570,7 @@ class FinancialReportController extends Controller
             ->with([
                 'person.organization',
                 'quote.person.organization',
-                'payments',
+                'activePayments',
                 'expenses',
                 'items',
             ])
@@ -605,7 +605,7 @@ class FinancialReportController extends Controller
                     ->values();
 
                 $paidToDate = (float) $invoice
-                    ->payments
+                    ->activePayments
                     ->sum('amount');
 
                 $projectExpense = (float) $invoice
@@ -613,7 +613,7 @@ class FinancialReportController extends Controller
                     ->sum('amount');
 
                 $receivedInPeriod = (float) $invoice
-                    ->payments
+                    ->activePayments
                     ->filter(function (Payment $payment) use ($filters) {
                         return $this->dateIsInPeriod(
                             $payment->paid_at,

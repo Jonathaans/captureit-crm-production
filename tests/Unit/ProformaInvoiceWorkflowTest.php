@@ -12,13 +12,18 @@ use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
+use Webkul\Admin\Services\FinanceSalesDashboardService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\InvoiceCorrectionService;
 use Webkul\Admin\Services\InvoiceVoidService;
+use Webkul\Admin\Services\PaymentVoidService;
 use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
+use Webkul\Admin\Services\SalesCommissionExportService;
 use Webkul\Installer\Http\Middleware\CanInstall;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
+use Webkul\Invoice\Models\PaymentVoidRecord;
 use Webkul\Invoice\Models\ProformaInvoice;
 use Webkul\Invoice\Models\WorkOrder;
 use Webkul\Invoice\Services\InvoiceService;
@@ -37,6 +42,7 @@ beforeEach(function (): void {
     ]]);
     DB::setDefaultConnection('proforma_test');
     Schema::clearResolvedInstance('db.schema');
+    (require base_path('database/migrations/2026_10_13_150000_create_payment_voids_table.php'))->up();
     $this->travelTo(now()->parse('2026-10-12 12:00:00'));
     DB::connection()->getPdo()->sqliteCreateFunction('YEAR', fn ($date) => (int) substr($date, 0, 4));
     DB::connection()->getPdo()->sqliteCreateFunction('MONTH', fn ($date) => (int) substr($date, 5, 2));
@@ -591,6 +597,212 @@ function invoiceVoidProtectedHistory(): array
     return collect(['quotes', 'quote_items', 'invoice_items', 'payments', 'work_orders', 'work_order_items', 'delivery_orders', 'delivery_order_inventory_allocations', 'inventory_assets', 'inventory_stock_movements'])
         ->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all();
 }
+
+function paymentVoidLogin($test, array $permissions = ['invoices', 'invoices.view', 'invoices.payment', 'invoices.payment-void']): void
+{
+    $test->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => $permissions]);
+    $test->actingAs((new User)->forceFill(['id' => 7, 'name' => 'Finance', 'status' => 1])->setRelation('role', $role), 'user');
+}
+
+describe('individual payment void', function () {
+    it('reopens the receipt balance and preserves all documents including active operations', function () {
+        $invoice = invoiceVoidFixture($this);
+        DB::table('work_orders')->update(['status' => 'released']);
+        DB::table('delivery_orders')->update(['status' => 'out']);
+        DB::table('delivery_order_inventory_allocations')->update(['status' => 'out']);
+        $before = invoiceVoidProtectedHistory();
+        $service = app(PaymentVoidService::class);
+        $preview = $service->preview($invoice->id, 6);
+        expect($preview['blockers'])->toBeEmpty()->and(invoiceVoidProtectedHistory())->toBe($before)
+            ->and(PaymentVoidRecord::count())->toBe(0)->and($invoice->fresh()->status)->toBe('paid');
+        $result = $service->apply($invoice->id, 6, $preview['fingerprint'], 'Pencatatan transfer duplikat', 7, true);
+        expect($result['status'])->toBe('unpaid')->and($result['paid_amount'])->toBe(0.0)
+            ->and($result['balance_due'])->toBe(3750000.0)->and($invoice->fresh()->status)->toBe('unpaid')
+            ->and((float) $invoice->fresh()->grand_total)->toBe(3750000.0)
+            ->and($invoice->fresh()->event_status)->toBe('confirm')->and(invoiceVoidProtectedHistory())->toBe($before)
+            ->and(Payment::count())->toBe(1)->and(Payment::notVoided()->count())->toBe(0);
+        $audit = PaymentVoidRecord::findOrFail($result['audit_id']);
+        expect($audit->actor_id)->toBe(7)->and($audit->snapshot['invoice']['status'])->toBe('paid')
+            ->and($audit->result['amount_voided'])->toEqual(3750000);
+        expect(fn () => $audit->delete())->toThrow(LogicException::class);
+        expect(fn () => $audit->save())->toThrow(LogicException::class);
+        expect(fn () => Payment::findOrFail(6)->update(['amount' => 1]))->toThrow(ValidationException::class);
+        expect(fn () => Payment::findOrFail(6)->delete())->toThrow(ValidationException::class);
+        expect(fn () => (require base_path('database/migrations/2026_10_13_150000_create_payment_voids_table.php'))->down())->toThrow(RuntimeException::class);
+    });
+
+    it('retains valid partial receipts and supports a replacement payment and multiple corrections on one invoice', function () {
+        $invoice = invoiceVoidFixture($this);
+        DB::table('payments')->where('id', 6)->update(['amount' => 3000000]);
+        DB::table('payments')->insert(['id' => 7, 'invoice_id' => $invoice->id, 'amount' => 750000, 'paid_at' => '2026-10-09']);
+        $service = app(PaymentVoidService::class);
+        $preview = $service->preview($invoice->id, 6);
+        $service->apply($invoice->id, 6, $preview['fingerprint'], 'Nominal pembayaran salah input', 7, true);
+        expect($invoice->fresh()->status)->toBe('partial')->and((float) $invoice->fresh()->paid_amount)->toBe(750000.0)
+            ->and((float) $invoice->fresh()->balance_due)->toBe(3000000.0);
+        app(PaymentService::class)->addPayment($invoice->fresh(), ['amount' => 2000000, 'paid_at' => '2026-10-12']);
+        expect((float) $invoice->fresh()->paid_amount)->toBe(2750000.0)->and((float) $invoice->fresh()->balance_due)->toBe(1000000.0);
+        $service->apply($invoice->id, 7, $service->preview($invoice->id, 7)['fingerprint'], 'Pembayaran kedua ternyata duplikat', 7, true);
+        expect((float) $invoice->fresh()->paid_amount)->toBe(2000000.0)->and(PaymentVoidRecord::count())->toBe(2);
+        app(PaymentService::class)->addPayment($invoice->fresh(), ['amount' => 1750000, 'paid_at' => '2026-10-12']);
+        expect($invoice->fresh()->status)->toBe('paid')->and((float) $invoice->fresh()->paid_amount)->toBe(3750000.0)
+            ->and(Payment::count())->toBe(4)->and(Payment::notVoided()->count())->toBe(2);
+        expect(fn () => $service->apply($invoice->id, 6, $preview['fingerprint'], 'Percobaan berulang', 7, true))->toThrow(ValidationException::class);
+        $retry = $service->preview($invoice->id, 6);
+        expect($retry['blockers'])->not->toBeEmpty();
+        expect(fn () => $service->apply($invoice->id, 6, $retry['fingerprint'], 'Percobaan berulang', 7, true))->toThrow(ValidationException::class);
+        expect(PaymentVoidRecord::count())->toBe(2);
+    });
+
+    it('removes prior month cash from reports and exports but preserves invoiced value and restores receivable', function () {
+        $invoice = invoiceVoidFixture($this);
+        DB::table('payments')->where('id', 6)->update(['reference_number' => 'WRONG-RECEIPT-REF']);
+        $other = Invoice::create(['invoice_number' => 'OTHER-INV', 'grand_total' => 1000, 'balance_due' => 1000, 'issued_at' => '2026-10-01', 'event_status' => 'confirm']);
+        app(PaymentService::class)->addPayment($other, ['amount' => 500, 'paid_at' => '2026-09-29', 'reference_number' => 'VALID-RECEIPT']);
+        $service = app(PaymentVoidService::class);
+        $service->apply($invoice->id, 6, $service->preview($invoice->id, 6)['fingerprint'], 'Pembayaran salah catat September', 7, true);
+        expect(proformaFinancialData(['month' => 9])['financialSummary']['received'])->toBe(500.0)
+            ->and(proformaFinancialCsv(['month' => 9]))->toContain('VALID-RECEIPT')->not->toContain('WRONG-RECEIPT-REF');
+        $report = proformaFinancialData();
+        expect($report['financialSummary']['invoiced'])->toBe(3751000.0)
+            ->and($report['financialSummary']['outstanding'])->toBe(3750500.0)
+            ->and($report['invoiceStats']['total'])->toBe(2)
+            ->and($report['projectPerformance']->firstWhere('project_code', $invoice->project_code)['received'])->toBe(0.0)
+            ->and($report['topProducts']->sum('received_allocated'))->toBe(0.0)
+            ->and(proformaFinancialCsv())->toContain($invoice->invoice_number)->not->toContain('WRONG-RECEIPT-REF');
+        expect(proformaFinancialData(['month' => 'all'])['financialSummary']['received'])->toBe(500.0);
+        $dashboard = app(FinanceSalesDashboardService::class)->exportRows([])->firstWhere('id', $invoice->id);
+        expect($dashboard['paid'])->toBe(0.0)->and($dashboard['outstanding'])->toBe(3750000.0);
+        expect(app(FinanceSalesDashboardService::class)->exportRows(['focus' => 'unpaid'])->pluck('id')->all())->toContain($invoice->id);
+        expect(app(FinanceSalesDashboardService::class)->exportRows(['focus' => 'partial'])->pluck('id')->all())->not->toContain($invoice->id);
+    });
+
+    it('rejects locked periods and inconsistent balances without changes', function (string $case) {
+        $invoice = invoiceVoidFixture($this);
+        if ($case === 'mismatch') {
+            DB::table('invoices')->where('id', $invoice->id)->update(['paid_amount' => 1]);
+        } else {
+            DB::table('financial_period_locks')->insert(['period' => '2026-'.$case, 'starts_at' => '2026-'.$case.'-01', 'ends_at' => '2026-'.$case.'-30']);
+        }
+        $before = invoiceVoidProtectedHistory();
+        $service = app(PaymentVoidService::class);
+        $preview = $service->preview($invoice->id, 6);
+        expect($preview['blockers'])->not->toBeEmpty();
+        expect(fn () => $service->apply($invoice->id, 6, $preview['fingerprint'], 'Pembayaran salah input', 7, true))->toThrow(ValidationException::class);
+        expect(PaymentVoidRecord::count())->toBe(0)->and(invoiceVoidProtectedHistory())->toBe($before);
+    })->with(['09', '10', 'mismatch']);
+
+    it('requires a valid preview reason actor and explicit correction acknowledgement', function (string $case) {
+        $invoice = invoiceVoidFixture($this);
+        $service = app(PaymentVoidService::class);
+        $preview = $service->preview($invoice->id, 6);
+        if ($case === 'stale') {
+            DB::table('payments')->where('id', 6)->update(['reference_number' => 'CHANGED']);
+        }
+        expect(fn () => $service->apply($invoice->id, 6,
+            $case === 'fingerprint' ? 'wrong' : $preview['fingerprint'],
+            $case === 'reason' ? ' ' : 'Pembayaran salah input', $case === 'actor' ? 9999 : 7, $case !== 'acknowledgement'
+        ))->toThrow(ValidationException::class);
+        expect(PaymentVoidRecord::count())->toBe(0)->and($invoice->fresh()->status)->toBe('paid');
+    })->with(['stale', 'fingerprint', 'reason', 'actor', 'acknowledgement']);
+
+    it('rolls back audit if recalculating the invoice fails', function () {
+        $invoice = invoiceVoidFixture($this);
+        $before = invoiceVoidProtectedHistory();
+        DB::unprepared("CREATE TRIGGER fail_receipt_void BEFORE UPDATE ON invoices BEGIN SELECT RAISE(ABORT, 'simulated failure'); END");
+        $service = app(PaymentVoidService::class);
+        expect(fn () => $service->apply($invoice->id, 6, $service->preview($invoice->id, 6)['fingerprint'], 'Pembayaran salah input', 7, true))->toThrow(QueryException::class);
+        expect(PaymentVoidRecord::count())->toBe(0)->and($invoice->fresh()->status)->toBe('paid')
+            ->and(invoiceVoidProtectedHistory())->toBe($before)->and(Payment::notVoided()->count())->toBe(1);
+    });
+
+    it('offers a protected preview and writes the authenticated actor instead of a submitted actor', function () {
+        $invoice = invoiceVoidFixture($this);
+        paymentVoidLogin($this);
+        $url = route('admin.invoices.payments.void.preview', [$invoice->id, 6]);
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()->assertSee($url, false);
+        $page = $this->get($url)->assertOk()->assertSee('Void Pembayaran')->assertSee('UNPAID')->assertSee('Total Invoiced tetap');
+        preg_match('/name="expected" value="([a-f0-9]{64})"/', $page->getContent(), $matches);
+        expect($matches)->toHaveCount(2);
+        $preview = ['fingerprint' => $matches[1]];
+        expect(PaymentVoidRecord::count())->toBe(0);
+        $post = route('admin.invoices.payments.void.store', [$invoice->id, 6]);
+        $this->postJson($post, ['expected' => $preview['fingerprint']])->assertUnprocessable()->assertJsonValidationErrors(['reason', 'acknowledge_error']);
+        $this->post($post, ['expected' => $preview['fingerprint'], 'reason' => 'Pembayaran tercatat dua kali', 'acknowledge_error' => 1, 'actor_id' => 999])
+            ->assertRedirect(route('admin.invoices.show', $invoice->id).'#payment-history');
+        expect(PaymentVoidRecord::first()->actor_id)->toBe(7);
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()->assertSee('VOID · tidak dihitung')
+            ->assertSee('Pembayaran tercatat dua kali')->assertDontSee($url, false);
+    });
+
+    it('denies an add-payment-only account and a payment from another invoice', function () {
+        $invoice = invoiceVoidFixture($this);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.payment']);
+        $url = route('admin.invoices.payments.void.preview', [$invoice->id, 6]);
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()->assertDontSee($url, false);
+        $this->getJson($url)->assertUnauthorized();
+        $this->postJson(route('admin.invoices.payments.void.store', [$invoice->id, 6]))->assertUnauthorized();
+        paymentVoidLogin($this);
+        $other = Invoice::create(['invoice_number' => 'OTHER-INV', 'status' => 'unpaid']);
+        $this->getJson(route('admin.invoices.payments.void.preview', [$other->id, 6]))->assertNotFound();
+        $this->postJson(route('admin.invoices.payments.void.store', [$other->id, 6]), [
+            'expected' => str_repeat('a', 64), 'reason' => 'Pembayaran salah invoice', 'acknowledge_error' => 1,
+        ])->assertNotFound();
+        expect(PaymentVoidRecord::count())->toBe(0)->and($invoice->fresh()->status)->toBe('paid');
+    });
+
+    it('requires a CSRF token and permits only POST to apply the correction', function () {
+        $invoice = invoiceVoidFixture($this);
+        paymentVoidLogin($this);
+        $this->app->instance('env', 'local');
+        $post = route('admin.invoices.payments.void.store', [$invoice->id, 6]);
+        $preview = app(PaymentVoidService::class)->preview($invoice->id, 6);
+        $data = ['expected' => $preview['fingerprint'], 'reason' => 'Pembayaran salah catat', 'acknowledge_error' => 1];
+        $this->postJson($post, $data)->assertStatus(419);
+        expect(PaymentVoidRecord::count())->toBe(0);
+        $this->withSession(['_token' => 'correction-csrf'])->post($post, ['_token' => 'correction-csrf'] + $data)->assertRedirect();
+        expect(PaymentVoidRecord::count())->toBe(1);
+    });
+
+    it('keeps payment corrections when the invoice is later voided and blocks destructive legacy correction', function () {
+        $invoice = invoiceVoidFixture($this);
+        $service = app(PaymentVoidService::class);
+        $service->apply($invoice->id, 6, $service->preview($invoice->id, 6)['fingerprint'], 'Pembayaran salah input', 7, true);
+        expect(app(InvoiceCorrectionService::class)->preview($invoice->invoice_number)['dependencies']['payment_voids'])->toBe(1);
+        $whole = app(InvoiceVoidService::class);
+        $preview = $whole->preview($invoice->invoice_number);
+        expect($preview['blockers'])->toBeEmpty()->and($preview['payment_total_to_void'])->toBe(0.0);
+        $whole->apply($invoice->invoice_number, $preview['fingerprint'], 'Nominal quote juga salah, invoice diganti', 7, true);
+        expect($invoice->fresh()->status)->toBe('void')->and(PaymentVoidRecord::count())->toBe(1)
+            ->and(Payment::count())->toBe(1)->and((float) Payment::notVoided()->sum('amount'))->toBe(0.0);
+        expect(fn () => $service->apply($invoice->id, 6, $service->preview($invoice->id, 6)['fingerprint'], 'Koreksi ulang invoice VOID', 7, true))->toThrow(ValidationException::class);
+    });
+
+    it('preserves converted proforma and settlement amounts while recalculating DP and paid-deal commission', function () {
+        DB::table('users')->insert(['id' => 7, 'name' => 'Finance']);
+        $proforma = $this->proformas->create($this->quote, $this->input);
+        $dp = $this->billing->confirmProformaPayment($proforma, $this->receipt);
+        $settlement = $this->billing->approveProforma($this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement'])));
+        app(PaymentService::class)->addPayment($settlement, ['amount' => 7000000, 'paid_at' => '2026-10-12']);
+        $commission = app(SalesCommissionExportService::class);
+        $filters = ['paid_from' => '2026-01-01', 'paid_to' => '2026-12-31'];
+        expect($commission->rows($filters))->toHaveCount(1);
+        $source = $proforma->fresh()->getAttributes();
+        $service = app(PaymentVoidService::class);
+        $payment = $dp->payments->first();
+        $service->apply($dp->id, $payment->id, $service->preview($dp->id, $payment->id)['fingerprint'], 'DP salah input tanpa uang masuk', 7, true);
+        expect($proforma->fresh()->getAttributes())->toBe($source)->and($dp->fresh()->status)->toBe('unpaid')
+            ->and($settlement->fresh()->status)->toBe('paid')->and((float) $settlement->fresh()->grand_total)->toBe(7000000.0)
+            ->and((float) Invoice::sum('grand_total'))->toBe(10000000.0)->and($commission->rows($filters))->toBeEmpty();
+        $this->billing->confirmProformaPayment($proforma, $this->receipt);
+        expect(Payment::count())->toBe(2)->and($dp->fresh()->status)->toBe('unpaid');
+        app(PaymentService::class)->addPayment($dp->fresh(), ['amount' => 3000000, 'paid_at' => '2026-10-12']);
+        expect($dp->fresh()->status)->toBe('paid')->and($commission->rows($filters))->toHaveCount(1)
+            ->and($commission->rows($filters)->sum('commission_base'))->toBe(10000000.0);
+    });
+});
 
 it('voids fictitious payment with one completed SPK and two returned DOs without rewriting history or stock', function () {
     $invoice = invoiceVoidFixture($this);

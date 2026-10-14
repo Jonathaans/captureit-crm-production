@@ -5,6 +5,7 @@ use Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController;
+use Webkul\Admin\Http\Controllers\Invoice\PaymentVoidController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderExpenseExportController;
@@ -49,6 +50,13 @@ Route::controller(FinancialReportController::class)
             'admin.invoices.financial-report.export'
         );
     });
+
+Route::controller(PaymentVoidController::class)->prefix('invoices')->group(function () {
+    Route::get('{invoiceId}/payments/{paymentId}/void', 'preview')
+        ->whereNumber(['invoiceId', 'paymentId'])->name('admin.invoices.payments.void.preview');
+    Route::post('{invoiceId}/payments/{paymentId}/void', 'store')
+        ->whereNumber(['invoiceId', 'paymentId'])->name('admin.invoices.payments.void.store');
+});
 
 /*
 |--------------------------------------------------------------------------

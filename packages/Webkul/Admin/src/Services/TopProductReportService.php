@@ -40,7 +40,7 @@ class TopProductReportService
             : $periodStart->addYear();
 
         $invoices = Invoice::query()->notVoided()
-            ->with(['items', 'payments'])
+            ->with(['items', 'activePayments'])
             ->where('event_status', 'confirm')
             ->where('issued_at', '>=', $periodStart)
             ->where('issued_at', '<', $periodEnd)
@@ -246,7 +246,7 @@ class TopProductReportService
     private function received(Collection $invoices): float
     {
         return max(0.0, (float) $invoices->sum(
-            fn (Invoice $invoice): float => (float) $invoice->payments->sum('amount')
+            fn (Invoice $invoice): float => (float) $invoice->activePayments->sum('amount')
         ));
     }
 

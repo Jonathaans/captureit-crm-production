@@ -31,7 +31,7 @@ class SalesCommissionExportService
         $invoices = Invoice::query()->notVoided()
             ->with([
                 'items',
-                'payments',
+                'activePayments',
                 'person',
                 'user',
                 'quote.items',
@@ -39,7 +39,7 @@ class SalesCommissionExportService
                 'quote.user',
             ])
             ->where('event_status', 'confirm')
-            ->whereHas('payments')
+            ->whereHas('activePayments')
             ->orderBy('id')
             ->get();
 
@@ -302,7 +302,7 @@ class SalesCommissionExportService
             return [
                 'billing_type' => $invoice->billing_type,
                 'invoice_total' => (float) $invoice->grand_total,
-                'paid_total' => (float) $invoice->payments->sum('amount'),
+                'paid_total' => (float) $invoice->activePayments->sum('amount'),
                 'status' => $invoice->status,
             ];
         })->values()->all();
@@ -312,7 +312,7 @@ class SalesCommissionExportService
     private function completionDate(Collection $invoices, float $dealValue): ?CarbonImmutable
     {
         $payments = $invoices
-            ->flatMap(fn (Invoice $invoice): Collection => $invoice->payments)
+            ->flatMap(fn (Invoice $invoice): Collection => $invoice->activePayments)
             ->filter(fn ($payment): bool => $payment->paid_at !== null)
             ->sortBy(fn ($payment): string => $payment->paid_at->format('Y-m-d H:i:s.u').'-'.str_pad((string) $payment->id, 20, '0', STR_PAD_LEFT));
 
