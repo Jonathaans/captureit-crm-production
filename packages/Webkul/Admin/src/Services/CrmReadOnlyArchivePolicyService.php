@@ -113,7 +113,10 @@ class CrmReadOnlyArchivePolicyService
             'quotes' => $this->quoteReason($model),
             'quote_items' => $this->parentQuoteReason($model),
             'invoices' => $this->invoiceReason($model),
-            'invoice_items', 'payments' => $this->parentInvoiceReason($model),
+            'invoice_items' => $this->parentInvoiceReason($model),
+            'payments' => $model->exists && DB::table('payment_voids')->where('payment_id', $model->getKey())->exists()
+                ? 'Pembayaran VOID adalah arsip koreksi dan tidak dapat diubah/dihapus.'
+                : $this->parentInvoiceReason($model),
             'work_orders' => $this->statusReason(
                 $this->raw($model, 'status'),
                 ['completed', 'cancelled', 'canceled', 'archived'],

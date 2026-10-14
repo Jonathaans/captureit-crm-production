@@ -653,6 +653,7 @@
             <!-- ================================================= -->
 
             <div
+                id="payment-history"
                 class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
                 style="border-top:3px solid #16a34a;"
             >
@@ -670,7 +671,7 @@
                         </h2>
 
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {{ $invoice->status === 'void' ? 'DIBATALKAN: riwayat salah input, tanpa uang diterima.' : 'Semua pembayaran yang sudah diterima dari customer.' }}
+                            {{ $invoice->status === 'void' ? 'DIBATALKAN: riwayat salah input, tanpa uang diterima.' : 'Riwayat pencatatan pembayaran. Pembayaran VOID tidak dihitung sebagai penerimaan.' }}
                         </p>
                     </div>
 
@@ -695,6 +696,9 @@
 
                 <div style="display:flex; flex-direction:column; gap:12px; padding:16px;">
                     @forelse ($invoice->payments->sortByDesc('paid_at') as $payment)
+                        @php
+                            $paymentIsVoid = $invoice->status === 'void' || $payment->voidRecord !== null;
+                        @endphp
                         <div
                             class="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-950"
                             style="
@@ -725,9 +729,13 @@
 
                                 <div style="min-width:0;">
                                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                                        <p class="text-lg font-bold text-green-600 dark:text-green-400">
+                                        <p class="text-lg font-bold {{ $paymentIsVoid ? 'text-gray-500 line-through' : 'text-green-600 dark:text-green-400' }}">
                                             Rp {{ number_format((float) $payment->amount, 0, ',', '.') }}
                                         </p>
+
+                                        @if ($paymentIsVoid)
+                                            <span class="rounded bg-red-50 px-2 py-1 text-xs font-bold text-red-800">VOID · tidak dihitung</span>
+                                        @endif
 
                                         <span
                                             class="rounded-full bg-green-100 px-2.5 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-300"
@@ -764,6 +772,12 @@
                                             {{ $payment->notes }}
                                         </div>
                                     @endif
+                                    @if ($payment->voidRecord)
+                                        <div class="mt-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                            <p>Alasan VOID: {{ $payment->voidRecord->reason }}</p>
+                                            <p>{{ $payment->voidRecord->created_at->format('d M Y H:i') }} · {{ $payment->voidRecord->actor?->name ?? ('Pengguna #'.$payment->voidRecord->actor_id) }} · Audit #{{ $payment->voidRecord->id }}</p>
+                                        </div>
+                                    @endif
                                 </div>
                             </div>
 
@@ -775,6 +789,9 @@
                                 <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                                     {{ $payment->paid_at?->format('H:i') ?? '' }}
                                 </p>
+                                @if (! $paymentIsVoid && in_array($invoice->status, ['unpaid', 'partial', 'paid'], true) && bouncer()->hasPermission('invoices.payment-void'))
+                                    <a class="secondary-button mt-3" href="{{ route('admin.invoices.payments.void.preview', [$invoice->id, $payment->id]) }}">Void Pembayaran</a>
+                                @endif
                             </div>
                         </div>
                     @empty

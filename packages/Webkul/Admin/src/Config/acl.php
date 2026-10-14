@@ -105,6 +105,11 @@ return [
         'route' => ['admin.invoices.payments.store', 'admin.proformas.payment'],
         'sort' => 3,
     ], [
+        'key' => 'invoices.payment-void',
+        'name' => 'Void Pembayaran',
+        'route' => ['admin.invoices.payments.void.preview', 'admin.invoices.payments.void.store'],
+        'sort' => 3,
+    ], [
         /**
          * Update Event Status.
          *

@@ -15,7 +15,7 @@ class InvoiceVoidService
 
         return [
             'invoice' => array_intersect_key($snapshot['invoice'], array_flip(['id', 'invoice_number', 'quote_id', 'project_code', 'grand_total', 'paid_amount', 'status', 'event_status', 'issued_at'])),
-            'payments' => array_map(fn ($row) => array_intersect_key($row, array_flip(['id', 'amount', 'paid_at'])), $snapshot['payments']),
+            'payments' => array_map(fn ($row) => array_intersect_key($row, array_flip(['id', 'amount', 'paid_at'])), $this->activePayments($snapshot)),
             'payment_total_to_void' => $this->paymentTotal($snapshot),
             'work_orders' => array_map(fn ($row) => array_intersect_key($row, array_flip(['id', 'work_order_number', 'status'])), $snapshot['work_orders']),
             'delivery_orders' => array_map(fn ($row) => array_intersect_key($row, array_flip(['id', 'delivery_order_number', 'status'])), $snapshot['delivery_orders']),
@@ -59,7 +59,7 @@ class InvoiceVoidService
                 'invoice_id' => (int) $snapshot['invoice']['id'],
                 'invoice_number' => $number,
                 'status' => 'void',
-                'payment_count_voided' => count($snapshot['payments']),
+                'payment_count_voided' => count($this->activePayments($snapshot)),
                 'payment_total_voided' => $this->paymentTotal($snapshot),
                 'work_orders_preserved' => count($snapshot['work_orders']),
                 'delivery_orders_preserved' => count($snapshot['delivery_orders']),
@@ -94,6 +94,8 @@ class InvoiceVoidService
         foreach (['payments', 'invoice_items', 'expenses', 'purchase_orders', 'work_orders'] as $table) {
             $snapshot[$table] = $this->rows(DB::table($table)->where('invoice_id', $id), $lock);
         }
+        $snapshot['payment_voids'] = $this->rows(DB::table('payment_voids')->where('invoice_id', $id)
+            ->select(['id', 'payment_id', 'actor_id', 'reason', 'created_at']), $lock);
         $snapshot['delivery_orders'] = $this->rows(DB::table('delivery_orders')->where(fn (Builder $query) => $query
             ->where('invoice_id', $id)->orWhereIn('work_order_id', array_column($snapshot['work_orders'], 'id'))), $lock);
         $snapshot['allocations'] = $this->rows(DB::table('delivery_order_inventory_allocations')
@@ -149,7 +151,7 @@ class InvoiceVoidService
         if (abs($this->paymentTotal($snapshot) - (float) $invoice['paid_amount']) > 0.0001) {
             $errors[] = 'Total payment tidak sesuai paid_amount invoice; perlu pemeriksaan terpisah.';
         }
-        $dates = array_filter(array_merge([$invoice['issued_at'] ?? null], array_column($snapshot['payments'], 'paid_at')));
+        $dates = array_filter(array_merge([$invoice['issued_at'] ?? null], array_column($this->activePayments($snapshot), 'paid_at')));
         foreach ($snapshot['period_locks'] as $period) {
             foreach ($dates as $date) {
                 $date = substr($date, 0, 10);
@@ -172,7 +174,14 @@ class InvoiceVoidService
 
     private function paymentTotal(array $snapshot): float
     {
-        return round(array_sum(array_column($snapshot['payments'], 'amount')), 4);
+        return round(array_sum(array_column($this->activePayments($snapshot), 'amount')), 4);
+    }
+
+    private function activePayments(array $snapshot): array
+    {
+        $voidedIds = array_column($snapshot['payment_voids'], 'payment_id');
+
+        return array_values(array_filter($snapshot['payments'], fn ($payment) => ! in_array($payment['id'], $voidedIds)));
     }
 
     private function fingerprint(array $snapshot): string

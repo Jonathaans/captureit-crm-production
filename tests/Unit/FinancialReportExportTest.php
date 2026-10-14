@@ -17,6 +17,7 @@ beforeEach(function (): void {
     ]]);
     DB::setDefaultConnection('financial_export_test');
     Schema::clearResolvedInstance('db.schema');
+    (require base_path('database/migrations/2026_10_13_150000_create_payment_voids_table.php'))->up();
 
     Schema::create('invoices', function (Blueprint $table): void {
         $table->increments('id');

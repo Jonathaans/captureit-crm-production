@@ -400,6 +400,7 @@ class CrmCorrectionScenarios
         });
         (require dirname(__DIR__, 2).'/database/migrations/2026_10_12_030000_create_proforma_invoices_table.php')->up();
         (require dirname(__DIR__, 2).'/database/migrations/2026_10_12_133000_add_proforma_conversion_workflow.php')->up();
+        (require dirname(__DIR__, 2).'/database/migrations/2026_10_13_150000_create_payment_voids_table.php')->up();
         Schema::create('payments', function (Blueprint $t) {
             $t->increments('id');
             $t->unsignedInteger('invoice_id');

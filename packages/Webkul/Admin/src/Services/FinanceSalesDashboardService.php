@@ -158,7 +158,7 @@ class FinanceSalesDashboardService
                 'user:id,name',
                 'quote:id,quote_number,grand_total',
             ])
-            ->withSum('payments as dashboard_paid_total', 'amount')
+            ->withSum('activePayments as dashboard_paid_total', 'amount')
             ->where('invoices.event_status', 'confirm');
     }
 
@@ -195,7 +195,8 @@ class FinanceSalesDashboardService
         $query->whereRaw(
             '(SELECT COALESCE(SUM(crm_dashboard_payments.amount), 0) '
             .'FROM payments AS crm_dashboard_payments '
-            .'WHERE crm_dashboard_payments.invoice_id = invoices.id) '
+            .'WHERE crm_dashboard_payments.invoice_id = invoices.id '
+            .'AND NOT EXISTS (SELECT 1 FROM payment_voids WHERE payment_voids.payment_id = crm_dashboard_payments.id)) '
             .'< COALESCE(invoices.grand_total, 0)'
         );
     }
@@ -204,7 +205,8 @@ class FinanceSalesDashboardService
     {
         $paidSql = '(SELECT COALESCE(SUM(crm_focus_payments.amount), 0) '
             .'FROM payments AS crm_focus_payments '
-            .'WHERE crm_focus_payments.invoice_id = invoices.id)';
+            .'WHERE crm_focus_payments.invoice_id = invoices.id '
+            .'AND NOT EXISTS (SELECT 1 FROM payment_voids WHERE payment_voids.payment_id = crm_focus_payments.id))';
 
         match ($focus) {
             'unpaid' => $query->whereRaw($paidSql.' <= 0'),

@@ -3,6 +3,7 @@
 namespace Webkul\Invoice\Services;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
@@ -29,7 +30,7 @@ class PaymentService
                 ->findOrFail($invoice->id);
 
             if ($invoice->status === 'void') {
-                throw \Illuminate\Validation\ValidationException::withMessages(['invoice' => 'Invoice VOID tidak dapat menerima pembayaran.']);
+                throw ValidationException::withMessages(['invoice' => 'Invoice VOID tidak dapat menerima pembayaran.']);
             }
 
             /**
@@ -65,20 +66,15 @@ class PaymentService
 
                 'amount' => $amount,
 
-                'payment_method' =>
-                    $data['payment_method'] ?? null,
+                'payment_method' => $data['payment_method'] ?? null,
 
-                'reference_number' =>
-                    $data['reference_number'] ?? null,
+                'reference_number' => $data['reference_number'] ?? null,
 
-                'notes' =>
-                    $data['notes'] ?? null,
+                'notes' => $data['notes'] ?? null,
 
-                'paid_at' =>
-                    $data['paid_at'] ?? now(),
+                'paid_at' => $data['paid_at'] ?? now(),
 
-                'created_by' =>
-                    $data['created_by'] ?? null,
+                'created_by' => $data['created_by'] ?? null,
             ]);
 
             /**
@@ -93,7 +89,7 @@ class PaymentService
              *
              * supaya data tetap konsisten.
              */
-            $paidAmount = (float) Payment::query()
+            $paidAmount = (float) Payment::query()->notVoided()
                 ->where(
                     'invoice_id',
                     $invoice->id

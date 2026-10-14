@@ -33,7 +33,13 @@ class Payment extends Model implements PaymentContract
     /** Wrong entries remain visible in history but are not actual receipts. */
     public function scopeNotVoided(Builder $query): Builder
     {
-        return $query->whereHas('invoice', fn (Builder $invoice) => $invoice->notVoided());
+        return $query->whereDoesntHave('voidRecord')
+            ->whereHas('invoice', fn (Builder $invoice) => $invoice->notVoided());
+    }
+
+    public function voidRecord()
+    {
+        return $this->hasOne(PaymentVoidRecord::class, 'payment_id');
     }
 
     public function creator()
