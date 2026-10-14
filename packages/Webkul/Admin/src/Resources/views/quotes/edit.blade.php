@@ -4,6 +4,8 @@
     <x-slot:title>
         @lang('admin::app.quotes.edit.title')
     </x-slot>
+    @include('admin::historical-documents.notice', ['record' => $quote])
+
 
     {!! view_render_event('admin.contacts.quotes.edit.form_controls.before', ['quote' => $quote]) !!}
 

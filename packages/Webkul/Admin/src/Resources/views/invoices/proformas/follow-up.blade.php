@@ -18,7 +18,7 @@
                     @php($pendingSnapshot = $pendingProforma->quote_snapshot['attributes'] ?? [])
                     <tr class="border-b border-amber-100 dark:border-gray-800">
                         <td class="p-3">{{ $pendingProforma->proforma_number }}<br><span class="text-xs text-gray-500">{{ $pendingProforma->issued_at?->format('d/m/Y') }}</span></td>
-                        <td class="p-3">{{ $pendingSnapshot['subject'] ?? '-' }}<br>{{ $pendingSnapshot['bill_to_company_name'] ?? '-' }}</td>
+                        <td class="p-3">{{ $pendingSnapshot['subject'] ?? '-' }}<br>{{ $pendingProforma->billToIdentity()['company_name'] ?? '-' }}</td>
                         <td class="p-3 whitespace-nowrap">{{ $pendingProforma->billingLabel() }}<br>Rp {{ number_format((float) $pendingProforma->amount, 0, ',', '.') }}</td>
                         <td class="p-3">{{ max(0, (int) $pendingProforma->issued_at?->diffInDays(today(), false)) }} hari<br>{{ $pendingProforma->due_at?->format('d/m/Y') }}</td>
                         <td class="p-3">{{ $pendingProforma->creator?->name ?? '-' }}</td>

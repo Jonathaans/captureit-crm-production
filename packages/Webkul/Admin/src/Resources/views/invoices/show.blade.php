@@ -2,6 +2,8 @@
     <x-slot:title>
         {{ $invoice->invoice_number }}
     </x-slot>
+    @include('admin::historical-documents.notice', ['record' => $invoice])
+
 
 @php
     $totalExpense = (float) $invoice->expenses->sum('amount');

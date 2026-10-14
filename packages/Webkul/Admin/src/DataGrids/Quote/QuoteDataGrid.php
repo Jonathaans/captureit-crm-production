@@ -29,6 +29,8 @@ class QuoteDataGrid extends DataGrid
                 'quotes.expired_at',
                 'quotes.grand_total',
                 'quotes.created_at',
+                'quotes.historical_batch_id',
+                DB::raw('COALESCE(quotes.document_date, quotes.created_at) as document_date'),
 
                 'users.id as user_id',
                 'users.name as sales_person',
@@ -108,6 +110,8 @@ class QuoteDataGrid extends DataGrid
             'expired_at',
             'quotes.expired_at'
         );
+
+        $this->addFilter('document_date', DB::raw('COALESCE(quotes.document_date, quotes.created_at)'));
 
         $this->addFilter(
             'created_at',
@@ -357,8 +361,18 @@ $this->addColumn([
         ]);
 
         /**
-         * Created At.
+         * Original document date and CRM creation date.
          */
+        $this->addColumn([
+            'index' => 'document_date',
+            'label' => 'Tanggal dokumen',
+            'type' => 'date',
+            'searchable' => false,
+            'sortable' => true,
+            'filterable' => true,
+            'closure' => fn ($row) => core()->formatDate($row->document_date, 'd M Y'),
+        ]);
+
         $this->addColumn([
             'index' => 'created_at',
             'label' => trans(

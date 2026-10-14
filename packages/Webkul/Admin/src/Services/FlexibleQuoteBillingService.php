@@ -7,10 +7,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Webkul\Core\Support\DocumentNumbers;
 use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\ProformaInvoice;
-use Webkul\Invoice\Services\InvoiceNumberHistory;
 use Webkul\Invoice\Services\PaymentService;
 use Webkul\Invoice\Support\BillingDescription;
 use Webkul\Quote\Models\Quote;
@@ -656,17 +656,7 @@ class FlexibleQuoteBillingService
 
     private function nextInvoiceNumber(): string
     {
-        $prefix = 'INV '.now()->format('ym').'-';
-
-        $sequence = app(InvoiceNumberHistory::class)
-            ->lastSequence($prefix) + 1;
-
-        return $prefix.str_pad(
-            (string) $sequence,
-            4,
-            '0',
-            STR_PAD_LEFT
-        );
+        return app(DocumentNumbers::class)->next('invoice', 'INV '.now()->format('ym').'-');
     }
 
     /**

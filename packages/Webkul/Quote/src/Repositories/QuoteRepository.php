@@ -239,7 +239,7 @@ class QuoteRepository extends Repository
     public function getQuotesCount($startDate, $endDate)
     {
         return $this
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereDocumentDateBetween($startDate, $endDate)
             ->get()
             ->count();
     }

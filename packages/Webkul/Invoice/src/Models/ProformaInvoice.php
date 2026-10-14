@@ -46,6 +46,19 @@ class ProformaInvoice extends Model
         };
     }
 
+    /** Display corrected contact names without changing the commercial snapshot. */
+    public function billToIdentity(): array
+    {
+        $attributes = $this->quote_snapshot['attributes'];
+
+        return (new Invoice)->forceFill([
+            'person_id' => $attributes['person_id'] ?? null,
+            'bill_to_display_mode' => $attributes['bill_to_display_mode'] ?? 'person',
+            'bill_to_person_name' => $attributes['bill_to_person_name'] ?? null,
+            'bill_to_company_name' => $attributes['bill_to_company_name'] ?? null,
+        ])->billToIdentity();
+    }
+
     /** Frozen commercial data used for both DP and settlement invoices. */
     public function snapshotQuote(): Quote
     {

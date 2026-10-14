@@ -474,10 +474,10 @@ class QuoteController extends Controller
             (string) $quote->quote_number
         ) ?: '';
 
-        $clientName = $quote->bill_to_company_name
-            ?: $quote->bill_to_person_name
-            ?: $quote->person?->organization?->name
+        $clientName = $quote->person?->organization?->name
+            ?: $quote->bill_to_company_name
             ?: $quote->person?->name
+            ?: $quote->bill_to_person_name
             ?: 'client';
 
         $fileName = 'QT-'

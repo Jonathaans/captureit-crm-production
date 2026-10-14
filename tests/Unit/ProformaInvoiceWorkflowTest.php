@@ -1126,3 +1126,28 @@ it('renders the financial report and pending list for an authorized finance user
     $this->get(route('admin.proformas.index', ['status' => 'issued']))
         ->assertOk()->assertSee('Belum menjadi Invoice')->assertSee($proforma->proforma_number);
 });
+
+it('refreshes corrected contact names across quote proforma and invoice displays without changing agreed amounts', function () {
+    DB::table('organizations')->insert(['id' => 1, 'name' => 'Company Awal']);
+    DB::table('persons')->insert(['id' => 1, 'name' => 'Customer', 'organization_id' => 1]);
+    $this->quote->update(['person_id' => 1]);
+    $proforma = $this->proformas->create($this->quote, $this->input);
+    $invoice = $this->billing->approveProforma($proforma);
+    $before = $invoice->getAttributes();
+    DB::table('persons')->where('id', 1)->update(['name' => 'Nama Person Baru']);
+    DB::table('organizations')->where('id', 1)->update(['name' => 'PT Company Baru']);
+    $invoice->refresh();
+    expect($invoice->billToIdentity()['person_name'])->toBe('Nama Person Baru')
+        ->and($invoice->billToIdentity()['company_name'])->toBe('PT Company Baru')
+        ->and($invoice->getAttributes())->toBe($before);
+    foreach ([
+        view('admin::invoices.pdf', ['invoice' => $invoice->load('items')])->render(),
+        view('admin::quotes.pdf', ['quote' => $this->quote->fresh('items')])->render(),
+        view('admin::invoices.proformas.print', ['proforma' => $proforma->fresh()])->render(),
+    ] as $html) {
+        expect($html)->toContain('Nama Person Baru', 'PT Company Baru')->not->toContain('Company Awal');
+    }
+    DB::table('persons')->insert(['id' => 2, 'name' => 'Different Recipient']);
+    $this->quote->update(['person_id' => 2]);
+    expect($invoice->fresh()->billToIdentity()['person_name'])->toBe('Nama Person Baru');
+});
