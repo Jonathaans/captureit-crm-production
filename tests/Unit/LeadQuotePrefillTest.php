@@ -15,6 +15,10 @@ use Webkul\Quote\Repositories\QuoteRepository;
 
 uses(TestCase::class);
 
+afterEach(function (): void {
+    $this->travelBack();
+});
+
 function leadQuotePrefillControllerFixture(object $lead, int $leadId): QuoteController
 {
     $quotes = Mockery::mock(QuoteRepository::class);
@@ -97,6 +101,7 @@ it('copies product details and prices while preserving pcs day and historical li
 });
 
 it('copies matching Lead fields and keeps quotation numbering and totals independent', function (): void {
+    $this->travelTo(now()->parse('2026-10-12 12:00:00'));
     $lead = (object) [
         'title' => 'Gathering PT Contoh',
         'description' => 'Photobooth di ballroom, mulai pukul 18.00.',
@@ -126,6 +131,13 @@ it('copies matching Lead fields and keeps quotation numbering and totals indepen
         ->and($values['payment_term'])->toBe('14 Days')
         ->and(array_intersect_key($values, array_flip(['quote_number', 'project_code', 'grand_total', 'lead_value', 'id'])))->toBe([]);
 });
+
+it('prefills a usable validity date when the Lead close date is absent invalid or past', function (mixed $date): void {
+    $this->travelTo(now()->parse('2026-10-12 12:00:00'));
+    $lead = (object) ['expected_close_date' => $date, 'person' => null];
+
+    expect((new LeadQuotePrefillService)->attributes($lead)['expired_at'])->toBe('2026-10-12');
+})->with([null, '', 'not-a-date', '2026-10-01', '2026-10-12']);
 
 it('prefers the Lead address and falls back to company then contact without requiring an address', function (): void {
     $lead = (object) [

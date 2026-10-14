@@ -44,6 +44,14 @@ class LeadQuotePrefillService
             $this->value($lead->person ?? null, 'address'),
         ]);
 
+        $expiredAt = $this->date($lead->expected_close_date ?? null);
+        $today = now()->toDateString();
+
+        // An old Lead must not prefill a new quote with an already expired date.
+        if ($expiredAt === null || $expiredAt < $today) {
+            $expiredAt = $today;
+        }
+
         return [
             'subject' => $lead->title ?? '',
             'description' => $lead->description ?? '',
@@ -51,7 +59,7 @@ class LeadQuotePrefillService
             'user_id' => $lead->user_id ?? null,
             'billing_address' => $address,
             'shipping_address' => $address,
-            'expired_at' => $this->date($lead->expected_close_date ?? null) ?? now()->toDateString(),
+            'expired_at' => $expiredAt,
             'event_date' => $this->date($this->value($lead, 'event_date')),
             'location' => $this->value($lead, 'location') ?? '',
             'business_unit' => $this->value($lead, 'business_unit') ?? '',

@@ -2,6 +2,7 @@
 
 namespace Webkul\Admin\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -154,7 +155,7 @@ class CrmReadOnlyArchivePolicyService
             return 'Quotation sudah dikonversi menjadi Invoice.';
         }
 
-        if ($expiredAt !== null && strtotime((string) $expiredAt) <= time()) {
+        if ($this->quoteHasExpired($expiredAt)) {
             return 'Quotation sudah kedaluwarsa.';
         }
 
@@ -179,15 +180,24 @@ class CrmReadOnlyArchivePolicyService
             return 'Item Quotation terkunci karena Quotation sudah menjadi Invoice.';
         }
 
-        if (
-            isset($quote->expired_at)
-            && $quote->expired_at !== null
-            && strtotime((string) $quote->expired_at) <= time()
-        ) {
+        if ($this->quoteHasExpired($quote->expired_at ?? null)) {
             return 'Item Quotation terkunci karena Quotation sudah kedaluwarsa.';
         }
 
         return null;
+    }
+
+    private function quoteHasExpired(mixed $expiredAt): bool
+    {
+        if ($expiredAt === null || $expiredAt === '') {
+            return false;
+        }
+
+        // Valid Until is a calendar date: the quote remains valid all that day.
+        $timezone = config('app.timezone');
+
+        return CarbonImmutable::parse($expiredAt, $timezone)->startOfDay()
+            ->lt(CarbonImmutable::today($timezone));
     }
 
     private function invoiceReason(Model $model): ?string

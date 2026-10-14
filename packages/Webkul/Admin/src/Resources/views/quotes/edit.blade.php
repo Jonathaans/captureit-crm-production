@@ -75,11 +75,7 @@
                 </div>
             @endif
 
-            @if ($errors->has('archive'))
-                <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
-                    {{ $errors->first('archive') }}
-                </div>
-            @endif
+            @include('admin::quotes.partials.validation-summary')
 
             <v-quote :errors="errors">
                 <x-admin::shimmer.quotes />
