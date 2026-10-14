@@ -4,51 +4,143 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $proforma->proforma_number }}</title>
-    <style>
-        body { font: 14px/1.6 Arial, sans-serif; color: #18232e; margin: 32px auto; max-width: 820px; padding: 0 24px; }
-        header { border-bottom: 3px solid #e97930; padding-bottom: 16px; } h1 { margin-bottom: 0; }
-        table { border-collapse: collapse; width: 100%; margin: 24px 0; } th, td { border-bottom: 1px solid #dce1e5; padding: 10px; text-align: left; vertical-align: top; }
-        .amount { text-align: right; white-space: nowrap; } .total { font-size: 20px; font-weight: bold; } .terms { white-space: pre-line; }
-        @media print { button { display: none; } body { max-width: none; margin: 0; } tr { break-inside: avoid; } }
-        @page { size: A4; margin: 18mm; }
-    </style>
-</head>
-<body>
     @php
         $snapshot = $proforma->quote_snapshot['attributes'];
         $mode = $snapshot['bill_to_display_mode'] ?? 'person';
+        $money = static fn ($value) => 'Rp '.number_format((float) $value, 2, ',', '.');
+        $address = $snapshot['billing_address'] ?? [];
+        $address = is_array($address) ? $address : (json_decode($address, true) ?: []);
+        $logoPath = public_path('images/logo-varbel.png');
+        if (! file_exists($logoPath)) {
+            $logoPath = public_path('images/logo varbel.png');
+        }
+        $logoData = file_exists($logoPath) ? 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath)) : null;
     @endphp
-    <button type="button" onclick="window.print()">Cetak / Simpan PDF</button>
-    <header>
-        <strong>{{ config('company.legal_name', 'PT. VARBEL ANVAYA BERSAUDARA') }}</strong><br>
-        {{ config('company.address_line_1', 'Jl. Tomang Asli No. 22 RT. 005 RW. 002, Jatipulo, Palmerah') }}<br>
-        {{ config('company.address_line_2', 'Kota Administrasi Jakarta Barat, DKI Jakarta') }}
-        <h1>PROFORMA INVOICE</h1>
-        {{ $proforma->proforma_number }}
-        @if ($proforma->status === 'cancelled')<strong> · DIBATALKAN</strong>@endif
-        @if ($proforma->status === 'converted')<strong> · SUDAH DIPINDAHKAN KE INVOICE</strong>@endif
-        @if ($proforma->invoice?->status === 'void')<p><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat. Catatan pembayaran pada invoice tersebut dibatalkan sebagai salah input.</p>@endif
-    </header>
-    <table>
-        <tr><td><strong>Kepada</strong><br>
-            @if ($mode !== 'person'){{ $snapshot['bill_to_company_name'] ?? '-' }}<br>@endif
-            @if ($mode !== 'company'){{ $snapshot['bill_to_person_name'] ?? '-' }}@endif
-        </td><td>Tanggal: {{ $proforma->issued_at->format('d/m/Y') }}<br>Jatuh tempo: {{ $proforma->due_at->format('d/m/Y') }}</td></tr>
-        <tr><td>Penawaran: {{ $snapshot['quote_number'] ?? '-' }}<br>Proyek: {{ $snapshot['subject'] ?? '-' }}</td><td>Kode proyek: {{ $snapshot['project_code'] ?? '-' }}<br>Event: {{ $snapshot['event_date'] ?? '-' }}</td></tr>
-    </table>
-    <table>
-        <thead><tr><th>Permintaan pembayaran</th><th class="amount">Nominal</th></tr></thead>
-        <tbody>
-            <tr><td>Total penawaran yang disepakati</td><td class="amount">Rp {{ number_format((float) $snapshot['grand_total'], 2, ',', '.') }}</td></tr>
-            <tr class="total"><td>{{ $proforma->billingLabel() }}</td><td class="amount">Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</td></tr>
+    <style>
+        @page { size:A4; margin:20mm 12mm 18mm; }
+        * { box-sizing:border-box; }
+        body { margin:0; color:#1f2937; font:11px/1.65 Arial, sans-serif; background:#eef0f3; }
+        .print-toolbar { max-width:210mm; margin:24px auto 16px; padding:0 12px; display:flex; align-items:center; justify-content:space-between; gap:16px; font-size:13px; color:#64748b; }
+        .print-toolbar button { border:0; border-radius:8px; background:#172033; color:#fff; padding:12px 20px; cursor:pointer; font:600 13px Arial,sans-serif; }
+        .paper { width:210mm; min-height:297mm; padding:20mm 12mm 18mm; margin:0 auto 32px; background:white; box-shadow:0 8px 32px #18232e12; }
+        table { width:100%; border-collapse:collapse; table-layout:fixed; }
+        th, td { text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+        .top-table td { vertical-align:middle; }
+        .logo-cell { width:52%; }
+        .company-cell { width:48%; padding-left:24px; color:#111827; }
+        .logo { max-width:170px; max-height:82px; }
+        .company-name { margin:0 0 3px; font-size:12px; line-height:1.25; font-weight:bold; }
+        .company-line { margin:1px 0; font-size:8px; line-height:1.45; }
+        .header-rule { margin-top:12px; border-top:2px solid #d5aa2a; }
+        .document-title { text-align:center; padding:24px 0 26px; }
+        h1 { margin:0; color:#111827; font-size:24px; letter-spacing:2px; line-height:1.4; }
+        .document-number { margin-top:6px; color:#64748b; font-size:11px; }
+        .document-status { margin:12px 0 0; color:#9a5c1c; font-size:10px; font-weight:bold; }
+        .void-note { padding:12px 14px; border:1px solid #b55a5a; color:#8f3333; margin-bottom:20px; }
+        .meta-table { margin-bottom:24px; }
+        .meta-table > tbody > tr > td:first-child { width:55%; padding-right:24px; }
+        .meta-table > tbody > tr > td:last-child { width:45%; }
+        .label { margin-bottom:6px; font-size:9px; font-weight:bold; letter-spacing:.9px; text-transform:uppercase; color:#6b7280; }
+        .customer-name { font-size:12px; font-weight:bold; margin:0 0 4px; }
+        .metadata td { padding:3px 0; font-size:10px; }
+        .metadata td:first-child { width:43%; color:#64748b; }
+        .metadata td:last-child { font-weight:bold; }
+        .project { border-top:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; padding:15px 0; margin-bottom:24px; }
+        .project strong { font-size:12px; }
+        .project-line { color:#64748b; margin-top:4px; font-size:10px; }
+        .billing th { background:#f3f4f6; padding:11px 14px; font-size:9px; letter-spacing:.6px; text-transform:uppercase; color:#4b5563; border-bottom:1px solid #d1d5db; }
+        .billing td { padding:18px 14px; border-bottom:1px solid #e5e7eb; }
+        .billing .description { font-size:12px; font-weight:bold; }
+        .billing .sub { color:#6b7280; font-size:10px; margin-top:4px; }
+        .amount { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+        .totals { margin:18px 0 28px; }
+        .totals td { padding:7px 14px; }
+        .totals .total td { padding:13px 14px; border-top:2px solid #d5aa2a; border-bottom:1px solid #e5e7eb; font-weight:bold; font-size:15px; }
+        .totals .secondary td { color:#64748b; font-size:10px; }
+        .terms-heading { margin:0 0 8px; font-size:11px; font-weight:bold; break-after:avoid; }
+        .terms { white-space:pre-line; overflow-wrap:anywhere; margin:0 0 20px; font-size:10px; line-height:1.8; }
+        .note { margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:9px; line-height:1.7; }
+        @media screen and (max-width:820px) { .paper { width:100%; min-height:auto; padding:32px 20px; } .print-toolbar { flex-wrap:wrap; } .company-cell { padding-left:12px; } .logo { max-width:140px; } h1 { font-size:21px; } }
+        @media print {
+            body { background:#fff; }
+            .print-toolbar, #crm-comm-floating, #crm-comm-toasts { display:none !important; }
+            .paper { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
+            .top-table, .document-title, .project, tr { break-inside:avoid; }
+            thead { display:table-header-group; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-toolbar"><span>Proforma Invoice · Format A4</span><button type="button" onclick="window.print()">Cetak / Simpan PDF</button></div>
+    <main class="paper">
+        {{-- Match the existing Quote letterhead: logo, legal identity, and gold rule. --}}
+        <table class="top-table">
+            <tr>
+                <td class="logo-cell">
+                    @if ($logoData)<img class="logo" src="{{ $logoData }}" alt="Logo perusahaan">@endif
+                </td>
+                <td class="company-cell">
+                    <div class="company-name">{{ config('company.legal_name', 'PT. VARBEL ANVAYA BERSAUDARA') }}</div>
+                    <div class="company-line">{{ config('company.address_line_1', 'Jl. Tomang Asli No. 22 RT. 005 RW. 002, Jatipulo, Palmerah') }}</div>
+                    <div class="company-line">{{ config('company.address_line_2', 'Kota Administrasi Jakarta Barat, DKI Jakarta') }}</div>
+                    <div class="company-line"><strong>Telp:</strong> {{ config('company.phone', '081585573616') }}</div>
+                    <div class="company-line"><strong>Email:</strong> {{ config('company.email', 'financephoto.360@gmail.com') }}</div>
+                    <div class="company-line"><strong>NPWP:</strong> {{ config('company.npwp', '1000.0000.1027.6657') }}</div>
+                </td>
+            </tr>
+        </table>
+        <div class="header-rule"></div>
+        <div class="document-title">
+            <h1>PROFORMA INVOICE</h1>
+            <div class="document-number">{{ $proforma->proforma_number }}</div>
+            @if ($proforma->status === 'cancelled')<p class="document-status">DIBATALKAN</p>@endif
+            @if ($proforma->status === 'converted')<p class="document-status">SUDAH DIPINDAHKAN KE INVOICE</p>@endif
+        </div>
+        @if ($proforma->invoice?->status === 'void')
+            <div class="void-note"><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat. Catatan pembayaran pada invoice tersebut dibatalkan sebagai salah input.</div>
+        @endif
+        <table class="meta-table">
+            <tr>
+                <td>
+                    <div class="label">Ditagihkan kepada</div>
+                    @if ($mode !== 'person')<div class="customer-name">{{ $snapshot['bill_to_company_name'] ?? '-' }}</div>@endif
+                    @if ($mode !== 'company')<div @class(['customer-name' => $mode === 'person'])>{{ $snapshot['bill_to_person_name'] ?? '-' }}</div>@endif
+                    @if (! empty($address['address']))<div style="white-space:pre-line">{{ $address['address'] }}</div>@endif
+                    <div>{{ implode(', ', array_filter([$address['city'] ?? '', $address['state'] ?? '', $address['postcode'] ?? ''])) }}</div>
+                </td>
+                <td>
+                    <table class="metadata">
+                        <tr><td>Tanggal terbit</td><td>{{ $proforma->issued_at->format('d M Y') }}</td></tr>
+                        <tr><td>Jatuh tempo</td><td>{{ $proforma->due_at->format('d M Y') }}</td></tr>
+                        <tr><td>No. penawaran</td><td>{{ $snapshot['quote_number'] ?? '-' }}</td></tr>
+                        <tr><td>Kode proyek</td><td>{{ $snapshot['project_code'] ?? '-' }}</td></tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        <div class="project">
+            <div class="label">Proyek / Acara</div>
+            <strong>{{ $snapshot['subject'] ?? '-' }}</strong>
+            <div class="project-line">Tanggal event: {{ ! empty($snapshot['event_date']) ? \Carbon\Carbon::parse($snapshot['event_date'])->format('d M Y') : '-' }} @if (! empty($snapshot['location'])) · {{ $snapshot['location'] }} @endif</div>
+        </div>
+        <table class="billing">
+            <thead><tr><th style="width:62%">Permintaan pembayaran</th><th class="amount">Nominal</th></tr></thead>
+            <tbody><tr><td><div class="description">{{ $proforma->billingLabel() }}</div><div class="sub">Sesuai penawaran {{ $snapshot['quote_number'] ?? '-' }} dan ketentuan pembayaran yang disepakati.</div></td><td class="amount"><strong>{{ $money($proforma->amount) }}</strong></td></tr></tbody>
+        </table>
+        <table class="totals">
+            <tr class="secondary"><td>Total penawaran yang disepakati</td><td class="amount">{{ $money($snapshot['grand_total']) }}</td></tr>
+            <tr class="total"><td>Jumlah tagihan proforma</td><td class="amount">{{ $money($proforma->amount) }}</td></tr>
             @if ($proforma->billing_type === 'down_payment')
-            <tr><td>Sisa untuk invoice pelunasan</td><td class="amount">Rp {{ number_format((float) $snapshot['grand_total'] - (float) $proforma->amount, 2, ',', '.') }}</td></tr>
+                <tr class="secondary"><td>Sisa untuk invoice pelunasan</td><td class="amount">{{ $money((float) $snapshot['grand_total'] - (float) $proforma->amount) }}</td></tr>
             @endif
-        </tbody>
-    </table>
-    <strong>TOP / Ketentuan pembayaran</strong>
-    <p class="terms">{{ $snapshot['payment_term'] ?? '-' }}</p>
-    @if (config('company.payment_info'))<p class="terms">{{ config('company.payment_info') }}</p>@endif
-    <p>Proforma ini belum merupakan invoice aktual. Invoice diterbitkan setelah event disetujui atau pembayaran diterima.</p>
+        </table>
+        <h2 class="terms-heading">TOP / Ketentuan pembayaran</h2>
+        <p class="terms">{{ $snapshot['payment_term'] ?? '-' }}</p>
+        @if (config('company.payment_info'))
+            <h2 class="terms-heading">Informasi pembayaran</h2>
+            <p class="terms">{{ config('company.payment_info') }}</p>
+        @endif
+        <p class="note">Proforma ini merupakan permintaan pembayaran dan belum menjadi invoice aktual. Invoice diterbitkan setelah event disetujui atau pembayaran diterima. Mohon cantumkan nomor proforma pada konfirmasi pembayaran.</p>
+    </main>
 </body>
 </html>
