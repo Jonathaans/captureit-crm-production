@@ -42,6 +42,8 @@
                 </div>
             </div>
 
+            @include('admin::quotes.partials.validation-summary')
+
             <v-quote :errors="errors" :set-values="setValues">
                 <x-admin::shimmer.quotes />
             </v-quote>

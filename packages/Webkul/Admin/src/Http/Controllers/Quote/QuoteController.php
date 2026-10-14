@@ -556,7 +556,8 @@ class QuoteController extends Controller
         $this->validate(request(), array_merge(
             $this->billToValidationRules(),
             [
-                'items' => 'required|array',
+                'expired_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+                'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',
                 'items.*.unit' => 'required|in:pcs,day',
                 'items.*.quantity' => 'required|integer|min:1',
@@ -566,7 +567,9 @@ class QuoteController extends Controller
                 'items.*.tax_amount' => 'required|numeric|min:0',
                 'items.*.final_total' => 'required|numeric|min:0',
             ]
-        ));
+        ), [
+            'expired_at.after_or_equal' => 'Valid Until minimal hari ini. Pilih tanggal berlaku quotation yang baru.',
+        ]);
     }
 
     /**
