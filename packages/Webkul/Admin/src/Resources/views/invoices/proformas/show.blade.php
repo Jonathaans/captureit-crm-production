@@ -3,6 +3,7 @@
     @include('admin::invoices.partials.workspace-styles')
     @php
         $snapshot = $proforma->quote_snapshot['attributes'];
+        $identity = $proforma->billToIdentity();
         $money = static fn ($value) => 'Rp '.number_format((float) $value, 2, ',', '.');
         $paymentErrors = $errors->hasAny(['amount', 'paid_at', 'payment_method', 'reference_number', 'notes']);
     @endphp
@@ -31,7 +32,7 @@
                 <section class="fw-card">
                     <h2 class="fw-title fw-card-heading">Informasi penagihan</h2>
                     <dl class="fw-definition fw-pad">
-                        <div><dt>Pelanggan / Perusahaan</dt><dd><strong>{{ $snapshot['bill_to_company_name'] ?? '-' }}</strong><br>{{ $snapshot['bill_to_person_name'] ?? '-' }}</dd></div>
+                        <div><dt>Pelanggan / Perusahaan</dt><dd><strong>{{ $identity['company_name'] ?? '-' }}</strong><br>{{ $identity['person_name'] ?? '-' }}</dd></div>
                         <div><dt>Penawaran / Kode proyek</dt><dd>{{ $snapshot['quote_number'] ?? '-' }}<br>{{ $snapshot['project_code'] ?? '-' }}</dd></div>
                         <div><dt>Tanggal proforma</dt><dd>{{ $proforma->issued_at->format('d M Y') }}</dd></div>
                         <div><dt>Tanggal event</dt><dd>{{ ! empty($snapshot['event_date']) ? \Carbon\Carbon::parse($snapshot['event_date'])->format('d M Y') : '-' }}</dd></div>

@@ -28,6 +28,9 @@
             class="max-sm:w-full"
             style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto"
         >
+            @if (bouncer()->hasPermission('historical-documents'))
+                <a href="{{ route('admin.historical-documents.index') }}" class="secondary-button">Input data lama</a>
+            @endif
             <a href="{{ route('admin.proformas.index') }}" class="secondary-button">Proforma</a>
             @if (bouncer()->hasPermission('invoices.generate'))
             <a

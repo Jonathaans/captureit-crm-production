@@ -39,7 +39,7 @@ class Quote extends AbstractReporting
     {
         return $this->quoteRepository
             ->resetModel()
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereDocumentDateBetween($startDate, $endDate)
             ->count();
     }
 }

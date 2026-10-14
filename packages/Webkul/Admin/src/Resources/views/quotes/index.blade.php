@@ -18,6 +18,9 @@
                 <div class="flex items-center gap-x-2.5">
                     <!-- Create button for Quote -->
                     <div class="flex items-center gap-x-2.5">
+                        @if (bouncer()->hasPermission('historical-documents'))
+                            <a href="{{ route('admin.historical-documents.index') }}" class="secondary-button">Input data lama</a>
+                        @endif
                         @if (bouncer()->hasPermission('quotes.create'))
                             <a 
                                 href="{{ route('admin.quotes.create') }}"
@@ -56,6 +59,9 @@
                         <div class="flex items-center gap-x-2.5">
                             {!! view_render_event('admin.quotes.index.create_button.before') !!}
                             
+                            @if (bouncer()->hasPermission('historical-documents'))
+                                <a href="{{ route('admin.historical-documents.index') }}" class="secondary-button">Input data lama</a>
+                            @endif
                             @if (bouncer()->hasPermission('quotes.create'))
                                 <a 
                                     href="{{ route('admin.quotes.create') }}"

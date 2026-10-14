@@ -2,6 +2,8 @@
 
 namespace Webkul\Quote\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Webkul\Attribute\Traits\CustomAttribute;
 use Webkul\Contact\Models\PersonProxy;
@@ -17,6 +19,7 @@ class Quote extends Model implements QuoteContract
 
     protected $casts = [
         'event_date' => 'date',
+        'document_date' => 'date',
         'billing_address' => 'array',
         'shipping_address' => 'array',
         'expired_at' => 'datetime',
@@ -48,6 +51,14 @@ class Quote extends Model implements QuoteContract
         'client_signer_name',
         'client_signer_company',
     ];
+
+    /** Historical quotes belong to their original document period. */
+    public function scopeWhereDocumentDateBetween(Builder $query, $startDate, $endDate): Builder
+    {
+        return $query->where(fn (Builder $period) => $period
+            ->whereBetween('document_date', [Carbon::parse($startDate)->toDateString(), Carbon::parse($endDate)->toDateString()])
+            ->orWhere(fn (Builder $regular) => $regular->whereNull('document_date')->whereBetween('created_at', [$startDate, $endDate])));
+    }
 
     public function items()
     {

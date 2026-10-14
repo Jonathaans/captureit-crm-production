@@ -29,6 +29,7 @@
                         @forelse ($proformas as $proforma)
                             @php
                                 $snapshot = $proforma->quote_snapshot['attributes'];
+                                $identity = $proforma->billToIdentity();
                                 $isOverdue = $proforma->status === 'issued' && $proforma->due_at?->lt(today());
                             @endphp
                             <tr>
@@ -42,9 +43,9 @@
                                 </td>
                                 <td><strong>{{ $snapshot['subject'] ?? '-' }}</strong><small>{{ $snapshot['quote_number'] ?? '-' }} · {{ $snapshot['project_code'] ?? '-' }}</small></td>
                                 <td>
-                                    {{ ($snapshot['bill_to_company_name'] ?? '') ?: ($snapshot['bill_to_person_name'] ?? '-') }}
-                                    @if (! empty($snapshot['bill_to_company_name']) && ! empty($snapshot['bill_to_person_name']))
-                                        <small>{{ $snapshot['bill_to_person_name'] }}</small>
+                                    {{ ($identity['company_name'] ?? '') ?: ($identity['person_name'] ?? '-') }}
+                                    @if (! empty($identity['company_name']) && ! empty($identity['person_name']))
+                                        <small>{{ $identity['person_name'] }}</small>
                                     @endif
                                 </td>
                                 <td class="fw-number"><strong>Rp {{ number_format((float) $proforma->amount, 2, ',', '.') }}</strong><small>{{ $proforma->billingLabel() }}</small></td>

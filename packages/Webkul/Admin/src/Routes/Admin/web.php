@@ -41,6 +41,7 @@ require 'activities-routes.php';
 require 'quote-routes.php';
 
 require __DIR__.'/invoice-routes.php';
+require __DIR__.'/historical-document-routes.php';
 /**
  * Delivery Order routes.
  */

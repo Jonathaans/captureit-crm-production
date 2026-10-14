@@ -2318,11 +2318,8 @@ public function generateDeliveryOrder(
             (string) $invoice->invoice_number
         ) ?: '';
 
-        $clientName = $invoice->bill_to_company_name
-            ?: $invoice->bill_to_person_name
-            ?: $invoice->person?->organization?->name
-            ?: $invoice->person?->name
-            ?: 'client';
+        $identity = $invoice->billToIdentity();
+        $clientName = $identity['company_name'] ?: $identity['person_name'];
 
         $fileName = 'INV-'
             .$this->pdfFileSegment($documentNumber, 'invoice')

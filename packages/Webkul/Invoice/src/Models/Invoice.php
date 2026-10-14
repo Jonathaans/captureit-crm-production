@@ -74,7 +74,8 @@ class Invoice extends Model implements InvoiceContract
     }
 
     /**
-     * Resolve the immutable invoice snapshot, with a legacy Quote fallback.
+     * Keep the selected recipient/mode, while reflecting name corrections in Contacts.
+     * Stored names remain the fallback when a contact is no longer available.
      */
     public function billToIdentity(): array
     {
@@ -102,6 +103,12 @@ class Invoice extends Model implements InvoiceContract
                 ?: $this->person?->organization?->name
                 ?: ''
             ));
+        }
+
+        $person = $this->person_id ? $this->person : (! $hasInvoiceSnapshot ? $this->quote?->person : null);
+        if ($person) {
+            $personName = trim((string) $person->name) ?: $personName;
+            $companyName = trim((string) $person->organization?->name) ?: $companyName;
         }
 
         if (! in_array($mode, ['person', 'company', 'both'], true)) {

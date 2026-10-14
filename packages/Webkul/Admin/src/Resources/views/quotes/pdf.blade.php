@@ -93,8 +93,9 @@
             ? core()->country_name($billingAddress['country'])
             : '';
 
-        $createdDate = $quote->created_at
-            ? core()->formatDate($quote->created_at, 'd M Y')
+        $documentDate = $quote->document_date ?? $quote->created_at;
+        $createdDate = $documentDate
+            ? core()->formatDate($documentDate, 'd M Y')
             : '-';
 
         $eventDate = $quote->event_date
@@ -107,19 +108,19 @@
 
         /*
          * Bill To and approval identity.
-         * New quotes use immutable snapshots. Legacy quotes keep working by
-         * falling back to the current Person and Organization relationship.
+         * Contact name corrections appear on newly rendered documents.
+         * Snapshots remain the fallback and signature overrides remain explicit.
          */
         $hasBillToSnapshot = trim((string) ($quote->bill_to_person_name ?? '')) !== '';
 
         $billToPersonName = trim((string) (
-            $quote->bill_to_person_name
-                ?: $quote->person?->name
+            $quote->person?->name
+                ?: $quote->bill_to_person_name
         )) ?: '-';
 
         $billToCompanyName = trim((string) (
-            $quote->bill_to_company_name
-                ?: $quote->person?->organization?->name
+            $quote->person?->organization?->name
+                ?: $quote->bill_to_company_name
         ));
 
         $billToDisplayMode = in_array(
@@ -139,12 +140,19 @@
                 ?: $billToPersonName
         )) ?: '-';
 
+        if ($quote->client_signer_name && $quote->client_signer_name === $quote->bill_to_person_name) {
+            $clientName = $billToPersonName;
+        }
+
         $clientCompanyName = $hasBillToSnapshot
             ? trim((string) ($quote->client_signer_company ?? ''))
             : trim((string) (
                 $quote->client_signer_company
                     ?: $billToCompanyName
             ));
+        if ($quote->client_signer_company && $quote->client_signer_company === $quote->bill_to_company_name) {
+            $clientCompanyName = $billToCompanyName;
+        }
     @endphp
 
     <style>

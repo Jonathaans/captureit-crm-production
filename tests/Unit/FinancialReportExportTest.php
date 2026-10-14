@@ -119,7 +119,7 @@ function financialExportRows(array $filters = []): array
     return $rows;
 }
 
-it('exports the invoice company snapshot with legacy fallbacks and an empty PPH field', function (array $invoice, array $quote, string $expected): void {
+it('exports corrected contact companies with snapshot fallbacks and unchanged financial values', function (array $invoice, array $quote, string $expected): void {
     DB::table('invoices')->where('id', 1)->update($invoice ?: ['subject' => 'Legacy invoice']);
     DB::table('quotes')->where('id', 1)->update($quote ?: ['bill_to_company_name' => '']);
 
@@ -133,13 +133,14 @@ it('exports the invoice company snapshot with legacy fallbacks and an empty PPH 
         ->and($rows[0]['Outstanding Current'])->toBe('700')
         ->and($rows[0]['Cash Surplus In Period'])->toBe('200');
 })->with([
-    'invoice snapshot takes priority' => [['bill_to_company_name' => 'Invoice Company'], ['bill_to_company_name' => 'Quote Company'], 'Invoice Company'],
-    'legacy quote snapshot' => [[], ['bill_to_company_name' => 'Quote Company'], 'Quote Company'],
-    'legacy quote organization' => [[], [], 'Quote Customer Company'],
-    'legacy invoice organization' => [['quote_id' => null], [], 'Current Customer Company'],
+    'corrected invoice contact takes priority' => [['bill_to_company_name' => 'Invoice Company'], ['bill_to_company_name' => 'Quote Company'], 'Current Customer Company'],
+    'invoice recipient remains independent of quote' => [[], ['bill_to_company_name' => 'Quote Company'], 'Current Customer Company'],
+    'legacy quote recipient when invoice has no contact' => [['person_id' => null], [], 'Quote Customer Company'],
+    'standalone invoice contact' => [['quote_id' => null], [], 'Current Customer Company'],
     'missing identity' => [['quote_id' => null, 'person_id' => null], [], '-'],
-    'person-only snapshot stays immutable' => [['bill_to_person_name' => 'Original Customer'], [], '-'],
-    'CSV punctuation and Unicode' => [['bill_to_company_name' => "PT \"Café\"; Indonesia\nJakarta"], [], "PT \"Café\"; Indonesia\nJakarta"],
+    'person-only print mode still identifies company in report' => [['bill_to_person_name' => 'Original Customer'], [], 'Current Customer Company'],
+    'removed contact falls back to snapshot' => [['person_id' => null, 'bill_to_company_name' => 'Invoice Company'], [], 'Invoice Company'],
+    'CSV punctuation and Unicode in fallback' => [['person_id' => null, 'bill_to_company_name' => "PT \"Café\"; Indonesia\nJakarta"], [], "PT \"Café\"; Indonesia\nJakarta"],
 ]);
 
 it('keeps period business unit status and product filters in the financial export', function (): void {

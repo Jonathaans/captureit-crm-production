@@ -6,7 +6,8 @@
     <title>{{ $proforma->proforma_number }}</title>
     @php
         $snapshot = $proforma->quote_snapshot['attributes'];
-        $mode = $snapshot['bill_to_display_mode'] ?? 'person';
+        $identity = $proforma->billToIdentity();
+        $mode = $identity['mode'];
         $money = static fn ($value) => 'Rp '.number_format((float) $value, 2, ',', '.');
         $address = $snapshot['billing_address'] ?? [];
         $address = is_array($address) ? $address : (json_decode($address, true) ?: []);
@@ -103,8 +104,8 @@
             <tr>
                 <td>
                     <div class="label">Ditagihkan kepada</div>
-                    @if ($mode !== 'person')<div class="customer-name">{{ $snapshot['bill_to_company_name'] ?? '-' }}</div>@endif
-                    @if ($mode !== 'company')<div @class(['customer-name' => $mode === 'person'])>{{ $snapshot['bill_to_person_name'] ?? '-' }}</div>@endif
+                    @if ($mode !== 'person')<div class="customer-name">{{ $identity['company_name'] ?? '-' }}</div>@endif
+                    @if ($mode !== 'company')<div @class(['customer-name' => $mode === 'person'])>{{ $identity['person_name'] ?? '-' }}</div>@endif
                     @if (! empty($address['address']))<div style="white-space:pre-line">{{ $address['address'] }}</div>@endif
                     <div>{{ implode(', ', array_filter([$address['city'] ?? '', $address['state'] ?? '', $address['postcode'] ?? ''])) }}</div>
                 </td>

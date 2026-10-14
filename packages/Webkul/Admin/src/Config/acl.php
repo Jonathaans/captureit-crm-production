@@ -2,6 +2,18 @@
 
 return [
     [
+        'key' => 'historical-documents',
+        'name' => 'Input Data Lama (Quote, Invoice, Pembayaran)',
+        'route' => [
+            'admin.historical-documents.index', 'admin.historical-documents.create',
+            'admin.historical-documents.template', 'admin.historical-documents.preview',
+            'admin.historical-documents.upload', 'admin.historical-documents.show',
+            'admin.historical-documents.map', 'admin.historical-documents.store',
+        ],
+        'sort' => 9,
+    ],
+
+    [
         'key' => 'dashboard',
         'name' => 'admin::app.layouts.dashboard',
         'route' => 'admin.dashboard.index',
