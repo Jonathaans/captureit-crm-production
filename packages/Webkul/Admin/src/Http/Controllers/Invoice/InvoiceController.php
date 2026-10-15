@@ -942,8 +942,15 @@ public function index()
  * EDIT INVOICE
  * ============================================================
  */
-public function edit(int $id): View
+public function edit(int $id): View|RedirectResponse
 {
+    $linked = Invoice::findOrFail($id);
+    if ($linked->quote_id) {
+        abort_unless(bouncer()->hasPermission('invoices.revise'), 403);
+
+        return redirect()->route('admin.commercial-revisions.edit', ['invoice', $id]);
+    }
+
     $invoice = Invoice::with([
         'items',
         'payments.creator',
@@ -970,6 +977,12 @@ public function update(
 ): RedirectResponse {
     $invoice = Invoice::with('items')
         ->findOrFail($id);
+    if ($invoice->quote_id) {
+        abort_unless(bouncer()->hasPermission('invoices.revise'), 403);
+
+        return redirect()->route('admin.commercial-revisions.edit', ['invoice', $id])
+            ->with('warning', 'Gunakan Revisi Transaksi agar seluruh dokumen terkait ikut diperbarui. Perubahan dari form lama belum disimpan.');
+    }
     /*
 |--------------------------------------------------------------------------
 | PATCH: CREATE NEW PERSON FROM EDIT INVOICE

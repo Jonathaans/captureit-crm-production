@@ -19,6 +19,7 @@ use Webkul\Admin\Http\Controllers\Controller;
 use Webkul\Admin\Http\Requests\AttributeForm;
 use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Admin\Http\Resources\QuoteResource;
+use Webkul\Admin\Services\CommercialRevisionService;
 use Webkul\Admin\Services\CrmReadOnlyArchivePolicyService;
 use Webkul\Admin\Services\LeadQuotePrefillService;
 use Webkul\Admin\Services\QuoteDeletionService;
@@ -203,11 +204,15 @@ class QuoteController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(int $id): View
+    public function edit(int $id): View|RedirectResponse
     {
         $quote = $this->quoteRepository->findOrFail($id);
 
         $this->preventUnauthorizedAccess($quote->user_id);
+
+        if (app(CommercialRevisionService::class)->hasDocuments($id) && bouncer()->hasPermission('invoices.revise')) {
+            return redirect()->route('admin.commercial-revisions.edit', ['quote', $id]);
+        }
 
         $leadId = old('lead_id') ?? optional($quote->leads->first())->id;
 
@@ -258,6 +263,13 @@ class QuoteController extends Controller
         $currentQuote = $this->quoteRepository->findOrFail($id);
 
         $this->preventUnauthorizedAccess($currentQuote->user_id);
+
+        if (app(CommercialRevisionService::class)->hasDocuments($id)) {
+            abort_unless(bouncer()->hasPermission('invoices.revise'), 403);
+
+            return redirect()->route('admin.commercial-revisions.edit', ['quote', $id])
+                ->with('warning', 'Gunakan Revisi Transaksi agar seluruh dokumen terkait ikut diperbarui. Perubahan dari form lama belum disimpan.');
+        }
 
         /*
          * A converted or expired quotation remains commercially read-only,

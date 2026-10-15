@@ -101,6 +101,11 @@ return [
         'route' => ['admin.invoices.show', 'admin.proformas.show'],
         'sort' => 1,
     ], [
+        'key' => 'invoices.revise',
+        'name' => 'Revisi Transaksi (Quote, Proforma, Invoice)',
+        'route' => ['admin.commercial-revisions.edit', 'admin.commercial-revisions.update'],
+        'sort' => 2,
+    ], [
         /**
          * Generate Invoice from Quote.
          */
