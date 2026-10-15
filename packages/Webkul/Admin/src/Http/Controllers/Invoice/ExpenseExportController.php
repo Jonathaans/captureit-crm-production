@@ -5,6 +5,7 @@ namespace Webkul\Admin\Http\Controllers\Invoice;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Webkul\Admin\Http\Controllers\Controller;
+use Webkul\Invoice\Repositories\ExpenseCategoryRepository;
 
 /**
  * EXPORT ALL EXPENSES CSV V1
@@ -17,10 +18,11 @@ class ExpenseExportController extends Controller
 
     public function export(): StreamedResponse
     {
+        $categoryLabels = app(ExpenseCategoryRepository::class)->labels();
         $fileName = 'All-Expenses-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(
-            function (): void {
+            function () use ($categoryLabels): void {
                 $stream = fopen('php://output', 'w');
 
                 if ($stream === false) {
@@ -103,7 +105,7 @@ class ExpenseExportController extends Controller
                         }
 
                         $expenseNameCategory = trim((string) ($expense->description ?? ''));
-                        $category = ucwords(str_replace('_', ' ', trim((string) ($expense->category ?? ''))));
+                        $category = ExpenseCategoryRepository::label($expense->category, $categoryLabels);
 
                         if ($expenseNameCategory !== '' && $category !== '') {
                             $expenseNameCategory .= ' / '.$category;

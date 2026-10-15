@@ -16,6 +16,7 @@ use Webkul\Core\Support\BusinessUnit;
 use Webkul\Invoice\Models\Expense;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
+use Webkul\Invoice\Repositories\ExpenseCategoryRepository;
 
 class FinancialReportController extends Controller
 {
@@ -728,6 +729,7 @@ class FinancialReportController extends Controller
      */
     private function buildExpenseByCategory(array $filters)
     {
+        $categoryLabels = app(ExpenseCategoryRepository::class)->labels();
         $query = Expense::query()
             ->selectRaw(
                 'category, SUM(amount) as total'
@@ -749,15 +751,9 @@ class FinancialReportController extends Controller
             ->groupBy('category')
             ->orderByDesc('total')
             ->get()
-            ->map(function ($item) {
+            ->map(function ($item) use ($categoryLabels) {
                 return [
-                    'category' => ucwords(
-                        str_replace(
-                            '_',
-                            ' ',
-                            $item->category ?: 'uncategorized'
-                        )
-                    ),
+                    'category' => ExpenseCategoryRepository::label($item->category, $categoryLabels),
                     'total' => (float) $item->total,
                 ];
             });

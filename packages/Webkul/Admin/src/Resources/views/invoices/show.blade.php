@@ -2,10 +2,20 @@
     <x-slot:title>
         {{ $invoice->invoice_number }}
     </x-slot>
+    @push('styles')
+        <style>
+            .invoice-activity-grid { font-family:Inter,Arial,sans-serif; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(340px,1fr); gap:24px; align-items:start; }
+            .invoice-activity-grid > * { min-width:0; }
+            @media (max-width:1150px) { .invoice-activity-grid { grid-template-columns:1fr; } }
+            @media (max-width:600px) { .invoice-payment-row { grid-template-columns:1fr !important; gap:12px !important; } }
+        </style>
+    @endpush
     @include('admin::historical-documents.notice', ['record' => $invoice])
 
 
 @php
+    $expenseCategories = app(\Webkul\Invoice\Repositories\ExpenseCategoryRepository::class)->directory();
+    $categoryLabels = $expenseCategories->pluck('name', 'code')->all();
     $totalExpense = (float) $invoice->expenses->sum('amount');
 
     $estimatedProfit =
@@ -486,21 +496,14 @@
             </p>
         </div>
 
-        <div
-            style="
-                display:grid;
-                grid-template-columns:repeat(auto-fit, minmax(min(520px, 100%), 1fr));
-                gap:24px;
-                align-items:start;
-            "
-        >
+        <div class="invoice-activity-grid">
 
         <!-- ===================================================== -->
         <!-- LEFT COLUMN -->
         <!-- ===================================================== -->
 
         <div
-            class="space-y-6"
+            class="invoice-activity-history"
             style="display:flex; flex-direction:column; gap:24px;"
         >
 
@@ -713,7 +716,7 @@
                             $paymentIsVoid = $invoice->status === 'void' || $payment->voidRecord !== null;
                         @endphp
                         <div
-                            class="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-950"
+                            class="invoice-payment-row rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-950"
                             style="
                                 display:grid;
                                 grid-template-columns:minmax(0, 1fr) auto;
@@ -778,6 +781,11 @@
                                         @endif
                                     </div>
 
+                                    @if ($payment->receipt_path)
+                                        <a v-pre class="secondary-button mt-3" style="max-width:100%;overflow-wrap:anywhere;white-space:normal" href="{{ route('admin.invoices.payments.receipt', [$invoice->id, $payment->id]) }}">
+                                            ↓ Unduh bon · {{ $payment->receipt_name }}
+                                        </a>
+                                    @endif
                                     @if ($payment->notes)
                                         <div
                                             class="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
@@ -903,8 +911,8 @@
                                 {{ $expense->description }}
                             </p>
 
-                            <span class="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-                                {{ ucwords(str_replace('_', ' ', $expense->category)) }}
+                            <span v-pre class="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                                {{ \Webkul\Invoice\Repositories\ExpenseCategoryRepository::label($expense->category, $categoryLabels) }}
                             </span>
                         </div>
 
@@ -1004,59 +1012,17 @@
                                                 <span class="text-red-600">*</span>
                                             </label>
 
-                                            <select
+                                            <select v-pre
                                                 name="category"
                                                 class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                                                 required
                                             >
-                                                <option
-                                                    value="transport"
-                                                    @selected($expense->category === 'transport')
-                                                >
-                                                    Transport
-                                                </option>
-
-                                                <option
-                                                    value="crew"
-                                                    @selected($expense->category === 'crew')
-                                                >
-                                                    Crew
-                                                </option>
-
-                                                <option
-                                                    value="printing"
-                                                    @selected($expense->category === 'printing')
-                                                >
-                                                    Printing
-                                                </option>
-
-                                                <option
-                                                    value="equipment"
-                                                    @selected($expense->category === 'equipment')
-                                                >
-                                                    Equipment
-                                                </option>
-
-                                                <option
-                                                    value="vendor"
-                                                    @selected($expense->category === 'vendor')
-                                                >
-                                                    Vendor
-                                                </option>
-
-                                                <option
-                                                    value="consumption"
-                                                    @selected($expense->category === 'consumption')
-                                                >
-                                                    Consumption
-                                                </option>
-
-                                                <option
-                                                    value="other"
-                                                    @selected($expense->category === 'other')
-                                                >
-                                                    Other
-                                                </option>
+                                                @foreach ($expenseCategories->filter(fn ($category) => $category->is_active || $category->code === $expense->category) as $category)
+                                                    <option value="{{ $category->code }}" @selected($expense->category === $category->code)>{{ $category->name }}{{ $category->is_active ? '' : ' (nonaktif)' }}</option>
+                                                @endforeach
+                                                @if (! $expenseCategories->contains('code', $expense->category))
+                                                    <option value="{{ $expense->category }}" selected>{{ \Webkul\Invoice\Repositories\ExpenseCategoryRepository::label($expense->category, $categoryLabels) }} (kategori lama)</option>
+                                                @endif
                                             </select>
                                         </div>
 
@@ -1256,620 +1222,10 @@
 
 
         <!-- ===================================================== -->
-        <!-- RIGHT COLUMN -->
-        <!-- ===================================================== -->
-
-        <div
-            class="space-y-6"
-            style="display:flex; flex-direction:column; gap:32px;"
-        >
-
-            <div class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Transaction Actions
-                </p>
-
-                <h3 class="mt-1 text-lg font-semibold text-gray-800 dark:text-white">
-                    Payment & Expense
-                </h3>
-
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    Catat transaksi masuk dan pengeluaran project dari satu area.
-                </p>
-            </div>
-
-            <!-- ================================================= -->
-            <!-- ADD PAYMENT -->
-            <!-- ================================================= -->
-
-            <div
-                class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
-                style="border-top:3px solid #16a34a;"
-            >
-                <div class="p-6 pb-4">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-wider text-green-600 dark:text-green-400">
-                                Money In
-                            </p>
-
-                            <h2 class="mt-1 text-lg font-semibold text-gray-800 dark:text-white">
-                                Record Payment
-                            </h2>
-
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                Catat pembayaran yang diterima dari customer.
-                            </p>
-                        </div>
-
-                        <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold uppercase text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                            {{ $invoice->status }}
-                        </span>
-                    </div>
-                </div>
-
-                @if ($invoice->status === 'void')
-                    <p class="p-4 font-semibold text-red-700">Invoice VOID tidak dapat menerima pembayaran.</p>
-                @elseif ($invoice->status === 'paid')
-                    <div class="mt-5 rounded-lg bg-green-50 p-4 dark:bg-green-900/20">
-                        <p class="font-medium text-green-700 dark:text-green-400">
-                            Invoice sudah lunas.
-                        </p>
-
-                        <p class="mt-1 text-sm text-green-600 dark:text-green-500">
-                            Tidak ada sisa pembayaran.
-                        </p>
-                    </div>
-                @else
-                    <div
-                        class="px-6 pb-2"
-                        style="
-                            display:grid;
-                            grid-template-columns:repeat(2, minmax(0, 1fr));
-                            gap:12px;
-                        "
-                    >
-                        <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
-                            <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Remaining
-                            </p>
-
-                            <p class="mt-1 text-lg font-bold text-red-600 dark:text-red-400">
-                                Rp {{ number_format((float) $invoice->balance_due, 0, ',', '.') }}
-                            </p>
-                        </div>
-
-                        <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
-                            <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Received
-                            </p>
-
-                            <p class="mt-1 text-lg font-bold text-green-600 dark:text-green-400">
-                                Rp {{ number_format((float) $invoice->paid_amount, 0, ',', '.') }}
-                            </p>
-                        </div>
-                    </div>
-
-                    <details open>
-                        <summary
-                            class="mx-6 mt-3 flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-semibold"
-                            style="
-                                color:#ffffff;
-                                background:#0f172a;
-                                border-color:#166534;
-                            "
-                        >
-                            <span style="display:flex; align-items:center; gap:10px;">
-                                <span
-                                    style="
-                                        display:inline-flex;
-                                        align-items:center;
-                                        justify-content:center;
-                                        width:24px;
-                                        height:24px;
-                                        border-radius:9999px;
-                                        background:#16a34a;
-                                        color:#ffffff;
-                                        font-weight:700;
-                                        line-height:1;
-                                    "
-                                >
-                                    +
-                                </span>
-
-                                <span>Input Payment</span>
-                            </span>
-
-                            <span
-                                style="
-                                    color:#bbf7d0;
-                                    font-size:12px;
-                                    font-weight:500;
-                                "
-                            >
-                                Click to expand / collapse
-                            </span>
-                        </summary>
-
-                    <form
-                        method="POST"
-                        action="{{ route('admin.invoices.payments.store', $invoice->id) }}"
-                        class="space-y-5 p-6"
-                    >
-                        @csrf
-
-                        <!-- Payment Amount -->
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Amount
-                                <span class="text-red-600">*</span>
-                            </label>
-
-                            <input
-                                type="number"
-                                name="amount"
-                                min="1"
-                                max="{{ (float) $invoice->balance_due }}"
-                                step="0.01"
-                                placeholder="Masukkan nominal pembayaran"
-                                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                                required
-                            >
-
-                            @error('amount')
-                                <p class="mt-2 text-sm text-red-600">
-                                    {{ $message }}
-                                </p>
-                            @enderror
-                        </div>
-
-                        <!-- Payment Method -->
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Payment Method
-                            </label>
-
-                            <select
-                                name="payment_method"
-                                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            >
-                                <option value="bank_transfer">
-                                    Bank Transfer
-                                </option>
-
-                                <option value="cash">
-                                    Cash
-                                </option>
-
-                                <option value="other">
-                                    Other
-                                </option>
-                            </select>
-                        </div>
-
-                        <!-- Payment Reference -->
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Reference Number
-                            </label>
-
-                            <input
-                                type="text"
-                                name="reference_number"
-                                placeholder="Contoh: BCA-TRX-001"
-                                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            >
-                        </div>
-
-                        <!-- Payment Date -->
-<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    <!-- Payment Date -->
-    <div>
-        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Payment Date
-        </label>
-
-        <input
-            type="date"
-            name="paid_date"
-            value="{{ old('paid_date', now()->format('Y-m-d')) }}"
-            onclick="if (this.showPicker) this.showPicker()"
-            class="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-        >
-
-        @error('paid_date')
-            <p class="mt-2 text-sm text-red-600">
-                {{ $message }}
-            </p>
-        @enderror
-    </div>
-
-    <!-- Payment Time -->
-    <div>
-        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Payment Time
-        </label>
-
-        <input
-            type="time"
-            name="paid_time"
-            value="{{ old('paid_time', now()->format('H:i')) }}"
-            step="60"
-            onclick="if (this.showPicker) this.showPicker()"
-            class="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-        >
-
-        @error('paid_time')
-            <p class="mt-2 text-sm text-red-600">
-                {{ $message }}
-            </p>
-        @enderror
-    </div>
-</div>
-
-                        <!-- Payment Notes -->
-                        <div>
-                            <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Notes
-                            </label>
-
-                            <textarea
-                                name="notes"
-                                rows="3"
-                                placeholder="Catatan pembayaran..."
-                                class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            ></textarea>
-                        </div>
-
-                        <button
-                            type="submit"
-                            class="primary-button w-full justify-center"
-                        >
-                            Add Payment
-                        </button>
-                    </form>
-                    </details>
-                @endif
-            </div>
-
-
-            <!-- ================================================= -->
-            <!-- ADD EXPENSE -->
-            <!-- ================================================= -->
-
-            <div
-                class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
-                style="border-top:3px solid #f97316;"
-            >
-                <div class="p-6 pb-4">
-                    <div class="flex items-start justify-between gap-4">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
-                                Money Out
-                            </p>
-
-                            <h2 class="mt-1 text-lg font-semibold text-gray-800 dark:text-white">
-                                Record Expense
-                            </h2>
-
-                            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                Catat bon atau pengeluaran yang berkaitan dengan invoice ini.
-                            </p>
-                        </div>
-
-                        <span class="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold uppercase text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
-                            Expense
-                        </span>
-                    </div>
-                </div>
-
-                <div
-                    class="px-6 pb-2"
-                    style="
-                        display:grid;
-                        grid-template-columns:repeat(2, minmax(0, 1fr));
-                        gap:12px;
-                    "
-                >
-                    <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
-                        <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Current Expense
-                        </p>
-
-                        <p class="mt-1 text-lg font-bold text-orange-600 dark:text-orange-400">
-                            Rp {{ number_format($totalExpense, 0, ',', '.') }}
-                        </p>
-                    </div>
-
-                    <div class="rounded-lg bg-gray-50 p-4 dark:bg-gray-950">
-                        <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            Est. Profit
-                        </p>
-
-                        <p class="mt-1 text-lg font-bold {{ $estimatedProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">
-                            Rp {{ number_format($estimatedProfit, 0, ',', '.') }}
-                        </p>
-                    </div>
-                </div>
-
-                @if ($invoice->event_status === 'cancel' || $invoice->status === 'void')
-                    <div class="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/40 dark:bg-red-900/10">
-                        <p class="font-semibold text-red-700 dark:text-red-300">
-                            Expense dinonaktifkan untuk event Cancel atau invoice VOID.
-                        </p>
-
-                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">
-                            History expense tetap tersedia, tetapi expense baru tidak dapat ditambahkan.
-                        </p>
-                    </div>
-                @else
-                    <details>
-                        <summary
-                            class="mx-6 mt-3 flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-semibold"
-                            style="
-                                color:#ffffff;
-                                background:#111827;
-                                border-color:#475569;
-                            "
-                        >
-                            <span style="display:flex; align-items:center; gap:10px;">
-                                <span
-                                    style="
-                                        display:inline-flex;
-                                        align-items:center;
-                                        justify-content:center;
-                                        width:24px;
-                                        height:24px;
-                                        border-radius:9999px;
-                                        background:#f97316;
-                                        color:#ffffff;
-                                        font-weight:700;
-                                        line-height:1;
-                                    "
-                                >
-                                    +
-                                </span>
-
-                                <span>Input Expense</span>
-                            </span>
-
-                            <span
-                                style="
-                                    color:#cbd5e1;
-                                    font-size:12px;
-                                    font-weight:500;
-                                "
-                            >
-                                Click to expand / collapse
-                            </span>
-                        </summary>
-
-                <form
-                    method="POST"
-                    action="{{ route('admin.invoices.expenses.store', $invoice->id) }}"
-                    enctype="multipart/form-data"
-                    class="space-y-5 p-6"
-                >
-                    @csrf
-
-                    <!-- Category -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Category
-                            <span class="text-red-600">*</span>
-                        </label>
-
-                        <select
-                            name="category"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            required
-                        >
-                            <option value="">
-                                Select Category
-                            </option>
-
-                            <option value="transport" @selected(old('category') === 'transport')>
-                                Transport
-                            </option>
-
-                            <option value="crew" @selected(old('category') === 'crew')>
-                                Crew
-                            </option>
-
-                            <option value="printing" @selected(old('category') === 'printing')>
-                                Printing
-                            </option>
-
-                            <option value="equipment" @selected(old('category') === 'equipment')>
-                                Equipment
-                            </option>
-
-                            <option value="vendor" @selected(old('category') === 'vendor')>
-                                Vendor
-                            </option>
-
-                            <option value="consumption" @selected(old('category') === 'consumption')>
-                                Consumption
-                            </option>
-
-                            <option value="other" @selected(old('category') === 'other')>
-                                Other
-                            </option>
-                        </select>
-
-                        @error('category')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Expense Description -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Description
-                            <span class="text-red-600">*</span>
-                        </label>
-
-                        <input
-                            type="text"
-                            name="description"
-                            value="{{ old('description') }}"
-                            placeholder="Contoh: Transport crew"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            required
-                        >
-
-                        @error('description')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Expense Amount -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Amount
-                            <span class="text-red-600">*</span>
-                        </label>
-
-                        <input
-                            type="number"
-                            name="amount"
-                            min="1"
-                            step="1"
-                            placeholder="Contoh: 500000"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            required
-                        >
-
-                        @error('amount')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Expense Date -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Expense Date
-                            <span class="text-red-600">*</span>
-                        </label>
-
-                        <input
-                            type="date"
-                            name="expense_date"
-                            value="{{ old('expense_date', now()->toDateString()) }}"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                            required
-                        >
-
-                        @error('expense_date')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Vendor -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Vendor
-                        </label>
-
-                        <input
-                            type="text"
-                            name="vendor_name"
-                            value="{{ old('vendor_name') }}"
-                            placeholder="Contoh: Grab / Percetakan ABC"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        >
-
-                        @error('vendor_name')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Reference -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Reference / No. Bon
-                        </label>
-
-                        <input
-                            type="text"
-                            name="reference_number"
-                            value="{{ old('reference_number') }}"
-                            placeholder="Contoh: BON-001"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        >
-
-                        @error('reference_number')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Receipt -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Upload Bon
-                        </label>
-
-                        <input
-                            type="file"
-                            name="receipt"
-                            accept=".jpg,.jpeg,.png,.pdf"
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300"
-                        >
-
-                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            Format: JPG, JPEG, PNG atau PDF. Maksimal 5 MB.
-                        </p>
-
-                        @error('receipt')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <!-- Expense Notes -->
-                    <div>
-                        <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Notes
-                        </label>
-
-                        <textarea
-                            name="notes"
-                            rows="3"
-                            placeholder="Catatan tambahan..."
-                            class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                        >{{ old('notes') }}</textarea>
-
-                        @error('notes')
-                            <p class="mt-2 text-sm text-red-600">
-                                {{ $message }}
-                            </p>
-                        @enderror
-                    </div>
-
-                    <button
-                        type="submit"
-                        class="primary-button w-full justify-center"
-                    >
-                        Save Expense
-                    </button>
-                </form>
-                    </details>
-                @endif
-            </div>
         </div>
+
+        <!-- RIGHT COLUMN -->
+        @include('admin::invoices.partials.transaction-forms')
     </div>
     </section>
 </x-admin::layouts>

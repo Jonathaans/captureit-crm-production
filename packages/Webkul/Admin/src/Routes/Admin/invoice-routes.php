@@ -6,6 +6,7 @@ use Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController;
+use Webkul\Admin\Http\Controllers\Invoice\InvoicePaymentController;
 use Webkul\Admin\Http\Controllers\Invoice\PaymentVoidController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController;
@@ -216,7 +217,7 @@ Route::controller(InvoiceController::class)
         |--------------------------------------------------------------------------
         */
 
-        Route::post('{id}/payments', 'addPayment')
+        Route::post('{id}/payments', [InvoicePaymentController::class, 'store'])
             ->name('admin.invoices.payments.store');
 
         /*
@@ -255,3 +256,6 @@ Route::controller(InvoiceController::class)
             'admin.invoices.event-status.update'
         );
     });
+
+Route::get('invoices/{invoiceId}/payments/{paymentId}/receipt', [InvoicePaymentController::class, 'receipt'])
+    ->whereNumber(['invoiceId', 'paymentId'])->name('admin.invoices.payments.receipt');

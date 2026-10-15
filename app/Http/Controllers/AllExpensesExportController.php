@@ -8,6 +8,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Webkul\Invoice\Repositories\ExpenseCategoryRepository;
 
 /**
  * FINANCIAL REPORT EXPORT ALL EXPENSES V4 DATA MAPPING FIX
@@ -21,10 +22,11 @@ final class AllExpensesExportController extends Controller
 
     public function __invoke(): StreamedResponse
     {
+        $categoryLabels = app(ExpenseCategoryRepository::class)->labels();
         $filename = 'all-expenses-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(
-            function (): void {
+            function () use ($categoryLabels): void {
                 $out = fopen('php://output', 'wb');
 
                 if ($out === false) {
@@ -158,9 +160,7 @@ final class AllExpensesExportController extends Controller
                         ]);
 
                         $expenseName = trim((string) ($expense->description ?? ''));
-                        $category = ucwords(
-                            str_replace('_', ' ', trim((string) ($expense->category ?? '')))
-                        );
+                        $category = ExpenseCategoryRepository::label($expense->category, $categoryLabels);
 
                         if ($expenseName !== '' && $category !== '') {
                             $expenseName .= ' / '.$category;
