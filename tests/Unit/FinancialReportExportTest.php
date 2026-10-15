@@ -127,7 +127,8 @@ it('exports corrected contact companies with snapshot fallbacks and unchanged fi
 
     expect($rows)->toHaveCount(1)
         ->and($rows[0]['Company'])->toBe($expected)
-        ->and($rows[0]['PPH'])->toBe('')
+        ->and($rows[0]['PPH'])->toBe('0')
+        ->and($rows[0]['Net Payable after PPH'])->toBe('1000')
         ->and($rows[0]['Invoice Value'])->toBe('1000')
         ->and($rows[0]['Paid To Date'])->toBe('300')
         ->and($rows[0]['Outstanding Current'])->toBe('700')

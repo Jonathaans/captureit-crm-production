@@ -111,6 +111,7 @@ class FinanceSalesDashboardService
             ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
     }
+
     private function metricInvoices(array $filters): Collection
     {
         $query = $this->baseInvoiceQuery();
@@ -180,11 +181,9 @@ class FinanceSalesDashboardService
                     ->where('invoices.invoice_number', 'like', $term)
                     ->orWhere('invoices.project_code', 'like', $term)
                     ->orWhere('invoices.subject', 'like', $term)
-                    ->orWhereHas('person', fn (Builder $person) =>
-                        $person->where('name', 'like', $term)
+                    ->orWhereHas('person', fn (Builder $person) => $person->where('name', 'like', $term)
                     )
-                    ->orWhereHas('user', fn (Builder $user) =>
-                        $user->where('name', 'like', $term)
+                    ->orWhereHas('user', fn (Builder $user) => $user->where('name', 'like', $term)
                     );
             });
         }
@@ -197,7 +196,7 @@ class FinanceSalesDashboardService
             .'FROM payments AS crm_dashboard_payments '
             .'WHERE crm_dashboard_payments.invoice_id = invoices.id '
             .'AND NOT EXISTS (SELECT 1 FROM payment_voids WHERE payment_voids.payment_id = crm_dashboard_payments.id)) '
-            .'< COALESCE(invoices.grand_total, 0)'
+            .'< (COALESCE(invoices.grand_total, 0) - COALESCE(invoices.pph_amount, 0))'
         );
     }
 
@@ -212,7 +211,7 @@ class FinanceSalesDashboardService
             'unpaid' => $query->whereRaw($paidSql.' <= 0'),
             'partial' => $query
                 ->whereRaw($paidSql.' > 0')
-                ->whereRaw($paidSql.' < COALESCE(invoices.grand_total, 0)'),
+                ->whereRaw($paidSql.' < (COALESCE(invoices.grand_total, 0) - COALESCE(invoices.pph_amount, 0))'),
             'overdue' => $query
                 ->whereNotNull('invoices.due_at')
                 ->whereDate('invoices.due_at', '<', today()),
@@ -261,7 +260,7 @@ class FinanceSalesDashboardService
         return $downPayments
             ->filter(function (Invoice $invoice) use ($blockedQuoteIds) {
                 $paid = (float) ($invoice->dashboard_paid_total ?? 0);
-                $outstanding = max(0, (float) $invoice->grand_total - $paid);
+                $outstanding = max(0, $invoice->cashPayable() - $paid);
                 $remaining = (float) ($invoice->remaining_amount_snapshot ?? 0);
 
                 return $outstanding <= 0.009
@@ -294,7 +293,7 @@ class FinanceSalesDashboardService
     {
         $invoiceValue = round((float) $invoice->grand_total, 2);
         $paid = round((float) ($invoice->dashboard_paid_total ?? 0), 2);
-        $outstanding = round(max(0, $invoiceValue - $paid), 2);
+        $outstanding = round(max(0, $invoice->cashPayable() - $paid), 2);
         $dueAt = $invoice->due_at ? Carbon::parse($invoice->due_at)->startOfDay() : null;
         $today = today()->startOfDay();
         $daysOverdue = $dueAt && $dueAt->lt($today)

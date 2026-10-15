@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Webkul\Admin\Repositories\CommercialRevisionRepository;
+use Webkul\Core\Support\PphGrossUp;
 use Webkul\Core\Support\SalesLineItem;
 use Webkul\Invoice\Support\BillingDescription;
 
@@ -30,7 +31,7 @@ class CommercialRevisionService
         $dp = collect($invoices)->firstWhere('billing_type', 'down_payment')
             ?? collect($proformas)->firstWhere('billing_type', 'down_payment');
         $quote = $state['quote'];
-        $form = Arr::only($quote, ['subject', 'person_id', 'event_date', 'location', 'payment_term', 'description', 'bill_to_display_mode', 'adjustment_amount']);
+        $form = Arr::only($quote, ['subject', 'person_id', 'event_date', 'location', 'payment_term', 'description', 'bill_to_display_mode', 'adjustment_amount', 'pph_gross_up']);
         $form['bill_to_display_mode'] = $form['bill_to_display_mode'] ?: 'person';
         $form['event_date'] = $form['event_date'] ? substr($form['event_date'], 0, 10) : null;
         foreach (['billing_address', 'shipping_address'] as $field) {
@@ -39,7 +40,7 @@ class CommercialRevisionService
         $form['items'] = array_map(fn ($item) => SalesLineItem::display($item), $state['quote_items']);
         $form['document_discount_amount'] = $this->money((float) $quote['discount_amount'] - array_sum(array_column($state['quote_items'], 'discount_amount')));
         $form['document_tax_amount'] = $this->money((float) $quote['tax_amount'] - array_sum(array_column($state['quote_items'], 'tax_amount')));
-        $form['dp_amount'] = $dp ? ($dp['grand_total'] ?? $dp['amount']) : null;
+        $form['dp_amount'] = $dp ? $this->money(($dp['grand_total'] ?? $dp['amount']) - (float) ($dp['pph_amount'] ?? 0)) : null;
 
         return compact('state', 'form', 'invoices', 'proformas') + [
             'fingerprint' => $this->fingerprint($state),
@@ -63,23 +64,25 @@ class CommercialRevisionService
             [$invoices, $proformas] = $this->activeDocuments($before);
             $this->assertOpenPeriods($before, $invoices);
             [$header, $items] = $this->commercialData($before, $data);
-            [$amounts, $dpAmount] = $this->billingAmounts($before, $invoices, $proformas, $data, $header['grand_total']);
+            [$amounts, $dpAmount] = $this->billingAmounts($before, $invoices, $proformas, $data, $header);
 
             $quoteItems = $this->documents->updateQuote($quoteId, $header, $items);
             foreach ($invoices as $invoice) {
                 $billingType = $invoice['billing_type'] ?: 'full_payment';
                 $amount = $amounts[$invoice['id']];
                 $paid = $this->paid($before, $invoice['id']);
+                $pph = $this->documentPph($header, $billingType, $amount, $dpAmount);
+                $cash = $this->money($amount - $pph);
                 $invoiceHeader = $header;
                 if (! in_array($billingType, ['full_payment', 'full'], true)) {
                     $invoiceHeader = array_replace($invoiceHeader, [
-                        'sub_total' => $amount, 'grand_total' => $amount,
+                        'sub_total' => $cash, 'grand_total' => $amount, 'pph_amount' => $pph,
                         'discount_percent' => 0, 'discount_amount' => 0, 'tax_amount' => 0, 'adjustment_amount' => 0,
                     ]);
                 }
                 $invoiceHeader += [
-                    'paid_amount' => $paid, 'balance_due' => round($amount - $paid, 4),
-                    'status' => $paid >= $amount ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+                    'paid_amount' => $paid, 'balance_due' => round(max(0, $cash - $paid), 4),
+                    'status' => $paid >= $cash ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
                     'quote_total_snapshot' => $header['grand_total'], 'billing_amount' => $amount,
                     'billing_percentage' => round($amount / $header['grand_total'] * 100, 4),
                     'remaining_amount_snapshot' => $billingType === 'down_payment' ? $this->money($header['grand_total'] - $amount) : 0,
@@ -87,7 +90,7 @@ class CommercialRevisionService
                 if ($billingType === 'down_payment' && $this->money($invoice['grand_total']) !== $amount) {
                     $invoiceHeader['billing_method'] = 'nominal';
                 }
-                $this->documents->updateInvoice($invoice, $invoiceHeader, $this->invoiceItems($quoteItems, $amount, $header['grand_total'], $billingType), $before);
+                $this->documents->updateInvoice($invoice, $invoiceHeader, $this->invoiceItems($quoteItems, $cash, $header['grand_total'], $billingType), $before);
             }
 
             $quote = (array) DB::table('quotes')->where('id', $quoteId)->first();
@@ -100,6 +103,8 @@ class CommercialRevisionService
                         default => $header['grand_total'],
                     };
                 $values = [
+                    'pph_gross_up' => $header['pph_gross_up'], 'pph_rate' => $header['pph_rate'],
+                    'pph_amount' => $this->documentPph($header, $proforma['billing_type'], $amount, $dpAmount),
                     'amount' => $amount, 'billing_percentage' => round($amount / $header['grand_total'] * 100, 4),
                     'quote_snapshot' => ['attributes' => $quote, 'items' => $quoteItems],
                 ];
@@ -121,6 +126,7 @@ class CommercialRevisionService
         $money = ['required', 'numeric', 'min:0', 'max:999999999999.99'];
 
         return Validator::make($input, [
+            'pph_gross_up' => ['sometimes', 'boolean'],
             'fingerprint' => ['required', 'regex:/^[a-f0-9]{64}$/'],
             'reason' => ['required', 'string', 'min:5', 'max:2000'],
             'subject' => ['required', 'string', 'max:255'],
@@ -186,14 +192,18 @@ class CommercialRevisionService
             'tax_amount' => $this->money(array_sum(array_column($items, 'tax_amount')) + (float) $data['document_tax_amount']),
             'adjustment_amount' => $this->money($data['adjustment_amount']),
         ];
-        $header['grand_total'] = $this->money($header['sub_total'] - $header['discount_amount'] + $header['tax_amount'] + $header['adjustment_amount']);
+        $enabled = (bool) ($data['pph_gross_up'] ?? $before['quote']['pph_gross_up'] ?? false);
+        $base = $header['sub_total'] - $header['discount_amount'] + $header['adjustment_amount'];
+        $this->ensure(! $enabled || $base > 0, 'pph_gross_up', 'Gross-up memerlukan nilai jasa bersih lebih dari nol.');
+        $header = array_replace($header, PphGrossUp::calculate($base, $header['tax_amount'], $enabled));
         $this->ensure($header['grand_total'] > 0 && $header['grand_total'] <= 999999999999.99, 'items', 'Total transaksi harus lebih dari nol dan dalam batas nominal yang didukung.');
 
         return [$header, $items];
     }
 
-    private function billingAmounts(array $before, array $invoices, array $proformas, array $data, float $total): array
+    private function billingAmounts(array $before, array $invoices, array $proformas, array $data, array $header): array
     {
+        $total = $header['grand_total'];
         $byType = collect($invoices)->groupBy(fn ($i) => in_array($i['billing_type'], [null, 'full', 'full_payment'], true) ? 'full_payment' : $i['billing_type']);
         $this->ensure($byType->every(fn ($group) => $group->count() === 1)
             && ! ($byType->has('full_payment') && count($invoices) > 1), 'billing', 'Rangkaian invoice memiliki tagihan ganda. Periksa data invoice sebelum revisi.');
@@ -203,14 +213,16 @@ class CommercialRevisionService
         $dpProforma = $issued->firstWhere('billing_type', 'down_payment');
         $this->ensure(! ($dp && $dpProforma), 'billing', 'Invoice DP dan proforma DP aktif terduplikasi.');
         $dpSource = $dp ?? $dpProforma;
-        $dpAmount = $dpSource ? $this->money($data['dp_amount'] ?? $dpSource['grand_total'] ?? $dpSource['amount']) : 0.0;
+        $previousCash = $dpSource ? $this->money(($dpSource['grand_total'] ?? $dpSource['amount']) - (float) ($dpSource['pph_amount'] ?? 0)) : 0.0;
+        $dpCash = $dpSource ? $this->money($data['dp_amount'] ?? $previousCash) : 0.0;
+        $dpAmount = PphGrossUp::grossFromCash($dpCash, $header['pph_amount'], $total);
         if ($dpSource) {
             $this->ensure($dpAmount > 0 && $dpAmount < $total, 'dp_amount', 'Nominal DP harus lebih dari nol dan lebih kecil dari total transaksi.');
         } else {
             $this->ensure(empty($data['dp_amount']), 'dp_amount', 'Transaksi ini tidak mempunyai tagihan DP.');
         }
-        if ($dp && $this->paid($before, $dp['id']) >= $this->money($dp['grand_total'])) {
-            $this->ensure($dpAmount === $this->money($dp['grand_total']), 'dp_amount', 'DP sudah lunas. Nominal DP tetap; perubahan nilai transaksi dialokasikan ke pelunasan.');
+        if ($dp && $this->paid($before, $dp['id']) >= $previousCash) {
+            $this->ensure($dpCash === $previousCash, 'dp_amount', 'DP sudah lunas. Nilai transfer netto DP tetap; perubahan nilai transaksi dialokasikan ke pelunasan.');
         }
         foreach ($issued as $pf) {
             $this->ensure(! $byType->has('full_payment') && ! $byType->has('settlement'), 'billing', 'Proforma aktif bertabrakan dengan invoice yang sudah terbit.');
@@ -233,11 +245,23 @@ class CommercialRevisionService
             };
             $paid = $this->paid($before, $invoice['id']);
             $this->ensure(abs($paid - (float) $invoice['paid_amount']) < 0.0001, 'payments', 'Total riwayat pembayaran berbeda dari saldo invoice '.$invoice['invoice_number'].'. Periksa pembayaran sebelum revisi.');
-            $this->ensure($amount >= $paid, 'items', 'Nilai revisi '.$invoice['invoice_number'].' lebih kecil dari pembayaran yang sudah masuk. Selesaikan kelebihan pembayaran terlebih dahulu.');
+            $cash = $this->money($amount - $this->documentPph($header, $kind, $amount, $dpAmount));
+            $this->ensure($cash >= $paid, 'items', 'Nilai revisi '.$invoice['invoice_number'].' lebih kecil dari pembayaran yang sudah masuk. Selesaikan kelebihan pembayaran terlebih dahulu.');
             $amounts[$invoice['id']] = $amount;
         }
 
+        if ($dpSource) {
+            $this->ensure(abs($dpAmount - $this->documentPph($header, 'down_payment', $dpAmount, $dpAmount) - $dpCash) < 0.0001,
+                'dp_amount', 'Pembulatan gross-up tidak cocok dengan DP netto. Periksa nominal pembagian.');
+        }
+
         return [$amounts, $dpAmount];
+    }
+
+    private function documentPph(array $header, string $type, float $amount, float $dpAmount): float
+    {
+        return PphGrossUp::allocate($header['pph_amount'], $header['grand_total'], $amount,
+            $type === 'settlement' ? PphGrossUp::allocate($header['pph_amount'], $header['grand_total'], $dpAmount) : null);
     }
 
     private function invoiceItems(array $items, float $amount, float $total, string $type): array

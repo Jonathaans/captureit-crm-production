@@ -67,22 +67,23 @@
                         <label class="fw-field">Diskon tambahan (Rp)<input name="document_discount_amount" data-document-discount type="number" min="0" step="0.01" required value="{{ $draft['document_discount_amount'] }}"></label>
                         <label class="fw-field">Pajak tambahan (Rp)<input name="document_tax_amount" data-document-tax type="number" min="0" step="0.01" required value="{{ $draft['document_tax_amount'] }}"></label>
                         <label class="fw-field">Penyesuaian (Rp)<input name="adjustment_amount" data-adjustment type="number" step="0.01" required value="{{ $draft['adjustment_amount'] }}"></label>
-                        <div class="fw-metric fw-highlight"><p class="fw-metric-label">Total transaksi setelah revisi</p><p class="fw-value" data-grand-total aria-live="polite"></p></div>
+                        <label class="fw-field">Gross-up PPh 0,5%<select name="pph_gross_up" data-pph-gross-up><option value="0" @selected(empty($draft['pph_gross_up']))>Tidak</option><option value="1" @selected(! empty($draft['pph_gross_up']))>Ya — dipotong oleh pelanggan</option></select><span class="fw-muted">Bruto jasa = netto jasa ÷ 0,995. Pajak lain/PPN terpisah. Bukti potong diterima terpisah dari pelanggan.</span></label>
+                        <div class="fw-metric fw-highlight"><p class="fw-metric-label">Total transaksi setelah revisi</p><p class="fw-value" data-grand-total aria-live="polite"></p><p data-pph-summary class="fw-muted"></p></div>
                     </div>
                 </section>
                 @if ($form['dp_amount'] !== null)
                     <section class="fw-card fw-pad"><h2 class="fw-title">Pembagian tagihan</h2><div class="fw-form-grid" style="margin-top:18px">
-                        <label class="fw-field">Nominal DP (Rp)<input name="dp_amount" data-dp type="number" min="0.01" step="0.01" required value="{{ $draft['dp_amount'] }}" @readonly($paidDp)></label>
+                        <label class="fw-field">Transfer netto DP (Rp)<input name="dp_amount" data-dp type="number" min="0.01" step="0.01" required value="{{ $draft['dp_amount'] }}" @readonly($paidDp)></label>
                         <div><p class="fw-muted">Nilai pelunasan</p><p class="fw-value" data-settlement></p></div>
-                    </div><p class="fw-note">{{ $paidDp ? 'DP sudah lunas. Perubahan total transaksi akan menyesuaikan nilai pelunasan.' : 'Mengubah nominal DP hanya mengubah pembagian DP dan pelunasan. Total transaksi tetap mengikuti rincian produk.' }}</p></section>
+                    </div><p class="fw-note">{{ $paidDp ? 'Transfer netto DP sudah lunas dan tetap. Jika gross-up berubah, bruto DP mengikuti potongan PPh; uang masuk tetap.' : 'Mengubah nominal DP hanya mengubah pembagian DP dan pelunasan. Total transaksi tetap mengikuti rincian produk.' }}</p></section>
                 @endif
                 <section class="fw-card">
                     <h2 class="fw-title fw-card-heading">Periksa perubahan dokumen</h2>
-                    <div class="fw-scroll"><table class="fw-table"><thead><tr><th>Dokumen terkait</th><th class="text-right">Nilai saat ini</th><th class="text-right">Nilai setelah revisi</th><th class="text-right">Sudah dibayar</th><th class="text-right">Sisa tagihan baru</th></tr></thead><tbody>
+                    <div class="fw-scroll"><table class="fw-table"><thead><tr><th>Dokumen terkait</th><th class="text-right">Nilai saat ini</th><th class="text-right">Nilai setelah revisi</th><th class="text-right">PPh baru</th><th class="text-right">Sudah dibayar</th><th class="text-right">Sisa tagihan baru</th></tr></thead><tbody>
                         @foreach ($documents as $doc)
                             <tr data-document-kind="{{ $doc['kind'] }}" data-paid="{{ $doc['paid'] ?? '' }}">
                                 <td>@if ($doc['url'])<a href="{{ $doc['url'] }}" class="fw-link" target="_blank" rel="noopener">{{ $doc['name'] }}</a>@else{{ $doc['name'] }}@endif</td>
-                                <td class="fw-number">{{ $money($doc['amount']) }}</td><td class="fw-number" data-new-amount></td><td class="fw-number">{{ $doc['paid'] === null ? '—' : $money($doc['paid']) }}</td><td class="fw-number" data-new-balance></td>
+                                <td class="fw-number">{{ $money($doc['amount']) }}</td><td class="fw-number" data-new-amount></td><td class="fw-number" data-new-pph></td><td class="fw-number">{{ $doc['paid'] === null ? '—' : $money($doc['paid']) }}</td><td class="fw-number" data-new-balance></td>
                             </tr>
                         @endforeach
                     </tbody></table></div>
@@ -111,27 +112,42 @@
                     const round = v => Math.round((v + Number.EPSILON) * 100) / 100;
                     function recalculate() {
                         let total = 0;
+                        let otherTax = amount(form, '[data-document-tax]');
                         let valid = true;
                         body.querySelectorAll('[data-revision-item]').forEach(row => {
                             const base = round(amount(row, '[data-quantity]') * amount(row, '[data-price]'));
                             const discount = amount(row, '[data-discount]');
+                            otherTax += amount(row, '[data-tax]');
                             const line = round(base - discount + amount(row, '[data-tax]'));
                             row.querySelector('[data-line-total]').textContent = money(line);
                             valid = valid && discount <= base && line >= 0;
                             total += line;
                         });
                         total = round(total - amount(form, '[data-document-discount]') + amount(form, '[data-document-tax]') + amount(form, '[data-adjustment]'));
+                        const enabled = amount(form, '[data-pph-gross-up]') === 1;
+                        const netService = round(total - otherTax);
+                        const pph = enabled ? round(round(Math.max(0, netService) / 0.995) - netService) : 0;
+                        valid = valid && (!enabled || netService > 0);
+                        const net = total;
+                        total = round(total + pph);
                         form.querySelector('[data-grand-total]').textContent = money(total);
-                        const dp = amount(form, '[data-dp]');
+                        form.querySelector('[data-pph-summary]').textContent = enabled ? 'PPh: ' + money(pph) + ' · Transfer netto: ' + money(net) : '';
+                        const dpCash = amount(form, '[data-dp]');
+                        const dp = round(dpCash + (net > 0 ? round(pph * dpCash / net) : 0));
+                        const dpPph = total > 0 ? round(pph * dp / total) : 0;
                         if (form.querySelector('[data-settlement]')) form.querySelector('[data-settlement]').textContent = money(round(total - dp));
                         valid = valid && total > 0 && (!form.querySelector('[data-dp]') || (dp > 0 && dp < total));
                         form.querySelectorAll('[data-document-kind]').forEach(row => {
                             const kind = row.dataset.documentKind;
                             const value = kind === 'down_payment' ? dp : kind === 'settlement' ? round(total - dp) : total;
                             const paid = row.dataset.paid;
+                            const kind = row.dataset.documentKind;
+                            const tax = kind === 'settlement' ? round(pph - dpPph) : (kind === 'down_payment' ? dpPph : pph);
+                            const cash = round(value - tax);
+                            row.querySelector('[data-new-pph]').textContent = money(tax);
                             row.querySelector('[data-new-amount]').textContent = money(value);
-                            row.querySelector('[data-new-balance]').textContent = paid === '' ? '—' : money(round(value - Number(paid)));
-                            valid = valid && (paid === '' || value >= Number(paid));
+                            row.querySelector('[data-new-balance]').textContent = paid === '' ? '—' : money(round(cash - Number(paid)));
+                            valid = valid && (paid === '' || cash >= Number(paid));
                         });
                         form.querySelector('[data-revision-error]').textContent = valid ? '' : 'Periksa total, nominal DP, diskon, dan pembayaran yang sudah masuk.';
                         form.querySelector('[type=submit]').disabled = !valid;

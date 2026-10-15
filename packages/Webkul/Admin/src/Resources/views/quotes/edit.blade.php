@@ -585,6 +585,20 @@
                             />
                         </div>
 
+                        <div class="grid gap-2">
+                            <label for="quote-pph-gross-up" class="font-semibold">Gross-up PPh 0,5%</label>
+                            <select id="quote-pph-gross-up" v-model="pphGrossUp" class="rounded border border-gray-300 bg-white p-2 dark:bg-gray-900">
+                                <option value="0">Tidak</option><option value="1">Ya — dipotong oleh pelanggan</option>
+                            </select>
+                            <input type="hidden" name="pph_gross_up" :value="pphGrossUp">
+                            <p class="text-xs text-gray-500">Sesuai kesepakatan dan ketentuan PPh pelanggan. Bruto jasa = netto jasa ÷ 0,995. Pajak lain/PPN diisi terpisah dan tidak ikut di-gross-up.</p>
+                            <x-admin::form.control-group.error control-name="pph_gross_up" />
+                        </div>
+                        <div v-if="pphGrossUp === '1'" class="grid gap-2">
+                            <div class="flex justify-between"><span>Tambahan gross-up / potongan PPh</span><span>@{{ pphAmount }}</span></div>
+                            <div class="flex justify-between font-semibold"><span>Transfer netto (Rp)</span><span>@{{ (Number(grandTotal) - Number(pphAmount)).toFixed(2) }}</span></div>
+                        </div>
+
                         <div class="flex w-full justify-between gap-x-5">
                             @lang('admin::app.quotes.create.grand-total', ['symbol' => core()->currencySymbol(config('app.currency'))])
 
@@ -978,6 +992,7 @@
 
                 data() {
                     return {
+                        pphGrossUp: @json((string) old('pph_gross_up', $quote->pph_gross_up ? '1' : '0')),
                         adjustmentAmount: @json((string) old('adjustment_amount', $quote->adjustment_amount ?? 0)),
 
                         products: (@json($initialQuoteItems)).map(window.normalizeSalesLineItem),
@@ -1001,6 +1016,17 @@
                 },
 
                 computed: {
+                    pphAmount() {
+                        if (this.pphGrossUp !== '1') return '0.00';
+                        const base = Math.max(0, this.parseDecimal(this.subTotal) - this.parseDecimal(this.discountAmount) + this.parseDecimal(this.adjustmentAmount));
+                        const net = Math.round((base + Number.EPSILON) * 100) / 100;
+                        return (Math.round(net / 0.995 * 100) / 100 - net).toFixed(2);
+                    },
+                    grandTotal() {
+                        if (this.pphGrossUp !== '1') return this.netTotal;
+                        const base = Math.round((Math.max(0, this.parseDecimal(this.subTotal) - this.parseDecimal(this.discountAmount) + this.parseDecimal(this.adjustmentAmount)) + Number.EPSILON) * 100) / 100;
+                        return (base + this.parseDecimal(this.taxAmount) + this.parseDecimal(this.pphAmount)).toFixed(2);
+                    },
                     /**
                      * Calculate the sub total of the products.
                      *
@@ -1045,7 +1071,7 @@
                      *
                      * @returns {Number}
                      */
-                    grandTotal() {
+                    netTotal() {
                         const itemsTotal = this.products.reduce((carry, product) => {
                             return carry
                                 + this.getProductBaseTotal(product)
@@ -1201,6 +1227,17 @@
                 },
 
                 computed: {
+                    pphAmount() {
+                        if (this.pphGrossUp !== '1') return '0.00';
+                        const base = Math.max(0, this.parseDecimal(this.subTotal) - this.parseDecimal(this.discountAmount) + this.parseDecimal(this.adjustmentAmount));
+                        const net = Math.round((base + Number.EPSILON) * 100) / 100;
+                        return (Math.round(net / 0.995 * 100) / 100 - net).toFixed(2);
+                    },
+                    grandTotal() {
+                        if (this.pphGrossUp !== '1') return this.netTotal;
+                        const base = Math.round((Math.max(0, this.parseDecimal(this.subTotal) - this.parseDecimal(this.discountAmount) + this.parseDecimal(this.adjustmentAmount)) + Number.EPSILON) * 100) / 100;
+                        return (base + this.parseDecimal(this.taxAmount) + this.parseDecimal(this.pphAmount)).toFixed(2);
+                    },
                     /**
                      * Get the input name.
                      *

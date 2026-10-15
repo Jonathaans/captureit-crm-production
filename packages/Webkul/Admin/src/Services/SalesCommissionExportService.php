@@ -88,6 +88,7 @@ class SalesCommissionExportService
         $types = [];
         $invoicedTotal = 0.0;
         $paidTotal = 0.0;
+        $pphTotal = 0.0;
 
         foreach ($positions as $position) {
             $type = $this->normalizeBillingType($position['billing_type'] ?? null);
@@ -98,17 +99,19 @@ class SalesCommissionExportService
 
             $invoiceTotal = max(0.0, (float) ($position['invoice_total'] ?? 0));
             $invoicePaid = max(0.0, (float) ($position['paid_total'] ?? 0));
+            $pph = min($invoiceTotal, max(0.0, (float) ($position['pph_amount'] ?? 0)));
             $status = mb_strtolower(trim((string) ($position['status'] ?? '')));
 
             if ($invoiceTotal <= 0
                 || $status !== 'paid'
-                || $invoicePaid + self::TOLERANCE < $invoiceTotal) {
+                || $invoicePaid + self::TOLERANCE < $invoiceTotal - $pph) {
                 return false;
             }
 
             $types[] = $type;
             $invoicedTotal += $invoiceTotal;
             $paidTotal += $invoicePaid;
+            $pphTotal += $pph;
         }
 
         $hasFullPayment = in_array('full_payment', $types, true);
@@ -120,7 +123,7 @@ class SalesCommissionExportService
 
         return ($isFullPaymentPath || $isStagedPath)
             && $invoicedTotal + self::TOLERANCE >= $dealValue
-            && $paidTotal + self::TOLERANCE >= $dealValue;
+            && $paidTotal + self::TOLERANCE >= $dealValue - $pphTotal;
     }
 
     /**
@@ -138,7 +141,7 @@ class SalesCommissionExportService
             0.0,
         );
 
-        return round(min($dealValue, $received), 2);
+        return round(min(max(0, $dealValue - (float) collect($positions)->sum('pph_amount')), $received), 2);
     }
 
     /**
@@ -303,6 +306,7 @@ class SalesCommissionExportService
                 'billing_type' => $invoice->billing_type,
                 'invoice_total' => (float) $invoice->grand_total,
                 'paid_total' => (float) $invoice->activePayments->sum('amount'),
+                'pph_amount' => (float) $invoice->pph_amount,
                 'status' => $invoice->status,
             ];
         })->values()->all();
@@ -316,6 +320,7 @@ class SalesCommissionExportService
             ->filter(fn ($payment): bool => $payment->paid_at !== null)
             ->sortBy(fn ($payment): string => $payment->paid_at->format('Y-m-d H:i:s.u').'-'.str_pad((string) $payment->id, 20, '0', STR_PAD_LEFT));
 
+        $dealValue = max(0, $dealValue - (float) $invoices->sum('pph_amount'));
         $runningTotal = 0.0;
 
         foreach ($payments as $payment) {

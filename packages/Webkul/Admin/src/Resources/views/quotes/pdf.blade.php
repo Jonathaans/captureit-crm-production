@@ -853,6 +853,10 @@
                 </tr>
             @endif
 
+            @if ($quote->pph_gross_up)
+                <tr><td class="summary-label">Tambahan gross-up PPh {{ $quote->pph_rate }}%</td><td class="summary-value">Rp {{ number_format((float) $quote->pph_amount, 2, ',', '.') }}</td></tr>
+            @endif
+
             <tr class="grand-total">
                 <td>
                     GRAND TOTAL
@@ -862,6 +866,10 @@
                     {!! core()->formatBasePrice($quote->grand_total, true) !!}
                 </td>
             </tr>
+            @if ($quote->pph_gross_up)
+                <tr><td class="summary-label">PPh {{ $quote->pph_rate }}% dipotong pelanggan</td><td class="summary-value">(Rp {{ number_format((float) $quote->pph_amount, 2, ',', '.') }})</td></tr>
+                <tr class="grand-total"><td>TRANSFER NETTO</td><td class="summary-value">Rp {{ number_format((float) $quote->grand_total - (float) $quote->pph_amount, 2, ',', '.') }}</td></tr>
+            @endif
         </table>
     </div>
 

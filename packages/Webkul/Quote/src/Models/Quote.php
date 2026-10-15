@@ -18,6 +18,7 @@ class Quote extends Model implements QuoteContract
     protected $table = 'quotes';
 
     protected $casts = [
+        'pph_gross_up' => 'boolean',
         'event_date' => 'date',
         'document_date' => 'date',
         'billing_address' => 'array',
@@ -42,6 +43,9 @@ class Quote extends Model implements QuoteContract
         'adjustment_amount',
         'sub_total',
         'grand_total',
+        'pph_gross_up',
+        'pph_rate',
+        'pph_amount',
         'expired_at',
         'user_id',
         'person_id',

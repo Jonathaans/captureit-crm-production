@@ -261,6 +261,8 @@ class FinancialReportController extends Controller
                     'Invoice Margin - Invoice Value minus Linked Expenses',
                     'Cash Surplus In Period',
                     'PPH',
+                    'Net Payable after PPH',
+                    'Invoice Margin after PPH',
                 ]);
 
                 foreach ($invoicePerformance as $invoice) {
@@ -285,8 +287,9 @@ class FinancialReportController extends Controller
                         $invoice['expense_in_period'],
                         $invoice['estimated_profit'],
                         $invoice['cash_surplus_in_period'],
-                        // Reserved for manual entry; no PPH amount is stored yet.
-                        '',
+                        $invoice['pph_amount'],
+                        $invoice['net_payable'],
+                        $invoice['net_margin'],
                     ]);
                 }
 
@@ -441,7 +444,7 @@ class FinancialReportController extends Controller
         $this->applyInvoiceDimensions($invoices, $filters);
         $invoiced = (float) (clone $invoices)->sum('grand_total');
         $outstanding = (float) (clone $invoices)->withSum('activePayments as payments_sum_amount', 'amount')->get()->sum(
-            fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)
+            fn (Invoice $invoice): float => max(0, $invoice->cashPayable() - (float) $invoice->payments_sum_amount)
         );
 
         $payments = Payment::query()->notVoided()->whereNotNull('paid_at');
@@ -531,9 +534,11 @@ class FinancialReportController extends Controller
                     'invoice_count' => $confirmed->count(),
                     'invoiced' => $invoiced,
                     'received' => (float) $confirmed->sum('payments_sum_amount'),
-                    'outstanding' => (float) $confirmed->sum(fn (Invoice $invoice): float => max(0, (float) $invoice->grand_total - (float) $invoice->payments_sum_amount)),
+                    'outstanding' => (float) $confirmed->sum(fn (Invoice $invoice): float => max(0, $invoice->cashPayable() - (float) $invoice->payments_sum_amount)),
                     'expense' => $expense,
                     'margin' => $invoiced - $expense,
+                    'pph' => (float) $confirmed->sum('pph_amount'),
+                    'net_margin' => $invoiced - $expense - (float) $confirmed->sum('pph_amount'),
                 ];
             })->values();
     }
@@ -549,9 +554,9 @@ class FinancialReportController extends Controller
         $writeRow($handle, []);
         $writeRow($handle, ['PROJECT POSITION - CURRENT']);
         $writeRow($handle, ['Basis', 'Projects with a confirmed invoice in the selected period; all issued project invoices to date. Confirmed invoice values minus expenses on project invoices. Not a historical closing balance.']);
-        $writeRow($handle, ['Project', 'Subject', 'Company', 'Confirmed Invoices', 'Invoice Count', 'Total Invoiced', 'Paid To Date', 'Outstanding Current', 'Project Expenses', 'Invoiced Project Margin']);
+        $writeRow($handle, ['Project', 'Subject', 'Company', 'Confirmed Invoices', 'Invoice Count', 'Total Invoiced', 'Paid To Date', 'Outstanding Current', 'Project Expenses', 'Invoiced Project Margin before PPH', 'PPH', 'Project Margin after PPH']);
         foreach ($projects as $row) {
-            $writeRow($handle, [$row['project_code'], $row['subject'], $row['company'], $row['invoice_numbers'], $row['invoice_count'], $row['invoiced'], $row['received'], $row['outstanding'], $row['expense'], $row['margin']]);
+            $writeRow($handle, [$row['project_code'], $row['subject'], $row['company'], $row['invoice_numbers'], $row['invoice_count'], $row['invoiced'], $row['received'], $row['outstanding'], $row['expense'], $row['margin'], $row['pph'], $row['net_margin']]);
         }
         $writeRow($handle, []);
         $writeRow($handle, ['INVOICES ISSUED IN PERIOD']);
@@ -635,7 +640,7 @@ class FinancialReportController extends Controller
                 $outstanding = $invoice->event_status === 'confirm'
                     ? max(
                         0,
-                        $invoiceValue - $paidToDate
+                        $invoice->cashPayable() - $paidToDate
                     )
                     : 0.0;
 
@@ -665,6 +670,9 @@ class FinancialReportController extends Controller
                      * Project / invoice metrics.
                      */
                     'invoice_value' => $invoiceValue,
+                    'pph_amount' => (float) $invoice->pph_amount,
+                    'net_payable' => $invoice->cashPayable(),
+                    'net_margin' => $invoice->event_status === 'confirm' ? $estimatedProfit - (float) $invoice->pph_amount : 0.0,
                     'paid_to_date' => $paidToDate,
                     'outstanding' => $outstanding,
                     'project_expense' => $projectExpense,

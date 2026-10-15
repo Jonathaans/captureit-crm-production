@@ -129,6 +129,7 @@ beforeEach(function (): void {
     (require base_path('database/migrations/2026_09_01_220000_create_internal_notifications_and_chat_tables.php'))->up();
     (require base_path('database/migrations/2026_10_12_030000_create_proforma_invoices_table.php'))->up();
     (require base_path('database/migrations/2026_10_12_133000_add_proforma_conversion_workflow.php'))->up();
+    (require base_path('database/migrations/2026_10_15_100000_add_pph_gross_up_to_billing_documents.php'))->up();
     (require base_path('packages/Webkul/Core/src/Database/Migrations/2021_03_12_060658_create_core_config_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_150000_create_financial_period_locks_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_210000_create_work_orders_and_link_delivery_orders.php'))->up();

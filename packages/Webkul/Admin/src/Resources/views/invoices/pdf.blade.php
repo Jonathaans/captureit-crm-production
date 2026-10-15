@@ -825,15 +825,23 @@
                 </tr>
             @endif
 
+            @if ($invoice->pph_gross_up)
+                <tr><td class="summary-label">Tambahan gross-up PPh {{ $invoice->pph_rate }}%</td><td class="summary-value">Rp {{ number_format((float) $invoice->pph_amount, 2, ',', '.') }}</td></tr>
+            @endif
+
             <tr class="grand-total">
                 <td>
                     GRAND TOTAL
                 </td>
 
                 <td class="summary-value">
-                    Rp {{ number_format((float) $invoice->grand_total, 0, ',', '.') }}
+                    Rp {{ number_format((float) $invoice->grand_total, $invoice->pph_gross_up ? 2 : 0, ',', '.') }}
                 </td>
             </tr>
+            @if ($invoice->pph_gross_up)
+                <tr><td class="summary-label">PPh {{ $invoice->pph_rate }}% dipotong pelanggan</td><td class="summary-value">(Rp {{ number_format((float) $invoice->pph_amount, 2, ',', '.') }})</td></tr>
+                <tr class="grand-total"><td>TRANSFER NETTO</td><td class="summary-value">Rp {{ number_format((float) $invoice->grand_total - (float) $invoice->pph_amount, 2, ',', '.') }}</td></tr>
+            @endif
         </table>
 
         <!-- Payment Status Summary -->

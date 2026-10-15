@@ -568,6 +568,7 @@ class QuoteController extends Controller
         $this->validate(request(), array_merge(
             $this->billToValidationRules(),
             [
+                'pph_gross_up' => ['sometimes', 'boolean'],
                 'expired_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
                 'items' => 'required|array|min:1',
                 'items.*.product_id' => 'required|exists:products,id',

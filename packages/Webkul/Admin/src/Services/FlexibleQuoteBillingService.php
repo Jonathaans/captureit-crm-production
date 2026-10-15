@@ -91,6 +91,9 @@ class FlexibleQuoteBillingService
             ->when($convertingProformaId, fn ($query) => $query->where('id', '<>', $convertingProformaId))->first();
 
         $agreement = $proforma?->quote_snapshot['attributes'] ?? $downPayment?->getAttributes() ?? $quote->getAttributes();
+        $taxAgreement = $proforma?->quote_snapshot['attributes']
+            ?? ($downPayment ? ProformaInvoice::where('invoice_id', $downPayment->id)->first()?->quote_snapshot['attributes'] : null)
+            ?? $quote->getAttributes();
 
         $remaining = round(
             max(0, $quoteTotal - $activeInvoiced),
@@ -112,6 +115,9 @@ class FlexibleQuoteBillingService
                 'billing_type' => $proforma->billing_type,
             ] : null,
             'quote_total' => $quoteTotal,
+            'pph_total' => (float) ($taxAgreement['pph_amount'] ?? 0),
+            'pph_gross_up' => (bool) ($taxAgreement['pph_gross_up'] ?? false),
+            'dp_pph' => (float) ($downPayment?->pph_amount ?? 0),
             'active_invoiced' => $activeInvoiced,
             'remaining' => $remaining,
             'down_payment' => $downPayment
@@ -241,8 +247,8 @@ class FlexibleQuoteBillingService
                     if (app(FinancialPeriodLockService::class)->isLocked($payment['paid_at'])) {
                         throw ValidationException::withMessages(['paid_at' => 'Periode keuangan untuk tanggal pembayaran sudah ditutup.']);
                     }
-                    if (round((float) $payment['amount'], self::SCALE) !== (float) $proforma->amount) {
-                        throw ValidationException::withMessages(['amount' => 'Nominal uang masuk harus sama dengan nominal proforma. Untuk pembayaran bertahap, pindahkan karena event deal lalu catat penerimaan di Invoice.']);
+                    if (round((float) $payment['amount'], self::SCALE) !== round($proforma->cashPayable(), self::SCALE)) {
+                        throw ValidationException::withMessages(['amount' => 'Nominal uang masuk harus sama dengan nilai transfer netto proforma (setelah potongan PPh jika gross-up). Untuk pembayaran bertahap, pindahkan karena event deal lalu catat penerimaan di Invoice.']);
                     }
                     if (now()->parse($payment['paid_at'])->startOfDay()->lt($proforma->issued_at)) {
                         throw ValidationException::withMessages(['paid_at' => 'Tanggal pembayaran tidak boleh sebelum tanggal proforma.']);
@@ -369,10 +375,13 @@ class FlexibleQuoteBillingService
                         : 0,
                     'sub_total' => $type === self::TYPE_FULL_PAYMENT
                         ? ($lockedQuote->sub_total ?? $amount)
-                        : $amount,
+                        : $proforma->cashPayable(),
                     'grand_total' => $amount,
+                    'pph_gross_up' => (bool) $proforma->pph_gross_up,
+                    'pph_rate' => $proforma->pph_rate ?? 0,
+                    'pph_amount' => $proforma->pph_amount ?? 0,
                     'paid_amount' => 0,
-                    'balance_due' => $amount,
+                    'balance_due' => $proforma->cashPayable(),
                     'status' => 'unpaid',
                     'event_status' => 'confirm',
                     'issued_at' => $input['issued_at'] ?? now(),
@@ -388,7 +397,7 @@ class FlexibleQuoteBillingService
                     $this->copyAllocatedItems(
                         $invoice,
                         $lockedQuote,
-                        $amount,
+                        $proforma->cashPayable(),
                         $type
                     );
                 }
@@ -459,6 +468,7 @@ class FlexibleQuoteBillingService
             if (
                 $operation !== 'delete'
                 && $allowLockedEdits
+                && ! $model->getRawOriginal('pph_gross_up')
                 && in_array($status, ['unpaid', 'partial'], true)
                 && ! in_array(
                     $eventStatus,
@@ -485,6 +495,9 @@ class FlexibleQuoteBillingService
                 'adjustment_amount',
                 'sub_total',
                 'grand_total',
+                'pph_gross_up',
+                'pph_rate',
+                'pph_amount',
                 'billing_type',
                 'billing_method',
                 'billing_percentage',
@@ -515,7 +528,7 @@ class FlexibleQuoteBillingService
         }
 
         $invoice = DB::table('invoices')
-            ->select(['status', 'event_status'])
+            ->select(['status', 'event_status', 'pph_gross_up'])
             ->where('id', $invoiceId)
             ->whereNotNull('billing_locked_at')
             ->first();
@@ -526,6 +539,7 @@ class FlexibleQuoteBillingService
 
         if (
             $allowLockedEdits
+            && ! $invoice->pph_gross_up
             && in_array($invoice->status, ['unpaid', 'partial'], true)
             && ! in_array(
                 $invoice->event_status,
