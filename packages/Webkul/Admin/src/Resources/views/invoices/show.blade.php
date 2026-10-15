@@ -135,6 +135,13 @@
 
     <!-- ========================================================= -->
     <!-- PROJECT & INVOICE INFORMATION -->
+    @if ($invoice->pph_gross_up)
+        <div class="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-900">
+            <p class="font-semibold">Gross-up PPh {{ $invoice->pph_rate }}%</p>
+            <p>Bruto: Rp {{ number_format((float) $invoice->grand_total, 2, ',', '.') }} · PPh dipotong pelanggan: Rp {{ number_format((float) $invoice->pph_amount, 2, ',', '.') }} · Transfer netto: Rp {{ number_format($invoice->cashPayable(), 2, ',', '.') }}</p>
+            <p>Status pembayaran dan sisa tagihan mengikuti transfer netto. PPh adalah perhitungan potongan, bukan uang masuk atau bukti setor pajak. Bukti potong diterima terpisah dari pelanggan.</p>
+        </div>
+    @endif
     <!-- ========================================================= -->
 
     @if ($invoice->status === 'void')
@@ -1403,7 +1410,7 @@
                                 name="amount"
                                 min="1"
                                 max="{{ (float) $invoice->balance_due }}"
-                                step="1"
+                                step="0.01"
                                 placeholder="Masukkan nominal pembayaran"
                                 class="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-800 outline-none transition focus:border-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                                 required

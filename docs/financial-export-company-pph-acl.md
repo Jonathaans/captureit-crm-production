@@ -1,5 +1,6 @@
 # Financial Report export dan ACL menu
 
+> Pembaruan PR #32: PPH kini dihitung otomatis untuk transaksi gross-up; perilaku kolom kosong di bawah adalah catatan implementasi lama. Lihat [Gross-up PPh](pph-gross-up.md).
 ## Perubahan
 
 - CSV Financial Report menambahkan kolom `Company` setelah `Customer` dan kolom `PPH` di akhir detail invoice.

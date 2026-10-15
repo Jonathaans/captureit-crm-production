@@ -4,11 +4,13 @@ namespace Webkul\Quote\Repositories;
 
 use Illuminate\Container\Container;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Attribute\Repositories\AttributeValueRepository;
 use Webkul\Core\Eloquent\Repository;
+use Webkul\Core\Support\PphGrossUp;
 use Webkul\Core\Support\SalesLineItem;
 use Webkul\Lead\Repositories\ProductRepository;
 use Webkul\Quote\Contracts\Quote;
@@ -184,7 +186,10 @@ class QuoteRepository extends Repository
     /** Prepare billing and equipment snapshots before persisting the header. */
     private function prepareItems(array $data, $quote = null): array
     {
+        Validator::make($data, ['pph_gross_up' => ['sometimes', 'boolean']])->validate();
         if (! isset($data['items'])) {
+            unset($data['pph_gross_up'], $data['pph_rate'], $data['pph_amount']);
+
             return $data;
         }
 
@@ -226,7 +231,12 @@ class QuoteRepository extends Repository
         $data['sub_total'] = round($subtotal, 4);
         $data['discount_amount'] = round($discount, 4);
         $data['tax_amount'] = round($tax, 4);
-        $data['grand_total'] = round(max(0, $subtotal - $discount + $tax + (float) ($data['adjustment_amount'] ?? 0)), 4);
+        $enabled = (bool) ($data['pph_gross_up'] ?? $quote?->pph_gross_up ?? false);
+        $base = $subtotal - $discount + (float) ($data['adjustment_amount'] ?? 0);
+        if ($enabled && $base <= 0) {
+            throw ValidationException::withMessages(['pph_gross_up' => 'Gross-up memerlukan nilai jasa bersih lebih dari nol.']);
+        }
+        $data = array_replace($data, PphGrossUp::calculate($base, $tax, $enabled));
 
         return $data;
     }

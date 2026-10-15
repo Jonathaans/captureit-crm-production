@@ -100,7 +100,7 @@ class PaymentService
              * Grand total invoice.
              */
             $grandTotal =
-                (float) $invoice->grand_total;
+                $invoice->cashPayable();
 
             /**
              * Remaining balance.

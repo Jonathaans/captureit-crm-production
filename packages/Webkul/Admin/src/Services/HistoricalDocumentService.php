@@ -67,6 +67,7 @@ class HistoricalDocumentService
                 $d['project_code'] = $quote['project_code'];
                 $d['business_unit'] = $quote['business_unit'];
                 if ($quote instanceof Quote) {
+                    $this->ensure(! $quote->pph_gross_up, 'quote_number', 'Quotation gross-up harus diterbitkan melalui Proforma agar PPh dan nilai netto tersalin.');
                     $this->ensure(! ProformaInvoice::where('quote_id', $quote->id)->where('status', 'issued')->exists(), 'quote_number', $d['number'].': masih ada proforma aktif untuk quotation ini.');
                     $related = $active->where('quote_id', $quote->id)->values();
                 }

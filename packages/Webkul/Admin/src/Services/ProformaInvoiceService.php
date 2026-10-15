@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Webkul\Core\Support\PphGrossUp;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\ProformaInvoice;
 use Webkul\Quote\Models\Quote;
@@ -67,6 +68,10 @@ class ProformaInvoiceService
                 'billing_type' => $type,
                 'dp_invoice_id' => $dpInvoiceId,
                 'amount' => $position['amount'],
+                'pph_gross_up' => (bool) $quote->pph_gross_up,
+                'pph_rate' => $quote->pph_rate ?? 0,
+                'pph_amount' => PphGrossUp::allocate((float) $quote->pph_amount, (float) $quote->grand_total, $position['amount'],
+                    $dpInvoiceId ? (float) Invoice::findOrFail($dpInvoiceId)->pph_amount : null),
                 'billing_method' => $type === FlexibleQuoteBillingService::TYPE_DOWN_PAYMENT ? $input['billing_method'] : 'nominal',
                 'billing_percentage' => $position['percentage'],
                 'quote_snapshot' => [

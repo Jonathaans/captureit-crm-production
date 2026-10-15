@@ -16,7 +16,7 @@ Gunakan **Revisi Transaksi** untuk mengubah kesepakatan yang sudah mempunyai pro
 - Contoh invoice Rp10 juta dengan pembayaran Rp3 juta: revisi menjadi Rp12 juta menghasilkan piutang Rp9 juta; revisi menjadi Rp8 juta menghasilkan piutang Rp5 juta. Riwayat pembayaran tetap Rp3 juta.
 - Contoh DP lunas Rp4 juta dan pelunasan Rp6 juta: total transaksi direvisi dari Rp10 juta menjadi Rp12 juta. DP tetap Rp4 juta, pelunasan menjadi Rp8 juta. Total invoice di laporan menjadi Rp12 juta tanpa menggandakan penerimaan.
 - Jika pelunasan belum diterbitkan, invoice DP tetap sebesar DP. Sisa belum ditagihkan berubah dan proforma/invoice pelunasan berikutnya memakai kesepakatan terbaru. Quote/proforma saja belum menambah invoiced pada laporan.
-- Invoice penuh yang sudah lunas dapat bertambah nilainya; status berubah menjadi PARTIAL dengan sisa tagihan baru. Revisi tidak boleh menurunkan tagihan di bawah pembayaran aktif. Nominal DP yang sudah lunas tetap.
+- Invoice penuh yang sudah lunas dapat bertambah nilainya; status berubah menjadi PARTIAL dengan sisa tagihan baru. Revisi tidak boleh menurunkan tagihan di bawah pembayaran aktif. Transfer netto DP yang sudah lunas tetap. Jika Gross-up PPh diaktifkan, bruto DP menyesuaikan potongan PPh tanpa mengubah penerimaan asli. Lihat [panduan gross-up](pph-gross-up.md).
 - Nomor, tanggal terbit, jatuh tempo, identitas proyek, dan riwayat konversi dokumen dipertahankan. Mengubah tanggal event tidak memindahkan invoice ke bulan laporan lain.
 
 ## Konsistensi dan riwayat

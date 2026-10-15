@@ -79,9 +79,9 @@
                         <summary><span><span class="fw-title">Pembayaran diterima</span><span class="fw-muted block">Terbitkan invoice PAID dan catat penerimaan sekaligus.</span></span></summary>
                         <form method="POST" action="{{ route('admin.proformas.payment', $proforma->id) }}" class="fw-pad">
                             @csrf
-                            <p class="fw-note" style="margin-bottom:20px">Isi sesuai uang yang sudah masuk sebesar nominal proforma. Untuk pembayaran bertahap, gunakan konfirmasi event lalu catat penerimaan di Invoice.</p>
+                            <p class="fw-note" style="margin-bottom:20px">Isi sesuai uang yang sudah masuk sebesar transfer netto proforma setelah potongan PPh (jika gross-up). Untuk pembayaran bertahap, gunakan konfirmasi event lalu catat penerimaan di Invoice.</p>
                             <div class="fw-form-grid">
-                                <label class="fw-field">Nominal diterima (Rp)<input name="amount" type="number" min="0.01" step="0.01" required value="{{ old('amount', $proforma->amount) }}"></label>
+                                <label class="fw-field">Nominal diterima (Rp)<input name="amount" type="number" min="0.01" step="0.01" required value="{{ old('amount', $proforma->cashPayable()) }}"></label>
                                 <label class="fw-field">Waktu uang diterima<input name="paid_at" type="datetime-local" required value="{{ old('paid_at', now()->format('Y-m-d\TH:i')) }}"></label>
                                 <label class="fw-field">Metode pembayaran<input name="payment_method" required maxlength="255" placeholder="Transfer bank" value="{{ old('payment_method') }}"></label>
                                 <label class="fw-field">Nomor referensi transfer<input name="reference_number" maxlength="255" value="{{ old('reference_number') }}"></label>
@@ -109,6 +109,11 @@
                     <p class="fw-eyebrow">{{ $proforma->billingLabel() }}</p>
                     <p class="fw-muted">Nominal proforma</p>
                     <p class="fw-amount">{{ $money($proforma->amount) }}</p>
+                    @if ($proforma->pph_gross_up)
+                        <p>PPh {{ $proforma->pph_rate }}% dipotong pelanggan: {{ $money($proforma->pph_amount) }}</p>
+                        <p class="fw-title" style="margin:12px 0">Transfer netto: {{ $money($proforma->cashPayable()) }}</p>
+                        <p class="fw-muted">Perhitungan sesuai kesepakatan. Bukti potong diterima terpisah dari pelanggan.</p>
+                    @endif
                     <span class="fw-badge fw-badge-issued">Jatuh tempo {{ $proforma->due_at->format('d M Y') }}</span>
                     <div class="fw-divider"></div>
                     <div class="fw-between fw-muted"><span>Total penawaran</span><strong>{{ $money($snapshot['grand_total']) }}</strong></div>

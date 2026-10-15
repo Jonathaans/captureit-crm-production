@@ -10,8 +10,10 @@ use Tests\Support\HistoricalDocumentDatabase;
 use Tests\TestCase;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Services\CommercialRevisionService;
+use Webkul\Admin\Services\FinanceSalesDashboardService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\ProformaInvoiceService;
+use Webkul\Admin\Services\SalesCommissionExportService;
 use Webkul\Installer\Http\Middleware\CanInstall;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
@@ -353,4 +355,76 @@ it('requires the explicit transaction revision permission on GET PUT and legacy 
     $this->putJson(route('admin.commercial-revisions.update', ['invoice', $invoice->id]), $payload)->assertUnauthorized();
     $this->putJson(route('admin.invoices.update', $invoice->id), ['subject' => 'Forbidden'])->assertForbidden();
     expect((float) $invoice->fresh()->grand_total)->toBe(10000000.0)->and(DB::table('commercial_document_revisions')->count())->toBe(0);
+});
+
+it('grosses up the real paid DP pair in place without altering receipts dates project or operational history', function () {
+    $this->quote->update(['grand_total' => 7500000, 'sub_total' => 7500000]);
+    $this->quote->items()->first()->update(['price' => 3750000, 'total' => 7500000]);
+    $dpPf = revisionProforma($this->quote, 'down_payment', 3750000);
+    $dp = revisionInvoice($dpPf);
+    app(PaymentService::class)->addPayment($dp, ['amount' => 3750000, 'paid_at' => '2026-09-30 16:22:00', 'reference_number' => 'BANK-DP']);
+    $finalPf = revisionProforma($this->quote, 'settlement');
+    $final = revisionInvoice($finalPf);
+    app(PaymentService::class)->addPayment($final, ['amount' => 3750000, 'paid_at' => '2026-10-12 13:23:00', 'reference_number' => 'BANK-FINAL']);
+    $payments = Payment::orderBy('id')->get()->toArray();
+    $numbers = Invoice::orderBy('id')->pluck('invoice_number')->all();
+    $input = revisionPayload('invoice', $dp->id, 7500000);
+    $input['pph_gross_up'] = 1;
+    $this->put(route('admin.commercial-revisions.update', ['invoice', $dp->id]), $input)->assertSessionHasNoErrors()->assertRedirect();
+    expect((float) $this->quote->fresh()->grand_total)->toBe(7537688.44)
+        ->and((float) $dp->fresh()->grand_total)->toBe(3768844.22)->and((float) $final->fresh()->grand_total)->toBe(3768844.22)
+        ->and((float) $dp->fresh()->pph_amount)->toBe(18844.22)->and((float) $final->fresh()->pph_amount)->toBe(18844.22)
+        ->and($dp->fresh()->status)->toBe('paid')->and($final->fresh()->status)->toBe('paid')
+        ->and(Invoice::count())->toBe(2)->and(Invoice::orderBy('id')->pluck('invoice_number')->all())->toBe($numbers)
+        ->and(Payment::orderBy('id')->get()->toArray())->toBe($payments)
+        ->and($dp->fresh()->project_code)->toBe('PRJ-REV-01')->and($final->fresh()->dp_invoice_id)->toBe($dp->id)
+        ->and((float) $dpPf->fresh()->pph_amount)->toBe(18844.22)->and((float) $finalPf->fresh()->amount)->toBe(3768844.22)
+        ->and(DB::table('commercial_document_revisions')->count())->toBe(1);
+    $data = revisionReport();
+    expect($data['financialSummary']['invoiced'])->toBe(7537688.44)->and($data['financialSummary']['received'])->toBe(3750000.0)
+        ->and($data['financialSummary']['outstanding'])->toBe(0.0)->and($data['invoicePerformance']->sum('pph_amount'))->toBe(37688.44)
+        ->and($data['invoicePerformance']->sum('net_margin'))->toBe(7500000.0);
+    $september = app(FinancialReportController::class)->index(Request::create('/', 'GET', ['year' => 2026, 'month' => 9]))->getData();
+    expect($september['financialSummary']['received'])->toBe(3750000.0);
+    $commission = app(SalesCommissionExportService::class)->rows(['paid_from' => '2026-01-01', 'paid_to' => '2026-12-31']);
+    expect($commission)->toHaveCount(1)->and($commission->first()['commission_base'])->toBe(7500000.0)
+        ->and($commission->first()['paid_completion_date'])->toBe('2026-10-12')
+        ->and(app(FinanceSalesDashboardService::class)->exportRows([]))->toBeEmpty();
+    $this->get(route('admin.commercial-revisions.edit', ['invoice', $dp->id]))->assertOk()->assertSee('Gross-up PPh 0,5%')->assertSee('Transfer netto DP');
+    expect(view('admin::invoices.pdf', ['invoice' => $dp->fresh(['items', 'person.organization'])])->render())->toContain('TRANSFER NETTO', '3.768.844,22', '3.750.000,00');
+    expect(view('admin::invoices.proformas.print', ['proforma' => $dpPf->fresh()])->render())->toContain('Transfer netto', '18.844,22');
+    expect(view('admin::quotes.pdf', ['quote' => $this->quote->fresh(['items', 'person.organization'])])->render())->toContain('TRANSFER NETTO', '37.688,44');
+    // Revisiting/saving the same choice never applies gross-up twice.
+    $same = revisionPayload('invoice', $dp->id, 7500000);
+    $this->service->apply('invoice', $dp->id, $same, 1);
+    expect((float) $dp->fresh()->grand_total)->toBe(3768844.22)->and(Payment::all()->toArray())->toBe($payments);
+});
+
+it('carries gross-up revisions into later settlement creation and keeps proformas outside revenue', function () {
+    $dp = revisionInvoice(revisionProforma($this->quote, 'down_payment'), 4000000);
+    $input = revisionPayload('invoice', $dp->id, 10000000);
+    $input['pph_gross_up'] = 1;
+    $this->service->apply('invoice', $dp->id, $input, 1);
+    expect($dp->fresh()->status)->toBe('paid')->and($dp->fresh()->cashPayable())->toBe(4000000.0);
+    $pf = revisionProforma($this->quote, 'settlement');
+    expect($pf->cashPayable())->toBe(6000000.0)->and(Invoice::count())->toBe(1);
+    $final = app(FlexibleQuoteBillingService::class)->confirmProformaPayment($pf, ['amount' => 6000000, 'paid_at' => '2026-10-15 09:30:00', 'payment_method' => 'Transfer'], 1);
+    expect($final->status)->toBe('paid')->and(round((float) Invoice::sum('pph_amount'), 2))->toBe(50251.26)
+        ->and(revisionReport()['financialSummary']['received'])->toBe(10000000.0)->and(revisionReport()['financialSummary']['outstanding'])->toBe(0.0);
+});
+
+it('keeps full gross-up cash balances correct when enabling disabling and changing price', function () {
+    $invoice = revisionInvoice(revisionProforma($this->quote), 3000000);
+    $input = revisionPayload('invoice', $invoice->id, 10000000);
+    $input['pph_gross_up'] = 1;
+    $this->service->apply('invoice', $invoice->id, $input, 1);
+    expect((float) $invoice->fresh()->balance_due)->toBe(7000000.0)->and($invoice->fresh()->status)->toBe('partial');
+    $off = revisionPayload('invoice', $invoice->id, 10000000);
+    $off['pph_gross_up'] = 0;
+    $this->service->apply('invoice', $invoice->id, $off, 1);
+    expect((float) $invoice->fresh()->grand_total)->toBe(10000000.0)->and((float) $invoice->fresh()->pph_amount)->toBe(0.0);
+    $tooLow = revisionPayload('invoice', $invoice->id, 2990000);
+    $tooLow['pph_gross_up'] = 1; // Gross > receipt, but net < receipt: must reject.
+    expect(fn () => $this->service->apply('invoice', $invoice->id, $tooLow, 1))->toThrow(ValidationException::class);
+    expect((float) $invoice->fresh()->grand_total)->toBe(10000000.0);
 });

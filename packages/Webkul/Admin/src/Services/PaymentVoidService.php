@@ -117,7 +117,7 @@ class PaymentVoidService
     private function result(array $snapshot): array
     {
         $paid = round(max(0, $this->activeTotal($snapshot) - (float) $snapshot['payment']['amount']), 4);
-        $balance = round(max(0, (float) $snapshot['invoice']['grand_total'] - $paid), 4);
+        $balance = round(max(0, (float) $snapshot['invoice']['grand_total'] - (float) ($snapshot['invoice']['pph_amount'] ?? 0) - $paid), 4);
 
         return [
             'invoice_id' => (int) $snapshot['invoice']['id'],

@@ -131,6 +131,10 @@
         <table class="totals">
             <tr class="secondary"><td>Total penawaran yang disepakati</td><td class="amount">{{ $money($snapshot['grand_total']) }}</td></tr>
             <tr class="total"><td>Jumlah tagihan proforma</td><td class="amount">{{ $money($proforma->amount) }}</td></tr>
+            @if ($proforma->pph_gross_up)
+                <tr><td>PPh {{ $proforma->pph_rate }}% dipotong pelanggan</td><td class="amount">({{ $money($proforma->pph_amount) }})</td></tr>
+                <tr class="total"><td>Transfer netto</td><td class="amount">{{ $money($proforma->cashPayable()) }}</td></tr>
+            @endif
             @if ($proforma->billing_type === 'down_payment')
                 <tr class="secondary"><td>Sisa untuk invoice pelunasan</td><td class="amount">{{ $money((float) $snapshot['grand_total'] - (float) $proforma->amount) }}</td></tr>
             @endif

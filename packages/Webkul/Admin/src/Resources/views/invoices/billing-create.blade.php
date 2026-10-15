@@ -184,7 +184,7 @@
 
                     <div class="mt-4">
                         <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Nominal dokumen
+                            Nominal dokumen (bruto)
                         </label>
                         <input
                             id="crm-billing-amount"
@@ -267,6 +267,7 @@
                     </div>
 
                     <div class="space-y-4 p-5">
+                        <p id="crm-preview-pph" class="hidden rounded-lg bg-blue-50 p-3 text-sm text-blue-800"></p>
                         <div class="flex items-center justify-between gap-4 text-sm">
                             <span class="text-gray-500">Grand Total Quote</span>
                             <strong id="crm-preview-total" class="text-gray-900 dark:text-white">Rp 0</strong>
@@ -351,7 +352,8 @@
                 const currency = new Intl.NumberFormat('id-ID', {
                     style: 'currency',
                     currency: 'IDR',
-                    maximumFractionDigits: 0,
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
                 });
 
                 const selectedType = () => (
@@ -412,6 +414,8 @@
                     }
 
                     const type = selectedType();
+                    const pphPreview = document.getElementById('crm-preview-pph');
+                    pphPreview.classList.add('hidden');
                     const isDp = type === 'down_payment';
                     const isPercentage = methodSelect.value === 'percentage';
                     submitButton.textContent = 'Buat Proforma';
@@ -451,6 +455,12 @@
                     }
 
                     const amount = Number(amountInput.value || 0);
+                    if (summary.pph_gross_up) {
+                        const pph = type === 'settlement' ? Number(summary.pph_total) - Number(summary.dp_pph)
+                            : Math.round(Number(summary.pph_total) * amount / Number(summary.quote_total) * 100) / 100;
+                        pphPreview.classList.remove('hidden');
+                        pphPreview.textContent = 'Gross-up PPh 0,5%: nominal dokumen adalah bruto. Potongan PPh ' + currency.format(pph) + '. Transfer netto ' + currency.format(amount - pph) + '.';
+                    }
                     const eligible = Boolean(summary.eligibility?.[type]);
                     const validAmount = type !== 'down_payment'
                         || (amount > 0 && amount < Number(summary.quote_total || 0));

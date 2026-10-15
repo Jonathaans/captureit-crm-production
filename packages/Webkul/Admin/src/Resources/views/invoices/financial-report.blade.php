@@ -247,7 +247,7 @@
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Diterima periode ini</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Piutang saat ini</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pengeluaran</th>
-                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Margin invoice</th>
+                            <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Margin invoice sebelum PPh</th>
                             <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Surplus kas</th>
                             <th class="px-6 py-4 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
                         </tr>
@@ -299,7 +299,7 @@
                                     @endif
                                 </td>
 
-                                <td class="px-6 py-5 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $rupiah($invoice['invoice_value']) }}</td>
+                                <td class="px-6 py-5 text-right align-top font-semibold text-gray-800 dark:text-white">{{ $rupiah($invoice['invoice_value']) }} @if ($invoice['pph_amount'] > 0)<div class="mt-2 text-xs font-normal">PPh: {{ $rupiah($invoice['pph_amount']) }}<br>Netto: {{ $rupiah($invoice['net_payable']) }}</div>@endif</td>
 
                                 <td class="px-6 py-5 text-right align-top">
                                     <div class="font-semibold text-green-600 dark:text-green-400">{{ $rupiah($invoice['received_in_period']) }}</div>
@@ -313,7 +313,7 @@
                                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">Invoice: {{ $rupiah($invoice['project_expense']) }}</div>
                                 </td>
 
-                                <td class="px-6 py-5 text-right align-top font-semibold {{ (float) $invoice['estimated_profit'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">{{ $rupiah($invoice['estimated_profit']) }}</td>
+                                <td class="px-6 py-5 text-right align-top font-semibold {{ (float) $invoice['estimated_profit'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">{{ $rupiah($invoice['estimated_profit']) }} @if ($invoice['pph_amount'] > 0)<div class="mt-2 text-xs font-normal">Setelah PPh: {{ $rupiah($invoice['net_margin']) }}</div>@endif</td>
 
                                 <td class="px-6 py-5 text-right align-top font-semibold {{ (float) $invoice['cash_surplus_in_period'] >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400' }}">{{ $rupiah($invoice['cash_surplus_in_period']) }}</td>
 

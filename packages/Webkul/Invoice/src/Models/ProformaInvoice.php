@@ -22,6 +22,12 @@ class ProformaInvoice extends Model
         'cancelled_at' => 'datetime',
     ];
 
+    /** Net cash agreed after PPh deduction; not evidence of tax remittance. */
+    public function cashPayable(): float
+    {
+        return round(max(0, (float) $this->amount - (float) $this->pph_amount), 4);
+    }
+
     public function invoice()
     {
         return $this->belongsTo(Invoice::class);

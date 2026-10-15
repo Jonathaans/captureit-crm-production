@@ -36,6 +36,9 @@ class Invoice extends Model implements InvoiceContract
         'adjustment_amount',
         'sub_total',
         'grand_total',
+        'pph_gross_up',
+        'pph_rate',
+        'pph_amount',
         'paid_amount',
         'balance_due',
 
@@ -56,12 +59,19 @@ class Invoice extends Model implements InvoiceContract
     ];
 
     protected $casts = [
+        'pph_gross_up' => 'boolean',
         'event_date' => 'date',
         'billing_address' => 'array',
         'shipping_address' => 'array',
         'issued_at' => 'datetime',
         'due_at' => 'datetime',
     ];
+
+    /** Net cash agreed after PPh deduction; not evidence of tax remittance. */
+    public function cashPayable(): float
+    {
+        return round(max(0, (float) $this->grand_total - (float) $this->pph_amount), 4);
+    }
 
     public function quote()
     {
