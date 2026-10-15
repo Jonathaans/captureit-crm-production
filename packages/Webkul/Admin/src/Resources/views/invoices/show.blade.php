@@ -86,12 +86,16 @@
         </div>
 
         <div class="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
+            @if (! $invoice->quote_id)
             <a
                 href="{{ route('admin.invoices.edit', $invoice->id) }}"
                 class="secondary-button"
             >
                 Edit Invoice
             </a>
+            @elseif (bouncer()->hasPermission('invoices.revise') && in_array($invoice->status, ['unpaid', 'partial', 'paid']) && ! in_array($invoice->event_status, ['cancel', 'cancelled', 'canceled']))
+                <a href="{{ route('admin.commercial-revisions.edit', ['invoice', $invoice->id]) }}" class="secondary-button">Revisi Transaksi</a>
+            @endif
 
             @if ($invoice->quote)
                 <a

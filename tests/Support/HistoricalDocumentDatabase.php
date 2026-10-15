@@ -113,5 +113,6 @@ class HistoricalDocumentDatabase
         });
         (require base_path('database/migrations/2026_10_13_150000_create_payment_voids_table.php'))->up();
         (require base_path('database/migrations/2026_10_14_080000_add_historical_document_import.php'))->up();
+        (require base_path('database/migrations/2026_10_15_090000_add_commercial_document_revisions.php'))->up();
     }
 }

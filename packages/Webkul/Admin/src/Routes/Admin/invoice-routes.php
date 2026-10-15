@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Webkul\Admin\Http\Controllers\Invoice\CommercialRevisionController;
 use Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
@@ -10,6 +11,11 @@ use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderExpenseExportController;
 use Webkul\Admin\Http\Controllers\WorkOrder\WorkOrderController;
+
+Route::controller(CommercialRevisionController::class)->prefix('commercial-revisions')->group(function () {
+    Route::get('{documentType}/{id}', 'edit')->whereIn('documentType', ['quote', 'proforma', 'invoice'])->whereNumber('id')->name('admin.commercial-revisions.edit');
+    Route::put('{documentType}/{id}', 'update')->whereIn('documentType', ['quote', 'proforma', 'invoice'])->whereNumber('id')->name('admin.commercial-revisions.update');
+});
 
 Route::controller(ProformaInvoiceController::class)->prefix('proformas')->group(function () {
     Route::get('/', 'index')->name('admin.proformas.index');

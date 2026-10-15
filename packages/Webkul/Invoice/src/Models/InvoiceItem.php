@@ -10,29 +10,30 @@ class InvoiceItem extends Model implements InvoiceItemContract
     protected $table = 'invoice_items';
 
     protected $fillable = [
-    'invoice_id',
+        'quote_item_id',
+        'invoice_id',
 
-    'product_id',
-    'sku',
+        'product_id',
+        'sku',
 
-    'name',
-    'description',
-    'day',
+        'name',
+        'description',
+        'day',
         'unit',
         'equipment_quantity',
 
-    'quantity',
-    'price',
+        'quantity',
+        'price',
 
-    'coupon_code',
+        'coupon_code',
 
-    'discount_percent',
-    'discount_amount',
+        'discount_percent',
+        'discount_amount',
 
-    'tax_percent',
-    'tax_amount',
+        'tax_percent',
+        'tax_amount',
 
-    'total',
+        'total',
     ];
 
     public function invoice()

@@ -33,6 +33,10 @@
     <div class="flex items-center gap-x-2.5">
         {!! view_render_event('admin.contacts.quotes.edit.save_button.before', ['quote' => $quote]) !!}
 
+        @if (bouncer()->hasPermission('invoices.revise'))
+            <a href="{{ route('admin.commercial-revisions.edit', ['quote', $quote->id]) }}" class="secondary-button">Revisi Transaksi</a>
+        @endif
+
         @if (bouncer()->hasPermission('invoices.generate'))
         <!-- Open the billing form without submitting the quote. -->
         <a

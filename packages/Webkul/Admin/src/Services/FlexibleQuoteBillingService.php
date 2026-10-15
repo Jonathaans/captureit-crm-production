@@ -695,6 +695,7 @@ class FlexibleQuoteBillingService
     {
         foreach ($quote->items as $item) {
             $invoice->items()->create([
+                'quote_item_id' => $item->id,
                 'product_id' => $item->product_id,
                 'sku' => $item->sku,
                 'name' => $item->name,
@@ -777,6 +778,7 @@ class FlexibleQuoteBillingService
             $quantity = max(1, (float) $billing['quantity']);
 
             $invoice->items()->create([
+                'quote_item_id' => $item->id,
                 'product_id' => $item->product_id,
                 'sku' => $item->sku,
                 'name' => $item->name,

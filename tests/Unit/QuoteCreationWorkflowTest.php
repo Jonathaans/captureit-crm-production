@@ -132,6 +132,7 @@ beforeEach(function (): void {
     (require base_path('packages/Webkul/Core/src/Database/Migrations/2021_03_12_060658_create_core_config_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_150000_create_financial_period_locks_table.php'))->up();
     (require base_path('database/migrations/2026_09_01_210000_create_work_orders_and_link_delivery_orders.php'))->up();
+    (require base_path('database/migrations/2026_10_15_090000_add_commercial_document_revisions.php'))->up();
 
     Schema::create('products', function (Blueprint $table) {
         $table->increments('id');
