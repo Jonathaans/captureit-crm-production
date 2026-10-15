@@ -383,7 +383,7 @@
             <div class="border-t border-gray-200 p-5 dark:border-gray-800">
                 @forelse ($expenseByCategory as $expense)
                     <div class="flex items-center justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0 dark:border-gray-800">
-                        <span class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ $expense['category'] }}</span>
+                        <span v-pre class="text-sm font-medium text-gray-600 dark:text-gray-300">{{ $expense['category'] }}</span>
                         <span class="text-base font-semibold text-orange-600 dark:text-orange-400">{{ $rupiah($expense['total']) }}</span>
                     </div>
                 @empty

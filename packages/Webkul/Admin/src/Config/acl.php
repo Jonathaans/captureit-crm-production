@@ -98,7 +98,7 @@ return [
          */
         'key' => 'invoices.view',
         'name' => 'admin::app.acl.view',
-        'route' => ['admin.invoices.show', 'admin.proformas.show'],
+        'route' => ['admin.invoices.show', 'admin.proformas.show', 'admin.invoices.payments.receipt'],
         'sort' => 1,
     ], [
         'key' => 'invoices.revise',
@@ -1215,5 +1215,26 @@ return [
         'name' => 'Export All Expenses',
         'route' => 'admin.invoices.expenses.export-all',
         'sort' => 3,
+    ],
+    [
+        'key' => 'settings.finance',
+        'name' => 'Keuangan',
+        'route' => 'admin.settings.expense-categories.index',
+        'sort' => 4,
+    ], [
+        'key' => 'settings.finance.expense-categories',
+        'name' => 'Kategori Expense',
+        'route' => 'admin.settings.expense-categories.index',
+        'sort' => 1,
+    ], [
+        'key' => 'settings.finance.expense-categories.create',
+        'name' => 'Tambah Kategori',
+        'route' => 'admin.settings.expense-categories.store',
+        'sort' => 1,
+    ], [
+        'key' => 'settings.finance.expense-categories.edit',
+        'name' => 'Ubah / Nonaktifkan Kategori',
+        'route' => 'admin.settings.expense-categories.update',
+        'sort' => 2,
     ],
 ];

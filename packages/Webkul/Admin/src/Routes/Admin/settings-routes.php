@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Webkul\Admin\Http\Controllers\Settings\AttributeController;
 use Webkul\Admin\Http\Controllers\Settings\DataTransfer\ImportController;
 use Webkul\Admin\Http\Controllers\Settings\EmailTemplateController;
+use Webkul\Admin\Http\Controllers\Settings\ExpenseCategoryController;
 use Webkul\Admin\Http\Controllers\Settings\GroupController;
 use Webkul\Admin\Http\Controllers\Settings\LocationController;
 use Webkul\Admin\Http\Controllers\Settings\Marketing\CampaignsController;
@@ -26,6 +27,13 @@ use Webkul\Admin\Http\Controllers\Settings\WorkflowController;
  * Settings group routes.
  */
 Route::prefix('settings')->group(function () {
+    Route::controller(ExpenseCategoryController::class)
+        ->prefix('expense-categories')->group(function () {
+            Route::get('', 'index')->name('admin.settings.expense-categories.index');
+            Route::post('', 'store')->name('admin.settings.expense-categories.store');
+            Route::put('{id}', 'update')->whereNumber('id')->name('admin.settings.expense-categories.update');
+        });
+
     /**
      * Settings routes.
      */

@@ -1821,102 +1821,9 @@ public function generateDeliveryOrder(
      * ADD PAYMENT
      * ============================================================
      */
-    public function addPayment(
-        Request $request,
-        int $id
-    ): RedirectResponse {
-        $validated = $request->validate([
-            'amount' => [
-                'required',
-                'numeric',
-                'gt:0',
-            ],
-
-            'payment_method' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-
-            'reference_number' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-
-            'notes' => [
-                'nullable',
-                'string',
-            ],
-
-            'paid_date' => [
-                'required',
-                'date',
-            ],
-
-            'paid_time' => [
-                'required',
-                'date_format:H:i',
-            ],
-        ]);
-
-        $invoice = Invoice::findOrFail(
-            $id
-        );
-
-        $paidAt = Carbon::createFromFormat(
-            'Y-m-d H:i',
-            $validated['paid_date']
-            .' '
-            .$validated['paid_time']
-        );
-
-        try {
-            $this->paymentService->addPayment(
-                $invoice,
-                [
-                    'amount' =>
-                        $validated['amount'],
-
-                    'payment_method' =>
-                        $validated['payment_method']
-                        ?? null,
-
-                    'reference_number' =>
-                        $validated['reference_number']
-                        ?? null,
-
-                    'notes' =>
-                        $validated['notes']
-                        ?? null,
-
-                    'created_by' =>
-                        auth()
-                            ->guard('user')
-                            ->id(),
-
-                    'paid_at' =>
-                        $paidAt,
-                ]
-            );
-        } catch (InvalidArgumentException $exception) {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'amount' =>
-                        $exception->getMessage(),
-                ]);
-        }
-
-        session()->flash(
-            'success',
-            'Pembayaran berhasil ditambahkan.'
-        );
-
-        return redirect()->route(
-            'admin.invoices.show',
-            $invoice->id
-        );
+    public function addPayment(Request $request, int $id): RedirectResponse
+    {
+        return app(InvoicePaymentController::class)->store($request, $id, app(\Webkul\Invoice\Services\PaymentReceiptService::class));
     }
 
     /**
@@ -1993,6 +1900,8 @@ public function generateDeliveryOrder(
             ],
         ]);
 
+        app(\Webkul\Invoice\Repositories\ExpenseCategoryRepository::class)->assertSelectable($validated['category']);
+
         $receiptPath = null;
 
         /**
@@ -2026,13 +1935,17 @@ public function generateDeliveryOrder(
                             ->id(),
                 ]
             );
-        } catch (InvalidArgumentException $exception) {
+        } catch (\Throwable $exception) {
             if ($receiptPath) {
                 Storage::disk(
                     'public'
                 )->delete(
                     $receiptPath
                 );
+            }
+
+            if (! $exception instanceof InvalidArgumentException) {
+                throw $exception;
             }
 
             return back()
@@ -2156,6 +2069,8 @@ public function generateDeliveryOrder(
             ],
         ]);
 
+        app(\Webkul\Invoice\Repositories\ExpenseCategoryRepository::class)->assertSelectable($validated['category'], $expense->category);
+
         $oldReceiptPath =
             $expense->receipt_path;
 
@@ -2184,13 +2099,17 @@ public function generateDeliveryOrder(
                 $expense,
                 $validated
             );
-        } catch (InvalidArgumentException $exception) {
+        } catch (\Throwable $exception) {
             if ($newReceiptPath) {
                 Storage::disk(
                     'public'
                 )->delete(
                     $newReceiptPath
                 );
+            }
+
+            if (! $exception instanceof InvalidArgumentException) {
+                throw $exception;
             }
 
             return back()

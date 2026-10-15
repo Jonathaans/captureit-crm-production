@@ -602,4 +602,19 @@ return [
         'sort' => 190,
         'icon-class' => 'icon-message',
     ],
+    [
+        'key' => 'settings.finance',
+        'name' => 'Keuangan',
+        'info' => 'Atur kebutuhan pencatatan transaksi dan pengeluaran.',
+        'route' => 'admin.settings.expense-categories.index',
+        'sort' => 3,
+        'icon-class' => 'icon-setting',
+    ], [
+        'key' => 'settings.finance.expense-categories',
+        'name' => 'Kategori Expense',
+        'info' => 'Tambah kategori, ubah nama, dan kelola kategori pengeluaran aktif.',
+        'route' => 'admin.settings.expense-categories.index',
+        'sort' => 1,
+        'icon-class' => 'icon-tag',
+    ],
 ];
