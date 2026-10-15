@@ -278,8 +278,8 @@ it('returns validation errors without persisting a partial quote', function (str
         ->and(DB::table('attribute_values')->count())->toBe(0);
 })->with([['expired_at', '2026-10-01'], ['items', []], ['person_id', null], ['user_id', null]]);
 
-it('completes Lead Quote Proforma Invoice SPK and DO through the authenticated routes', function (bool $dp, string $dueAt) {
-    $this->post(route('admin.quotes.store'), array_replace($this->payload, ['lead_id' => $this->lead->id]))
+it('completes Lead Quote Proforma Invoice SPK and DO through the authenticated routes', function (bool $dp, string $dueAt, bool $grossUp = false) {
+    $this->post(route('admin.quotes.store'), array_replace($this->payload, ['lead_id' => $this->lead->id, 'pph_gross_up' => $grossUp ? '1' : '0']))
         ->assertSessionHasNoErrors()->assertRedirect();
     $quote = Quote::sole();
     $top = $dp ? 'DP 30%, pelunasan H-1 event' : 'Lunas sesuai TOP '.$dueAt;
@@ -303,7 +303,7 @@ it('completes Lead Quote Proforma Invoice SPK and DO through the authenticated r
     $invoice = Invoice::sole();
     expect($proforma->fresh()->invoice_id)->toBe($invoice->id)
         ->and($invoice->status)->toBe($dp ? 'paid' : 'unpaid')
-        ->and((float) $invoice->grand_total)->toBe($dp ? 3000000.0 : 10000000.0)
+        ->and((float) $invoice->grand_total)->toBe($grossUp ? ($dp ? 3015075.38 : 10050251.26) : ($dp ? 3000000.0 : 10000000.0))
         ->and((float) $invoice->paid_amount)->toBe($dp ? 3000000.0 : 0.0)
         ->and($invoice->due_at->toDateString())->toBe($dueAt)
         ->and($invoice->payment_term)->toBe($top)
@@ -330,12 +330,31 @@ it('completes Lead Quote Proforma Invoice SPK and DO through the authenticated r
         $this->post(route('admin.proformas.approve', $settlementProforma->id), ['event_confirmed' => 1])
             ->assertSessionHasNoErrors()->assertRedirect();
         $settlement = Invoice::findOrFail($settlementProforma->fresh()->invoice_id);
-        expect((float) $settlement->grand_total)->toBe(7000000.0)
+        expect((float) $settlement->grand_total)->toBe($grossUp ? 7035175.88 : 7000000.0)
             ->and($settlement->status)->toBe('unpaid')
             ->and($settlement->dp_invoice_id)->toBe($invoice->id)
-            ->and((float) Invoice::sum('grand_total'))->toBe(10000000.0);
+            ->and((float) Invoice::sum('grand_total'))->toBe($grossUp ? 10050251.26 : 10000000.0);
         $this->post(route('admin.invoices.work-orders.store', $settlement->id))
             ->assertSessionHasNoErrors()->assertRedirect(route('admin.work-orders.show', $spk->id));
         expect(WorkOrder::count())->toBe(1)->and(DeliveryOrder::count())->toBe(1);
     }
-})->with([[true, '2026-10-12'], [false, '2026-10-19'], [false, '2026-11-03']]);
+})->with([[true, '2026-10-12'], [false, '2026-10-19'], [false, '2026-11-03'], [true, '2026-10-12', true], [false, '2026-10-19', true]]);
+
+it('calculates gross-up on the server from Lead items and can switch it off without double grossing', function () {
+    $payload = array_replace($this->payload, ['lead_id' => $this->lead->id, 'pph_gross_up' => '1', 'pph_amount' => 999999, 'pph_rate' => 99, 'grand_total' => 1]);
+    $payload['items']['item_0']['price'] = 3750000;
+    $this->post(route('admin.quotes.store'), $payload)->assertSessionHasNoErrors()->assertRedirect();
+    $quote = Quote::sole();
+    expect((float) $quote->grand_total)->toBe(7537688.44)->and((float) $quote->pph_amount)->toBe(37688.44)->and((float) $quote->pph_rate)->toBe(0.5);
+    $this->get(route('admin.quotes.edit', $quote->id))->assertOk()->assertSee('Gross-up PPh 0,5%');
+    $payload['items'] = [$quote->items->sole()->id => $payload['items']['item_0']];
+    $this->put(route('admin.quotes.update', $quote->id), $payload)->assertSessionHasNoErrors();
+    expect((float) $quote->fresh()->grand_total)->toBe(7537688.44);
+    $this->put(route('admin.quotes.update', $quote->id), array_replace($payload, ['pph_gross_up' => '0']))->assertSessionHasNoErrors();
+    expect((float) $quote->fresh()->grand_total)->toBe(7500000.0)->and((float) $quote->fresh()->pph_amount)->toBe(0.0);
+});
+
+it('rejects an invalid gross-up choice without storing a quote', function () {
+    $this->post(route('admin.quotes.store'), $this->payload + ['pph_gross_up' => 'yes'])->assertSessionHasErrors('pph_gross_up');
+    expect(Quote::count())->toBe(0);
+});

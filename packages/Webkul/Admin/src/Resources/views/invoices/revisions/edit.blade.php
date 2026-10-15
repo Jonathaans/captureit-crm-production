@@ -141,7 +141,6 @@
                             const kind = row.dataset.documentKind;
                             const value = kind === 'down_payment' ? dp : kind === 'settlement' ? round(total - dp) : total;
                             const paid = row.dataset.paid;
-                            const kind = row.dataset.documentKind;
                             const tax = kind === 'settlement' ? round(pph - dpPph) : (kind === 'down_payment' ? dpPph : pph);
                             const cash = round(value - tax);
                             row.querySelector('[data-new-pph]').textContent = money(tax);
