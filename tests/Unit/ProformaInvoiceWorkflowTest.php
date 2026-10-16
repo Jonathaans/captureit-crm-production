@@ -271,7 +271,8 @@ it('cannot cancel a converted proforma or create settlement without a paid DP', 
 it('renders the printable proforma with frozen company and TOP', function () {
     $proforma = $this->proformas->create($this->quote, $this->input);
     $html = view('admin::invoices.proformas.print', compact('proforma'))->render();
-    expect($html)->toContain('PROFORMA INVOICE', 'Company Awal', '3.000.000,00', '7.000.000,00', 'DP 30%, pelunasan H-1 event');
+    expect($html)->toContain('PROFORMA INVOICE', 'Company Awal', 'Sub Total', 'Discount', 'GRAND TOTAL', '3.000.000,00', 'DP 30%, pelunasan H-1 event')
+        ->not->toContain('7.000.000,00', 'Sisa untuk invoice pelunasan');
 });
 
 it('keeps a closed financial period protected during DP conversion', function () {

@@ -831,32 +831,6 @@
                 </td>
             </tr>
 
-            <tr>
-                <td class="summary-label">
-                    Tax
-                </td>
-
-                <td class="summary-value">
-                    {!! core()->formatBasePrice($quote->tax_amount, true) !!}
-                </td>
-            </tr>
-
-            @if ((float) $quote->adjustment_amount !== 0.0)
-                <tr>
-                    <td class="summary-label">
-                        Adjustment
-                    </td>
-
-                    <td class="summary-value">
-                        {!! core()->formatBasePrice($quote->adjustment_amount, true) !!}
-                    </td>
-                </tr>
-            @endif
-
-            @if ($quote->pph_gross_up)
-                <tr><td class="summary-label">Tambahan gross-up PPh {{ $quote->pph_rate }}%</td><td class="summary-value">Rp {{ number_format((float) $quote->pph_amount, 2, ',', '.') }}</td></tr>
-            @endif
-
             <tr class="grand-total">
                 <td>
                     GRAND TOTAL
@@ -866,10 +840,6 @@
                     {!! core()->formatBasePrice($quote->grand_total, true) !!}
                 </td>
             </tr>
-            @if ($quote->pph_gross_up)
-                <tr><td class="summary-label">PPh {{ $quote->pph_rate }}% dipotong pelanggan</td><td class="summary-value">(Rp {{ number_format((float) $quote->pph_amount, 2, ',', '.') }})</td></tr>
-                <tr class="grand-total"><td>TRANSFER NETTO</td><td class="summary-value">Rp {{ number_format((float) $quote->grand_total - (float) $quote->pph_amount, 2, ',', '.') }}</td></tr>
-            @endif
         </table>
     </div>
 

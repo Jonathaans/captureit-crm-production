@@ -58,3 +58,28 @@ it('renders partial address labels without requiring missing fields', function (
         ->and($repository->getAttributeLabel([], $attribute))->toBeNull()
         ->and($repository->getAttributeLabel(null, $attribute))->toBeNull();
 });
+
+it('accepts long multiline address text in contact and quote requests', function (string $entityType, string $key): void {
+    $attributes = Mockery::mock(AttributeRepository::class);
+    $attributes->shouldReceive('scopeQuery')->andReturnSelf();
+    $attributes->shouldReceive('get')->andReturn(collect([
+        (object) ['code' => $key, 'entity_type' => $entityType, 'type' => 'address', 'is_required' => true, 'is_unique' => false],
+    ]));
+    $rules = (new AttributeForm($attributes, Mockery::mock(AttributeValueRepository::class)))->rules();
+    $address = [
+        'address' => str_repeat("Jalan Danau Tondano Blok AA, Gedung Utama.\nLantai 15, Jakarta Pusat.\n", 100),
+        'country' => 'ID', 'state' => 'JK', 'city' => 'Jakarta', 'postcode' => '10210',
+    ];
+    expect(Validator::make([$key => $address], $rules)->passes())->toBeTrue();
+})->with([['organizations', 'address'], ['persons', 'address'], ['quotes', 'billing_address'], ['quotes', 'shipping_address']]);
+
+it('accepts long company addresses in leads while still rejecting non-text address values', function (): void {
+    $attributes = Mockery::mock(AttributeRepository::class);
+    $attributes->shouldReceive('scopeQuery')->andReturnSelf();
+    $attributes->shouldReceive('get')->andReturn(collect());
+    $rules = (new LeadForm($attributes, Mockery::mock(AttributeValueRepository::class)))->rules();
+    $input = ['person' => ['organization_address' => ['address' => str_repeat('Alamat lengkap perusahaan. ', 400)]]];
+    expect(Validator::make($input, $rules)->passes())->toBeTrue();
+    $input['person']['organization_address']['address'] = ['invalid'];
+    expect(Validator::make($input, $rules)->fails())->toBeTrue();
+});

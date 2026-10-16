@@ -253,6 +253,23 @@ it('renders Generate Quote from an old Lead and saves the imported fields and it
         ->and($this->lead->fresh()->expected_close_date->toDateString())->toBe('2026-10-01');
 });
 
+it('stores a long address intact when creating a quote and copying its billing address to shipping', function () {
+    DB::table('attributes')->insert([
+        'code' => 'billing_address', 'name' => 'Address', 'type' => 'address', 'entity_type' => 'quotes',
+        'is_required' => true, 'is_user_defined' => false,
+    ]);
+    $address = [
+        'address' => trim(str_repeat("Jalan Danau Tondano, Gedung Élite & Co.\nLantai 15, Jakarta Pusat.\n", 100)),
+        'country' => 'ID', 'state' => 'JK', 'city' => 'Jakarta', 'postcode' => '10210',
+    ];
+    $this->get(route('admin.quotes.create'))->assertOk()->assertSee('v-address-component-template');
+    $this->post(route('admin.quotes.store'), array_replace($this->payload, [
+        'billing_address' => $address, 'shipping_address_same_as_billing' => 1,
+    ]))->assertSessionHasNoErrors()->assertRedirect();
+    $quote = Quote::sole();
+    expect($quote->billing_address)->toBe($address)->and($quote->shipping_address)->toBe($address);
+});
+
 it('keeps the quote and items valid until local midnight while preserving converted quote locks', function () {
     config(['app.timezone' => 'Asia/Jakarta']);
     $this->travelTo(Carbon::parse('2026-10-12 23:59:59', 'Asia/Jakarta'));

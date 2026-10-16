@@ -42,7 +42,10 @@
                         <label class="fw-field">Bill To / contact<select name="person_id" required>@foreach ($people as $person)<option value="{{ $person->id }}" @selected((string) $draft['person_id'] === (string) $person->id)>{{ $person->name }}{{ $person->company ? ' · '.$person->company : '' }}</option>@endforeach</select></label>
                         <label class="fw-field">Tampilkan Bill To<select name="bill_to_display_mode">@foreach (['person' => 'Contact', 'company' => 'Perusahaan', 'both' => 'Contact & perusahaan'] as $value => $label)<option value="{{ $value }}" @selected($draft['bill_to_display_mode'] === $value)>{{ $label }}</option>@endforeach</select></label>
                         <label class="fw-field">Lokasi<input name="location" maxlength="255" value="{{ $draft['location'] }}"></label>
-                        <label class="fw-field">Ketentuan pembayaran<textarea name="payment_term" maxlength="100">{{ $draft['payment_term'] }}</textarea></label>
+                        <label class="fw-field">TOP / Ketentuan pembayaran
+                            <textarea name="payment_term" maxlength="2000" rows="3" aria-describedby="revision-payment-term-help" placeholder="Contoh: Pelunasan 30 hari setelah event.">{{ $draft['payment_term'] }}</textarea>
+                            <span id="revision-payment-term-help" class="fw-muted">Maksimal 2.000 karakter. Disimpan ke Quote, Proforma, dan Invoice aktif yang terhubung.</span>
+                        </label>
                     </div>
                     <label class="fw-field" style="margin-top:16px">Catatan / deskripsi<textarea name="description" maxlength="10000">{{ $draft['description'] }}</textarea></label>
                     <details class="fw-details" style="margin-top:12px">
@@ -51,7 +54,13 @@
                             @foreach (['billing_address' => 'Penagihan', 'shipping_address' => 'Pengiriman'] as $field => $title)
                                 <div class="fw-stack"><strong>{{ $title }}</strong>
                                     @foreach (['address' => 'Alamat', 'city' => 'Kota', 'state' => 'Provinsi', 'country' => 'Kode negara', 'postcode' => 'Kode pos'] as $key => $label)
-                                        <label class="fw-field">{{ $label }}<input name="{{ $field }}[{{ $key }}]" maxlength="2000" value="{{ $draft[$field][$key] ?? '' }}"></label>
+                                        <label class="fw-field">{{ $label }}
+                                            @if ($key === 'address')
+                                                <textarea name="{{ $field }}[{{ $key }}]" rows="3">{{ $draft[$field][$key] ?? '' }}</textarea>
+                                            @else
+                                                <input name="{{ $field }}[{{ $key }}]" maxlength="2000" value="{{ $draft[$field][$key] ?? '' }}">
+                                            @endif
+                                        </label>
                                     @endforeach
                                 </div>
                             @endforeach

@@ -128,7 +128,7 @@ class LeadForm extends FormRequest
             ...$this->rules,
             'person.organization_name' => ['nullable', 'string', 'max:255'],
             'person.organization_address' => ['nullable', 'array'],
-            'person.organization_address.address' => ['nullable', 'string', 'max:100'],
+            'person.organization_address.address' => ['nullable', 'string'],
             'person.organization_address.country' => ['nullable', 'string', 'max:2'],
             'person.organization_address.state' => ['nullable', 'string', 'max:100'],
             'person.organization_address.city' => ['nullable', 'string', 'max:100'],

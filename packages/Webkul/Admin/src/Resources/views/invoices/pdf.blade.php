@@ -113,16 +113,6 @@
             ? core()->formatDate($invoice->due_at, 'd M Y')
             : '-';
 
-        /*
-         * Payment status.
-         */
-        $paymentStatus = match ($invoice->status) {
-            'void' => 'VOID / DIBATALKAN',
-            'paid' => 'PAID',
-            'partial' => 'PARTIAL',
-            default => 'UNPAID',
-        };
-
         /* CRM_INVOICE_FLEXIBLE_BILLING_V1 */
         $billingType = $invoice->billing_type ?: 'full_payment';
 
@@ -137,16 +127,6 @@
                 ->where('id', $invoice->dp_invoice_id)
                 ->value('invoice_number')
             : null;
-
-        $quoteTotalSnapshot = (float) (
-            $invoice->quote_total_snapshot
-            ?: $invoice->grand_total
-        );
-
-        $remainingAmountSnapshot = (float) (
-            $invoice->remaining_amount_snapshot
-            ?? 0
-        );
     @endphp
 
     <style>
@@ -409,32 +389,6 @@
             border-top: 2px solid #111827;
             color: #111827;
             font-size: 11px;
-            font-weight: bold;
-        }
-
-        .payment-summary {
-            width: 42%;
-            margin-top: 12px;
-            margin-left: auto;
-            background: #f9fafb;
-        }
-
-        .payment-summary td {
-            padding: 5px 7px;
-        }
-
-        .status-paid {
-            color: #15803d;
-            font-weight: bold;
-        }
-
-        .status-partial {
-            color: #a16207;
-            font-weight: bold;
-        }
-
-        .status-unpaid {
-            color: #b91c1c;
             font-weight: bold;
         }
 
@@ -764,25 +718,6 @@
     <!-- Invoice Summary -->
     <div class="summary-wrap">
         <table class="summary-table">
-            @if ($invoice->billing_locked_at && $billingType !== 'full_payment')
-                <tr>
-                    <td class="summary-label">
-                        Quote Contract Total
-                    </td>
-                    <td class="summary-value">
-                        Rp {{ number_format($quoteTotalSnapshot, 0, ',', '.') }}
-                    </td>
-                </tr>
-                <tr>
-                    <td class="summary-label">
-                        Remaining After Invoice
-                    </td>
-                    <td class="summary-value">
-                        Rp {{ number_format($remainingAmountSnapshot, 0, ',', '.') }}
-                    </td>
-                </tr>
-            @endif
-
             <tr>
                 <td class="summary-label">
                     Sub Total
@@ -803,32 +738,6 @@
                 </td>
             </tr>
 
-            <tr>
-                <td class="summary-label">
-                    Tax
-                </td>
-
-                <td class="summary-value">
-                    Rp {{ number_format((float) $invoice->tax_amount, 0, ',', '.') }}
-                </td>
-            </tr>
-
-            @if ((float) $invoice->adjustment_amount !== 0.0)
-                <tr>
-                    <td class="summary-label">
-                        Adjustment
-                    </td>
-
-                    <td class="summary-value">
-                        Rp {{ number_format((float) $invoice->adjustment_amount, 0, ',', '.') }}
-                    </td>
-                </tr>
-            @endif
-
-            @if ($invoice->pph_gross_up)
-                <tr><td class="summary-label">Tambahan gross-up PPh {{ $invoice->pph_rate }}%</td><td class="summary-value">Rp {{ number_format((float) $invoice->pph_amount, 2, ',', '.') }}</td></tr>
-            @endif
-
             <tr class="grand-total">
                 <td>
                     GRAND TOTAL
@@ -836,55 +745,6 @@
 
                 <td class="summary-value">
                     Rp {{ number_format((float) $invoice->grand_total, $invoice->pph_gross_up ? 2 : 0, ',', '.') }}
-                </td>
-            </tr>
-            @if ($invoice->pph_gross_up)
-                <tr><td class="summary-label">PPh {{ $invoice->pph_rate }}% dipotong pelanggan</td><td class="summary-value">(Rp {{ number_format((float) $invoice->pph_amount, 2, ',', '.') }})</td></tr>
-                <tr class="grand-total"><td>TRANSFER NETTO</td><td class="summary-value">Rp {{ number_format((float) $invoice->grand_total - (float) $invoice->pph_amount, 2, ',', '.') }}</td></tr>
-            @endif
-        </table>
-
-        <!-- Payment Status Summary -->
-        <table class="payment-summary">
-            <tr>
-                <td class="summary-label">
-                    Paid
-                </td>
-
-                <td class="summary-value">
-                    Rp {{ number_format((float) $invoice->paid_amount, 0, ',', '.') }}
-                </td>
-            </tr>
-
-            <tr>
-                <td class="summary-label">
-                    Balance Due
-                </td>
-
-                <td class="summary-value">
-                    Rp {{ number_format((float) $invoice->balance_due, 0, ',', '.') }}
-                </td>
-            </tr>
-
-            <tr>
-                <td class="summary-label">
-                    Payment Status
-                </td>
-
-                <td class="summary-value">
-                    @if ($invoice->status === 'paid')
-                        <span class="status-paid">
-                            {{ $paymentStatus }}
-                        </span>
-                    @elseif ($invoice->status === 'partial')
-                        <span class="status-partial">
-                            {{ $paymentStatus }}
-                        </span>
-                    @else
-                        <span class="status-unpaid">
-                            {{ $paymentStatus }}
-                        </span>
-                    @endif
                 </td>
             </tr>
         </table>

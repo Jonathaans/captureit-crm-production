@@ -32,6 +32,14 @@ class CommercialRevisionService
             ?? collect($proformas)->firstWhere('billing_type', 'down_payment');
         $quote = $state['quote'];
         $form = Arr::only($quote, ['subject', 'person_id', 'event_date', 'location', 'payment_term', 'description', 'bill_to_display_mode', 'adjustment_amount', 'pph_gross_up']);
+        // A proforma can have its own agreed TOP, different from the original quote.
+        // Start with the opened document so editing another field never restores an old TOP.
+        $termSource = match ($type) {
+            'proforma' => Arr::get(json_decode(collect($proformas)->firstWhere('id', $id)['quote_snapshot'] ?? '[]', true), 'attributes', []),
+            'invoice' => collect($invoices)->firstWhere('id', $id),
+            default => $quote,
+        };
+        $form['payment_term'] = Arr::get($termSource, 'payment_term', $quote['payment_term'] ?? null);
         $form['bill_to_display_mode'] = $form['bill_to_display_mode'] ?: 'person';
         $form['event_date'] = $form['event_date'] ? substr($form['event_date'], 0, 10) : null;
         foreach (['billing_address', 'shipping_address'] as $field) {
@@ -134,12 +142,20 @@ class CommercialRevisionService
             'bill_to_display_mode' => ['required', 'in:person,company,both'],
             'event_date' => ['nullable', 'date_format:Y-m-d'],
             'location' => ['nullable', 'string', 'max:255'],
-            'payment_term' => ['nullable', 'string', 'max:100'],
+            'payment_term' => ['nullable', 'string', 'max:2000'],
             'description' => ['nullable', 'string', 'max:10000'],
             'billing_address' => ['nullable', 'array:address,city,state,country,postcode'],
             'shipping_address' => ['nullable', 'array:address,city,state,country,postcode'],
-            'billing_address.*' => ['nullable', 'string', 'max:2000'],
-            'shipping_address.*' => ['nullable', 'string', 'max:2000'],
+            'billing_address.*' => ['nullable', 'string'],
+            'shipping_address.*' => ['nullable', 'string'],
+            'billing_address.city' => ['nullable', 'string', 'max:2000'],
+            'billing_address.state' => ['nullable', 'string', 'max:2000'],
+            'billing_address.country' => ['nullable', 'string', 'max:2000'],
+            'billing_address.postcode' => ['nullable', 'string', 'max:2000'],
+            'shipping_address.city' => ['nullable', 'string', 'max:2000'],
+            'shipping_address.state' => ['nullable', 'string', 'max:2000'],
+            'shipping_address.country' => ['nullable', 'string', 'max:2000'],
+            'shipping_address.postcode' => ['nullable', 'string', 'max:2000'],
             'adjustment_amount' => ['required', 'numeric', 'between:-999999999999.99,999999999999.99'],
             'document_discount_amount' => $money, 'document_tax_amount' => $money,
             'dp_amount' => ['nullable', 'numeric', 'gt:0', 'max:999999999999.99'],

@@ -10,6 +10,19 @@ Gunakan **Revisi Transaksi** untuk mengubah kesepakatan yang sudah mempunyai pro
 4. Periksa nilai sebelum/sesudah dan sisa tagihan setiap dokumen, isi alasan, lalu simpan.
 5. Cetak ulang PDF dokumen yang direvisi. File PDF yang pernah diunduh tidak berubah otomatis. Buka ulang Financial Report/ekspor untuk melihat angka terbaru.
 
+## TOP dan alamat
+
+- **TOP / Ketentuan pembayaran** pada form revisi mengambil nilai dari dokumen yang dibuka. Contoh: jika Quote berisi `7 Days` dan Proforma berisi `After Event`, revisi dari Proforma menampilkan `After Event`. Setelah disimpan, TOP baru diterapkan ke Quote, semua Proforma aktif, dan Invoice aktif terkait, termasuk hasil cetaknya.
+- TOP mendukung beberapa baris hingga 2.000 karakter, sama dengan saat membuat Proforma. Tanggal jatuh tempo tetap terpisah dan tidak dihitung ulang dari teks TOP.
+- Kolom teks **Address/Alamat** pada komponen alamat bersama (kontak, perusahaan, Lead, Quote) dan Revisi Transaksi tidak memiliki batas jumlah karakter di aplikasi. Alamat beberapa baris disimpan lengkap dan diteruskan ke dokumen terkait. Ketentuan kolom lokasi lain dan kewajiban mengisi alamat pada form yang membutuhkannya tetap berlaku.
+- Revisi TOP atau alamat saja tidak mengubah nilai tagihan, riwayat pembayaran, atau angka Financial Report.
+
+## Ringkasan PDF untuk pelanggan
+
+PDF Quote, Invoice, dan cetak/Simpan PDF Proforma hanya menampilkan **Sub Total, Discount, dan GRAND TOTAL** pada ringkasan nilai. Baris Tax, Adjustment, rincian gross-up/PPh, transfer netto, total kontrak/sisa kontrak, serta ringkasan pembayaran internal tidak dicetak. Subtotal, diskon, dan nilai akhir tetap memakai kesepakatan yang tersimpan; pajak, penyesuaian, dan gross-up tetap termasuk dalam perhitungan Grand Total meskipun rinciannya disembunyikan.
+
+Grand Total Proforma DP/pelunasan memakai nominal tagihan proforma tersebut, bukan keseluruhan Quote. Untuk tagihan penuh, subtotal dan diskon berasal dari snapshot Quote; DP/pelunasan mengikuti porsi tagihan seperti invoice hasil konversinya. Form internal, pembayaran, PPh, balance, dan Financial Report tetap memakai perhitungan yang sama. PDF lama perlu dicetak/diunduh ulang untuk memakai tampilan ini.
+
 ## Dampak pada laporan dan pembayaran
 
 - Financial Report dan CSV membaca nilai invoice aktual yang diperbarui: invoiced, piutang, serta estimasi laba mengikuti revisi. Penerimaan kas dan pengeluaran tetap mengikuti transaksi pembayaran/pengeluaran yang sudah dicatat.
@@ -39,6 +52,8 @@ php artisan optimize:clear
 ```
 
 Migrasi `2026_10_15_090000_add_commercial_document_revisions` menambahkan tabel riwayat dan kolom `invoice_items.quote_item_id`. Migrasi harus selesai sebelum aplikasi melayani penulisan dokumen. Rollback migrasi ditolak untuk mempertahankan riwayat; gunakan migrasi koreksi bila perlu. Perubahan UI memakai Blade dan JavaScript di halaman sehingga tidak membutuhkan build aset baru untuk fitur ini.
+
+Migrasi `2026_10_16_070000_expand_commercial_payment_terms` memperbesar penyimpanan TOP pada Quote dan Invoice menjadi `TEXT`. Rollback ke batas lama 100 karakter ditolak jika masih ada TOP yang lebih panjang, agar data tidak terpotong. Alamat sudah memakai penyimpanan JSON sehingga tidak membutuhkan migrasi tambahan.
 
 ## Pengujian
 
