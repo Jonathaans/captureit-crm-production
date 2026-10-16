@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Tests\TestCase;
+use Webkul\Admin\Services\LeadQuotePrefillService;
+use Webkul\Contact\Repositories\OrganizationRepository;
 use Webkul\Contact\Repositories\PersonRepository;
 
 uses(TestCase::class);
@@ -100,7 +102,7 @@ it('assigns new lead contacts and companies to the sales owner and accepts an op
         ->toContain("'user_id' => \$userId ?: auth()->guard('user')->id()");
 
     expect($leadForm)
-        ->toContain("'person.organization_address.address' => ['nullable', 'string', 'max:100']")
+        ->toContain("'person.organization_address.address' => ['nullable', 'string']")
         ->toContain("'person.organization_address.country' => ['nullable', 'string', 'max:2']");
 
     expect($view)
@@ -111,8 +113,9 @@ it('assigns new lead contacts and companies to the sales owner and accepts an op
 
 it('saves the address and current owner on a newly added company', function (): void {
     $organization = (object) ['id' => 73];
+    $address = str_repeat('Jalan Sudirman, Gedung Utama, Lantai 15, Jakarta. ', 100);
 
-    $organizationRepository = Mockery::mock(\Webkul\Contact\Repositories\OrganizationRepository::class);
+    $organizationRepository = Mockery::mock(OrganizationRepository::class);
     $organizationRepository
         ->shouldReceive('findOneWhere')
         ->once()
@@ -126,7 +129,7 @@ it('saves the address and current owner on a newly added company', function (): 
             'name' => 'Capture Studio',
             'user_id' => 42,
             'address' => [
-                'address' => 'Jl. Sudirman 10',
+                'address' => $address,
                 'country' => 'ID',
             ],
         ])
@@ -146,7 +149,7 @@ it('saves the address and current owner on a newly added company', function (): 
     $result = $personRepository->fetchOrCreateOrganizationByName(
         ' Capture Studio ',
         [
-            'address' => 'Jl. Sudirman 10',
+            'address' => $address,
             'country' => 'ID',
             'city' => '',
             'unknown_field' => 'ignored',
@@ -158,11 +161,10 @@ it('saves the address and current owner on a newly added company', function (): 
 });
 
 it('carries the selected lead company address into a newly created quote', function (): void {
-    $controller = file_get_contents(
-        base_path('packages/Webkul/Admin/src/Http/Controllers/Quote/QuoteController.php')
-    );
-
-    expect($controller)->toContain(
-        "'billing_address' => \$lead->person->organization?->address"
-    );
+    $address = ['address' => str_repeat('Jalan Danau Tondano Blok AA, Jakarta Pusat. ', 100), 'city' => 'Jakarta'];
+    $lead = (object) [
+        'person' => (object) ['organization' => (object) ['address' => $address]],
+    ];
+    $values = (new LeadQuotePrefillService)->attributes($lead);
+    expect($values['billing_address'])->toBe($address)->and($values['shipping_address'])->toBe($address);
 });

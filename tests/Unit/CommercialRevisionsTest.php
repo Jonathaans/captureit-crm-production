@@ -391,9 +391,12 @@ it('grosses up the real paid DP pair in place without altering receipts dates pr
         ->and($commission->first()['paid_completion_date'])->toBe('2026-10-12')
         ->and(app(FinanceSalesDashboardService::class)->exportRows([]))->toBeEmpty();
     $this->get(route('admin.commercial-revisions.edit', ['invoice', $dp->id]))->assertOk()->assertSee('Gross-up PPh 0,5%')->assertSee('Transfer netto DP');
-    expect(view('admin::invoices.pdf', ['invoice' => $dp->fresh(['items', 'person.organization'])])->render())->toContain('TRANSFER NETTO', '3.768.844,22', '3.750.000,00');
-    expect(view('admin::invoices.proformas.print', ['proforma' => $dpPf->fresh()])->render())->toContain('Transfer netto', '18.844,22');
-    expect(view('admin::quotes.pdf', ['quote' => $this->quote->fresh(['items', 'person.organization'])])->render())->toContain('TRANSFER NETTO', '37.688,44');
+    expect(view('admin::invoices.pdf', ['invoice' => $dp->fresh(['items', 'person.organization'])])->render())
+        ->toContain('GRAND TOTAL', '3.768.844,22')->not->toContain('TRANSFER NETTO', '18.844,22');
+    expect(view('admin::invoices.proformas.print', ['proforma' => $dpPf->fresh()])->render())
+        ->toContain('GRAND TOTAL', '3.768.844,22')->not->toContain('Transfer netto', '18.844,22');
+    expect(view('admin::quotes.pdf', ['quote' => $this->quote->fresh(['items', 'person.organization'])])->render())
+        ->toContain('GRAND TOTAL')->not->toContain('TRANSFER NETTO', '37.688,44');
     // Revisiting/saving the same choice never applies gross-up twice.
     $same = revisionPayload('invoice', $dp->id, 7500000);
     $this->service->apply('invoice', $dp->id, $same, 1);
@@ -428,3 +431,181 @@ it('keeps full gross-up cash balances correct when enabling disabling and changi
     expect(fn () => $this->service->apply('invoice', $invoice->id, $tooLow, 1))->toThrow(ValidationException::class);
     expect((float) $invoice->fresh()->grand_total)->toBe(10000000.0);
 });
+
+function revisionProformaWithTerms(Quote $quote, string $term = 'After Event'): ProformaInvoice
+{
+    return app(ProformaInvoiceService::class)->create($quote->fresh(), [
+        'billing_type' => 'full_payment', 'payment_term' => $term,
+        'issued_at' => '2026-10-15', 'due_at' => '2026-11-20',
+    ], 1);
+}
+
+it('prefills TOP from the opened document instead of an older quote default', function (string $source, string $expected) {
+    DB::table('quotes')->where('id', $this->quote->id)->update(['payment_term' => '7 Days']);
+    $pf = revisionProformaWithTerms($this->quote);
+    $invoice = revisionInvoice($pf);
+    // Legacy invoices can also carry a term that differs from their quote/proforma.
+    DB::table('invoices')->where('id', $invoice->id)->update(['payment_term' => '30 Days']);
+    $id = match ($source) {
+        'proforma' => $pf->id, 'invoice' => $invoice->id, default => $this->quote->id
+    };
+    expect($this->service->preview($source, $id)['form']['payment_term'])->toBe($expected);
+    $response = $this->get(route('admin.commercial-revisions.edit', [$source, $id]));
+    $response->assertOk()->assertSee('TOP / Ketentuan pembayaran');
+    $dom = new DOMDocument;
+    @$dom->loadHTML($response->getContent());
+    $field = (new DOMXPath($dom))->query('//textarea[@name="payment_term"]')->item(0);
+    expect($field->textContent)->toBe($expected)->and($field->getAttribute('maxlength'))->toBe('2000');
+})->with([['proforma', 'After Event'], ['invoice', '30 Days'], ['quote', '7 Days']]);
+
+it('preserves a blank proforma TOP and only falls back for a missing legacy field', function (bool $missing) {
+    $pf = revisionProformaWithTerms($this->quote);
+    $snapshot = $pf->quote_snapshot;
+    if ($missing) {
+        unset($snapshot['attributes']['payment_term']);
+    } else {
+        $snapshot['attributes']['payment_term'] = null;
+    }
+    DB::table('proforma_invoices')->where('id', $pf->id)->update(['quote_snapshot' => json_encode($snapshot)]);
+    expect($this->service->preview('proforma', $pf->id)['form']['payment_term'])
+        ->toBe($missing ? $this->quote->payment_term : null);
+})->with([false, true]);
+
+it('saves a revised proforma TOP into quote invoice printouts and audit without changing financial amounts', function (bool $converted) {
+    (require base_path('database/migrations/2026_10_16_070000_expand_commercial_payment_terms.php'))->up();
+    DB::table('quotes')->where('id', $this->quote->id)->update(['payment_term' => '7 Days']);
+    $pf = revisionProformaWithTerms($this->quote);
+    $invoice = $converted ? revisionInvoice($pf, 3000000) : null;
+    $before = revisionReport()['financialSummary'];
+    $payments = Payment::all()->toArray();
+    $prefix = "Pelunasan 30 hari setelah event.\nKonfirmasi penerimaan dokumen: ";
+    $term = $prefix.str_repeat('x', 2000 - mb_strlen($prefix));
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['payment_term'] = $term;
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $pf->refresh();
+    expect($this->quote->fresh()->payment_term)->toBe($term)
+        ->and($pf->quote_snapshot['attributes']['payment_term'])->toBe($term)
+        ->and($pf->due_at->format('Y-m-d'))->toBe('2026-11-20')
+        ->and($this->service->preview('proforma', $pf->id)['form']['payment_term'])->toBe($term)
+        ->and(revisionReport()['financialSummary'])->toBe($before)
+        ->and(Payment::all()->toArray())->toBe($payments);
+    $this->get(route('admin.proformas.show', $pf->id))->assertOk()->assertSee($term);
+    expect(view('admin::invoices.proformas.print', ['proforma' => $pf])->render())->toContain(e($term))
+        ->and(view('admin::quotes.pdf', ['quote' => $this->quote->fresh(['items', 'person.organization'])])->render())->toContain(e($term));
+    $audit = DB::table('commercial_document_revisions')->first();
+    expect(json_decode(json_decode($audit->before, true)['proformas'][0]['quote_snapshot'], true)['attributes']['payment_term'])->toBe('After Event')
+        ->and(json_decode(json_decode($audit->after, true)['proformas'][0]['quote_snapshot'], true)['attributes']['payment_term'])->toBe($term);
+    $invoice = $invoice ? $invoice->fresh() : revisionInvoice($pf);
+    expect($invoice->payment_term)->toBe($term)->and($invoice->due_at->format('Y-m-d'))->toBe('2026-11-20')
+        ->and(view('admin::invoices.pdf', ['invoice' => $invoice->load(['items', 'person.organization'])])->render())->toContain(e($term));
+})->with([false, true]);
+
+it('keeps the current proforma TOP when saving a different revision field', function () {
+    DB::table('quotes')->where('id', $this->quote->id)->update(['payment_term' => '7 Days']);
+    $pf = revisionProformaWithTerms($this->quote);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['location'] = 'Lokasi diperbarui';
+    $this->service->apply('proforma', $pf->id, $input, 1);
+    expect($pf->fresh()->quote_snapshot['attributes']['payment_term'])->toBe('After Event')
+        ->and($this->quote->fresh()->payment_term)->toBe('After Event');
+});
+
+it('rejects an overlong TOP without partially changing linked documents', function () {
+    $pf = revisionProformaWithTerms($this->quote);
+    $before = $this->service->preview('proforma', $pf->id)['state'];
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['payment_term'] = str_repeat('x', 2001);
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)->assertSessionHasErrors('payment_term');
+    expect($this->service->preview('proforma', $pf->id)['state'])->toBe($before)
+        ->and(DB::table('commercial_document_revisions')->count())->toBe(0);
+});
+
+it('expands TOP storage while preserving values and refuses a rollback that would truncate them', function () {
+    $pf = revisionProformaWithTerms($this->quote);
+    $invoice = revisionInvoice($pf);
+    $migration = require base_path('database/migrations/2026_10_16_070000_expand_commercial_payment_terms.php');
+    $migration->up();
+    expect(Schema::getColumnType('quotes', 'payment_term'))->toBe('text')
+        ->and(Schema::getColumnType('invoices', 'payment_term'))->toBe('text')
+        ->and($invoice->fresh()->payment_term)->toBe('After Event');
+    DB::table('invoices')->where('id', $invoice->id)->update(['payment_term' => str_repeat('x', 101)]);
+    expect(fn () => $migration->down())->toThrow(RuntimeException::class);
+    expect(Schema::getColumnType('quotes', 'payment_term'))->toBe('text')
+        ->and($invoice->fresh()->payment_term)->toBe(str_repeat('x', 101));
+});
+
+it('revises long multiline addresses without truncating linked documents or imposing a form length limit', function () {
+    $pf = revisionProformaWithTerms($this->quote);
+    $invoice = revisionInvoice($pf, 3000000);
+    $before = revisionReport()['financialSummary'];
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $address = trim(str_repeat("Jalan Danau Tondano Blok AA, Gedung Élite & Co.\nLantai 15, Jakarta Pusat.\n", 100));
+    foreach (['billing_address', 'shipping_address'] as $field) {
+        $input[$field] = ['address' => $address, 'city' => 'Jakarta'];
+    }
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)
+        ->assertSessionHasNoErrors()->assertRedirect();
+    $response = $this->get(route('admin.commercial-revisions.edit', ['proforma', $pf->id]))->assertOk();
+    $dom = new DOMDocument;
+    @$dom->loadHTML('<?xml encoding="UTF-8">'.$response->getContent());
+    $xpath = new DOMXPath($dom);
+    foreach (['billing_address', 'shipping_address'] as $field) {
+        expect($this->quote->fresh()->{$field})->toBe($input[$field])
+            ->and($pf->fresh()->snapshotQuote()->{$field})->toBe($input[$field])
+            ->and($invoice->fresh()->{$field})->toBe($input[$field]);
+        $control = $xpath->query('//textarea[@name="'.$field.'[address]"]')->item(0);
+        expect($control->hasAttribute('maxlength'))->toBeFalse()->and($control->textContent)->toBe($address);
+    }
+    expect(revisionReport()['financialSummary'])->toBe($before);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['billing_address']['address'] = ['invalid'];
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)
+        ->assertSessionHasErrors('billing_address.address');
+    expect($this->quote->fresh()->billing_address['address'])->toBe($address);
+});
+
+it('prints only subtotal discount and the stored grand total for all billing types without changing finance data', function (string $type, bool $grossUp) {
+    $pf = revisionProforma($this->quote, $type === 'full_payment' ? $type : 'down_payment');
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['document_discount_amount'] = 500000;
+    $input['document_tax_amount'] = 300000;
+    $input['adjustment_amount'] = 100000;
+    $input['pph_gross_up'] = $grossUp;
+    $this->service->apply('proforma', $pf->id, $input, 1);
+    if ($type === 'settlement') {
+        revisionInvoice($pf->fresh(), $pf->fresh()->cashPayable());
+        $pf = revisionProforma($this->quote, 'settlement');
+    }
+    $invoice = revisionInvoice($pf->fresh(), 1000000);
+    $before = $this->service->preview('invoice', $invoice->id)['state'];
+    $financial = revisionReport()['financialSummary'];
+    $quote = $this->quote->fresh(['items', 'person.organization']);
+    $invoice->load(['items', 'person.organization']);
+    $pf->refresh();
+    foreach ([
+        ['admin::quotes.pdf', ['quote' => $quote], $quote->grand_total, $quote->discount_amount, 'summary-table'],
+        ['admin::invoices.pdf', ['invoice' => $invoice], $invoice->grand_total, $invoice->discount_amount, 'summary-table'],
+        ['admin::invoices.proformas.print', ['proforma' => $pf], $pf->amount, $type === 'full_payment' ? $quote->discount_amount : 0, 'totals'],
+    ] as [$template, $data, $grandTotal, $discount, $class]) {
+        $html = view($template, $data)->render();
+        $dom = new DOMDocument;
+        @$dom->loadHTML($html);
+        $xpath = new DOMXPath($dom);
+        $rows = $xpath->query('//table[@class="'.$class.'"]//tr');
+        expect($rows->length)->toBe(3);
+        $labels = array_map(fn ($row) => trim($row->getElementsByTagName('td')->item(0)->textContent), iterator_to_array($rows));
+        expect($labels)->toBe(['Sub Total', 'Discount', 'GRAND TOTAL']);
+        // Ignore currency symbols/grouping but require the stored amount, including gross-up/tax.
+        $number = static fn ($value) => (float) preg_replace('/[^0-9]/', '', $value) / (preg_match('/[.,]\d{2}$/', trim($value)) ? 100 : 1);
+        expect($number($rows->item(2)->getElementsByTagName('td')->item(1)->textContent))->toBe((float) $grandTotal)
+            ->and($number($rows->item(1)->getElementsByTagName('td')->item(1)->textContent))->toBe((float) $discount);
+        expect(strtolower(strip_tags($html)))->not->toContain('gross-up', 'netto', 'dipotong pelanggan', 'tax', 'adjustment', 'balance due', 'remaining after invoice', 'sisa untuk invoice pelunasan');
+    }
+    expect($this->service->preview('invoice', $invoice->id)['state'])->toBe($before)
+        ->and(revisionReport()['financialSummary'])->toBe($financial)
+        ->and((float) $quote->tax_amount)->toBe(300000.0)
+        ->and((float) $quote->adjustment_amount)->toBe(100000.0)
+        ->and((float) $quote->pph_amount > 0)->toBe($grossUp);
+})->with(['full_payment', 'down_payment', 'settlement'])->with([false, true]);

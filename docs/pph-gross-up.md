@@ -13,7 +13,7 @@ Dari hubungan `netto = bruto − (0,5% × bruto)`, rumus gross-up adalah `bruto 
 - Pilihan **Gross-up PPh 0,5%** default **Tidak**. Pilih **Ya — dipotong oleh pelanggan** sesuai kesepakatan dan ketentuan pajak transaksi.
 - Dasar netto jasa = subtotal produk − diskon + penyesuaian. Pajak lain/PPN diisi terpisah sesuai nominal yang berlaku; tidak ikut di-gross-up dan tidak dihitung ulang otomatis.
 - Perhitungan disimpan oleh server, bukan menerima nominal PPh/total dari browser. Pembulatan dua desimal; pelunasan menerima sisa alokasi pembulatan.
-- Grand total adalah bruto termasuk tambahan gross-up. PPh ditampilkan terpisah, lalu **transfer netto** = grand total − PPh.
+- Grand total adalah bruto termasuk tambahan gross-up. Di sistem, PPh ditampilkan terpisah, lalu **transfer netto** = grand total − PPh. PDF untuk pelanggan hanya menampilkan Sub Total, Discount, dan Grand Total; rincian Tax, gross-up/PPh, serta transfer netto tidak dicetak. Menghilangkan rincian dari PDF tidak mengubah Grand Total atau perhitungan internal.
 - Status Paid dan balance mengikuti transfer netto. PPh adalah potongan yang disepakati, bukan penerimaan kas atau bukti bahwa pajak telah disetor. Bukti potong tetap diperoleh dari pelanggan.
 - Proforma tidak diakui sebagai invoice/revenue/cash. Saat dikonversi, snapshot PPh ikut ke invoice. Pembayaran proforma harus sebesar transfer netto.
 - Financial Report/CSV: nilai invoice bruto, kolom PPH terisi otomatis, penerimaan dari payment asli, outstanding netto. Margin sebelum PPh dipertahankan dan margin setelah PPh ditampilkan terpisah. PPh tidak dibuat sebagai kas keluar/expense otomatis. Dasar komisi tetap kas netto yang diterima, setelah semua tagihan netto lunas.

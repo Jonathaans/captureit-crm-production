@@ -6,6 +6,10 @@
     <title>{{ $proforma->proforma_number }}</title>
     @php
         $snapshot = $proforma->quote_snapshot['attributes'];
+        // Match the current billing portion, not the entire quote for DP/settlement.
+        $fullPayment = $proforma->billing_type === 'full_payment';
+        $subTotal = $fullPayment ? ($snapshot['sub_total'] ?? $proforma->amount) : $proforma->cashPayable();
+        $discount = $fullPayment ? ($snapshot['discount_amount'] ?? 0) : 0;
         $identity = $proforma->billToIdentity();
         $mode = $identity['mode'];
         $money = static fn ($value) => 'Rp '.number_format((float) $value, 2, ',', '.');
@@ -57,7 +61,6 @@
         .totals { margin:18px 0 28px; }
         .totals td { padding:7px 14px; }
         .totals .total td { padding:13px 14px; border-top:2px solid #d5aa2a; border-bottom:1px solid #e5e7eb; font-weight:bold; font-size:15px; }
-        .totals .secondary td { color:#64748b; font-size:10px; }
         .terms-heading { margin:0 0 8px; font-size:11px; font-weight:bold; break-after:avoid; }
         .terms { white-space:pre-line; overflow-wrap:anywhere; margin:0 0 20px; font-size:10px; line-height:1.8; }
         .note { margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:9px; line-height:1.7; }
@@ -129,15 +132,9 @@
             <tbody><tr><td><div class="description">{{ $proforma->billingLabel() }}</div><div class="sub">Sesuai penawaran {{ $snapshot['quote_number'] ?? '-' }} dan ketentuan pembayaran yang disepakati.</div></td><td class="amount"><strong>{{ $money($proforma->amount) }}</strong></td></tr></tbody>
         </table>
         <table class="totals">
-            <tr class="secondary"><td>Total penawaran yang disepakati</td><td class="amount">{{ $money($snapshot['grand_total']) }}</td></tr>
-            <tr class="total"><td>Jumlah tagihan proforma</td><td class="amount">{{ $money($proforma->amount) }}</td></tr>
-            @if ($proforma->pph_gross_up)
-                <tr><td>PPh {{ $proforma->pph_rate }}% dipotong pelanggan</td><td class="amount">({{ $money($proforma->pph_amount) }})</td></tr>
-                <tr class="total"><td>Transfer netto</td><td class="amount">{{ $money($proforma->cashPayable()) }}</td></tr>
-            @endif
-            @if ($proforma->billing_type === 'down_payment')
-                <tr class="secondary"><td>Sisa untuk invoice pelunasan</td><td class="amount">{{ $money((float) $snapshot['grand_total'] - (float) $proforma->amount) }}</td></tr>
-            @endif
+            <tr><td>Sub Total</td><td class="amount">{{ $money($subTotal) }}</td></tr>
+            <tr><td>Discount</td><td class="amount">{{ $money($discount) }}</td></tr>
+            <tr class="total"><td>GRAND TOTAL</td><td class="amount">{{ $money($proforma->amount) }}</td></tr>
         </table>
         <h2 class="terms-heading">TOP / Ketentuan pembayaran</h2>
         <p class="terms">{{ $snapshot['payment_term'] ?? '-' }}</p>

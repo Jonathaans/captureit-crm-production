@@ -24,7 +24,7 @@
                         rows="10"
                         ::value="data ? data['address'] : ''"
                         :label="trans('admin::app.common.custom-attributes.address')"
-                        ::rules="attribute.is_required ? 'required|' + validations : validations"
+                        ::rules="addressRules"
                     />
 
                     <x-admin::form.control-group.error ::name="attribute['code'] + '[address]'" />
@@ -139,6 +139,19 @@
             template: '#v-address-component-template',
 
             props: ['attribute', 'data', 'validations'],
+
+            computed: {
+                addressRules() {
+                    // Street addresses are free-form; keep length limits on the other location fields only.
+                    const rules = (this.validations || '').split('|').filter(rule => rule && !rule.startsWith('max:'));
+
+                    if (this.attribute.is_required && !rules.includes('required')) {
+                        rules.unshift('required');
+                    }
+
+                    return rules.join('|');
+                },
+            },
 
             data() {
                 return {
