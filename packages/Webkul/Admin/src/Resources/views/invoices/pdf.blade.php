@@ -203,8 +203,31 @@
         }
 
         .document-title {
+            position: relative;
             padding: 18px 0 14px 0;
             text-align: center;
+        }
+
+        .document-title.is-paid {
+            padding-bottom: 24px;
+        }
+
+        .paid-stamp {
+            position: absolute;
+            top: 18px;
+            right: 12px;
+            width: 142px;
+            padding: 6px 0;
+            border: 3px solid #15803d;
+            border-radius: 6px;
+            color: #15803d;
+            font-size: 34px;
+            font-weight: bold;
+            line-height: 1;
+            letter-spacing: 3px;
+            text-align: center;
+            transform: rotate(-15deg);
+            transform-origin: center;
         }
 
         .document-title h1 {
@@ -539,7 +562,11 @@
     <div class="header-rule"></div>
 
     <!-- Document Title -->
-    <div class="document-title">
+    <div class="document-title{{ $invoice->status === 'paid' ? ' is-paid' : '' }}">
+        @if ($invoice->status === 'paid')
+            <div class="paid-stamp">Paid</div>
+        @endif
+
         <h1>INVOICE</h1>
 
         <div class="document-number">

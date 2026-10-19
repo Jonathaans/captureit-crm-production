@@ -14,6 +14,7 @@ use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
 use Illuminate\Validation\Factory;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\InvoiceCorrectionService;
@@ -496,6 +497,12 @@ class CrmCorrectionScenarios
 
     private static function check(bool $condition, string $message): void
     {
+        if (class_exists(Assert::class, false)) {
+            Assert::assertTrue($condition, $message);
+
+            return;
+        }
+
         if (! $condition) {
             throw new RuntimeException($message);
         }

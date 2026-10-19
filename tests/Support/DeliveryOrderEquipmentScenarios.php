@@ -5,6 +5,7 @@ namespace Tests\Support;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
 use Webkul\Invoice\Models\DeliveryOrder;
 use Webkul\Invoice\Models\DeliveryOrderInventoryAllocation;
@@ -241,6 +242,12 @@ class DeliveryOrderEquipmentScenarios
 
     private static function check(bool $condition, string $message): void
     {
+        if (class_exists(Assert::class, false)) {
+            Assert::assertTrue($condition, $message);
+
+            return;
+        }
+
         if (! $condition) {
             throw new RuntimeException($message);
         }
