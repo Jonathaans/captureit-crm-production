@@ -764,9 +764,10 @@ describe('individual payment void', function () {
         $preview = app(PaymentVoidService::class)->preview($invoice->id, 6);
         $data = ['expected' => $preview['fingerprint'], 'reason' => 'Pembayaran salah catat', 'acknowledge_error' => 1];
         $this->postJson($post, $data)->assertStatus(419);
-        expect(PaymentVoidRecord::count())->toBe(0);
+        expect(PaymentVoidRecord::count())->toBe(0)->and($invoice->fresh()->status)->toBe('paid')
+            ->and(Payment::notVoided()->count())->toBe(1);
         $this->withSession(['_token' => 'correction-csrf'])->post($post, ['_token' => 'correction-csrf'] + $data)->assertRedirect();
-        expect(PaymentVoidRecord::count())->toBe(1);
+        expect(PaymentVoidRecord::count())->toBe(1)->and($invoice->fresh()->status)->toBe('unpaid');
     });
 
     it('keeps payment corrections when the invoice is later voided and blocks destructive legacy correction', function () {

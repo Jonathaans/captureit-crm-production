@@ -141,7 +141,8 @@ it('keeps receipts optional and ignores forged metadata', function () {
     $this->post(route('admin.invoices.payments.store', $this->invoice->id), receiptPayload() + ['receipt_path' => 'private/secrets.pdf'])
         ->assertRedirect()->assertSessionHasNoErrors();
     expect(Payment::sole()->receipt_path)->toBeNull()->and(Storage::disk('local')->allFiles())->toBe([]);
-    $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, Payment::sole()->id]))->assertNotFound();
+    $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, Payment::sole()->id]))
+        ->assertHeaderMissing('Content-Disposition')->assertNotFound();
 });
 
 it('saves the final payment and its receipt before the invoice becomes read only', function (bool $partial, bool $withReceipt) {
@@ -258,7 +259,8 @@ it('does not create a payment when receipt storage fails', function () {
 it('scopes receipts to the invoice and preserves them in void payment history', function () {
     $payment = app(PaymentReceiptService::class)->addPayment($this->invoice, ['amount' => 250000], receiptFile());
     $other = Invoice::create(['invoice_number' => 'INV-OTHER']);
-    $this->get(route('admin.invoices.payments.receipt', [$other->id, $payment->id]))->assertNotFound();
+    $this->get(route('admin.invoices.payments.receipt', [$other->id, $payment->id]))
+        ->assertHeaderMissing('Content-Disposition')->assertNotFound();
     DB::table('invoices')->where('id', $this->invoice->id)->update(['status' => 'void']);
     $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, $payment->id]))->assertOk();
 });
@@ -266,10 +268,13 @@ it('scopes receipts to the invoice and preserves them in void payment history', 
 it('enforces payment and receipt permissions independently', function () {
     $payment = app(PaymentReceiptService::class)->addPayment($this->invoice, ['amount' => 250000], receiptFile());
     $this->actingAs(receiptUser(['invoices.view']), 'user');
-    $this->post(route('admin.invoices.payments.store', $this->invoice->id), receiptPayload())->assertStatus(401);
+    $response = $this->post(route('admin.invoices.payments.store', $this->invoice->id), receiptPayload());
+    expect(Payment::count())->toBe(1)->and((float) $this->invoice->fresh()->paid_amount)->toBe(250000.0);
+    $response->assertStatus(401);
     $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, $payment->id]))->assertOk();
     $this->actingAs(receiptUser(['invoices.payment']), 'user');
-    $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, $payment->id]))->assertStatus(401);
+    $this->get(route('admin.invoices.payments.receipt', [$this->invoice->id, $payment->id]))
+        ->assertHeaderMissing('Content-Disposition')->assertStatus(401);
     $this->post(route('admin.invoices.payments.store', $this->invoice->id), receiptPayload())->assertRedirect()->assertSessionHasNoErrors();
     expect(Payment::count())->toBe(2);
     auth()->guard('user')->logout();
@@ -341,9 +346,11 @@ it('imports historical category codes without rewriting existing expenses', func
 
 it('keeps category settings permissions separate from expense entry permissions', function () {
     $key = 'settings.finance.expense-categories';
+    $categoryCount = DB::table('expense_categories')->count();
     $this->actingAs(receiptUser(['invoices.expense']), 'user');
     $this->get(route('admin.settings.expense-categories.index'))->assertStatus(401);
     $this->post(route('admin.settings.expense-categories.store'), categoryPayload())->assertStatus(401);
+    expect(DB::table('expense_categories')->count())->toBe($categoryCount);
     expect((new Menu)->getAdminMenuByKey('settings'))->toBeNull();
     $this->actingAs(receiptUser([$key]), 'user');
     $settings = (new Menu)->getAdminMenuByKey('settings');

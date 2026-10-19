@@ -4,13 +4,10 @@ namespace Webkul\Admin\Exceptions;
 
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Container\Container;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Validation\ValidationException;
-use PDOException;
-use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -40,18 +37,34 @@ class Handler extends ExceptionHandler
     }
 
     /**
-     * Render an exception into an HTTP response.
+     * Customize production errors after Laravel has normalized the exception.
      *
      * @param  Request  $request
      * @return Response
      */
-    public function render($request, Throwable $exception)
+    protected function renderExceptionResponse($request, Throwable $exception)
     {
-        if (! config('app.debug')) {
-            return $this->renderCustomResponse($exception);
+        if (config('app.debug')) {
+            return parent::renderExceptionResponse($request, $exception);
         }
 
-        return parent::render($request, $exception);
+        $errorCode = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
+
+        // Statuses without a branded page retain Laravel's response, including CSRF 419.
+        if (! in_array($errorCode, [401, 403, 404, 500, 503], true)) {
+            return parent::renderExceptionResponse($request, $exception);
+        }
+
+        $headers = $exception instanceof HttpExceptionInterface ? $exception->getHeaders() : [];
+
+        if ($this->shouldReturnJson($request, $exception)) {
+            return response()->json([
+                'message' => $this->jsonErrorMessages[$errorCode]
+                    ?? trans('admin::app.common.something-went-wrong'),
+            ], $errorCode, $headers);
+        }
+
+        return response()->view('admin::errors.index', compact('errorCode'), $errorCode, $headers);
     }
 
     /**
@@ -62,58 +75,10 @@ class Handler extends ExceptionHandler
      */
     protected function unauthenticated($request, AuthenticationException $exception)
     {
-        if ($request->expectsJson()) {
+        if ($this->shouldReturnJson($request, $exception)) {
             return response()->json(['message' => $this->jsonErrorMessages[401]], 401);
         }
 
-        return redirect()->guest(route('customer.session.index'));
-    }
-
-    /**
-     * Render custom HTTP response.
-     *
-     * @return Response|null
-     */
-    private function renderCustomResponse(Throwable $exception)
-    {
-        if ($exception instanceof HttpException) {
-            $statusCode = in_array($exception->getStatusCode(), [401, 403, 404, 503])
-                ? $exception->getStatusCode()
-                : 500;
-
-            return $this->response($statusCode);
-        }
-
-        if ($exception instanceof ValidationException) {
-            return parent::render(request(), $exception);
-        }
-
-        if ($exception instanceof ModelNotFoundException) {
-            return $this->response(404);
-        } elseif ($exception instanceof PDOException || $exception instanceof \ParseError) {
-            return $this->response(500);
-        } else {
-            return $this->response(500);
-        }
-    }
-
-    /**
-     * Return custom response.
-     *
-     * @param  string  $path
-     * @param  string  $errorCode
-     * @return mixed
-     */
-    private function response($errorCode)
-    {
-        if (request()->expectsJson()) {
-            return response()->json([
-                'message' => isset($this->jsonErrorMessages[$errorCode])
-                    ? $this->jsonErrorMessages[$errorCode]
-                    : trans('admin::app.common.something-went-wrong'),
-            ], $errorCode);
-        }
-
-        return response()->view('admin::errors.index', compact('errorCode'));
+        return redirect()->guest(route('admin.session.create'));
     }
 }
