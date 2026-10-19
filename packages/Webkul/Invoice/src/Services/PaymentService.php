@@ -2,6 +2,7 @@
 
 namespace Webkul\Invoice\Services;
 
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -16,9 +17,10 @@ class PaymentService
      */
     public function addPayment(
         Invoice $invoice,
-        array $data
+        array $data,
+        array $receiptMetadata = []
     ): Payment {
-        return DB::transaction(function () use ($invoice, $data) {
+        return DB::transaction(function () use ($invoice, $data, $receiptMetadata) {
             /**
              * Reload invoice and lock the row.
              *
@@ -61,7 +63,7 @@ class PaymentService
              * CREATE PAYMENT HISTORY
              * =====================================================
              */
-            $payment = Payment::create([
+            $payment = new Payment([
                 'invoice_id' => $invoice->id,
 
                 'amount' => $amount,
@@ -76,6 +78,11 @@ class PaymentService
 
                 'created_by' => $data['created_by'] ?? null,
             ]);
+
+            // Persist the validated receipt before a final payment archives the invoice.
+            $payment->forceFill(Arr::only($receiptMetadata, [
+                'receipt_path', 'receipt_name', 'receipt_mime', 'receipt_size',
+            ]))->save();
 
             /**
              * =====================================================

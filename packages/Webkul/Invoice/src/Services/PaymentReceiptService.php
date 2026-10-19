@@ -3,7 +3,6 @@
 namespace Webkul\Invoice\Services;
 
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -20,14 +19,7 @@ class PaymentReceiptService
         $metadata = $receipt ? $this->store($invoice, $receipt) : [];
 
         try {
-            return DB::transaction(function () use ($invoice, $data, $metadata) {
-                $payment = $this->payments->addPayment($invoice, $data);
-                if ($metadata) {
-                    $payment->forceFill($metadata)->save();
-                }
-
-                return $payment;
-            });
+            return $this->payments->addPayment($invoice, $data, $metadata);
         } catch (Throwable $exception) {
             if (isset($metadata['receipt_path'])) {
                 Storage::disk('local')->delete($metadata['receipt_path']);
