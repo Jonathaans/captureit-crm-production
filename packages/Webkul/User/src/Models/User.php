@@ -103,7 +103,22 @@ class User extends Authenticatable implements UserContract
             return true;
         }
 
-        return $role->permission_type === 'custom'
-            && in_array($permission, $role->permissions ?? [], true);
+        if ($role->permission_type !== 'custom' || ! is_array($role->permissions)) {
+            return false;
+        }
+
+        // Only explicitly declared legacy equivalents are interchangeable.
+        // A parent permission never grants unchecked child operations.
+        $equivalents = [$permission];
+
+        foreach (config('acl_routes.aliases', []) as $aliases) {
+            if (in_array($permission, $aliases, true)) {
+                $equivalents = $aliases;
+
+                break;
+            }
+        }
+
+        return count(array_intersect($equivalents, $role->permissions)) > 0;
     }
 }

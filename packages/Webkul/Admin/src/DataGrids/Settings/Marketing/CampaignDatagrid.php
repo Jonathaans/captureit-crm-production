@@ -98,7 +98,7 @@ class CampaignDatagrid extends DataGrid
      */
     public function prepareMassActions(): void
     {
-        if (bouncer()->hasPermission('settings.automation.campaigns.mass_delete')) {
+        if (bouncer()->hasPermission('settings.automation.campaigns.delete')) {
             $this->addMassAction([
                 'icon' => 'icon-delete',
                 'title' => trans('admin::app.settings.marketing.campaigns.index.datagrid.delete'),

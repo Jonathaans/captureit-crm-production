@@ -198,7 +198,7 @@
                         value-field="key"
                         id-field="key"
                         :items="json_encode(acl()->getItems())"
-                        :value="json_encode($role->permissions ?? [])"
+                        :value="json_encode(old('permissions', $role->permissions ?? []))"
                         :fallback-locale="config('app.fallback_locale')"
                     />
 
@@ -213,7 +213,7 @@
 
                 data() {
                     return {
-                        permission_type: "{{ $role->permission_type }}"
+                        permission_type: @json(old('permission_type', $role->permission_type))
                     };
                 }
             })

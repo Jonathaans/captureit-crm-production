@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Webkul\Admin\Bouncer;
+use Webkul\Admin\Console\Commands\CrmCatalogReviewCommand;
+use Webkul\Admin\Console\Commands\CrmInvoiceCorrectCommand;
+use Webkul\Admin\Console\Commands\CrmInvoiceVoidCommand;
+use Webkul\Admin\Console\Commands\CrmPhotoboothCatalogCommand;
 use Webkul\Admin\Exceptions\Handler;
 use Webkul\Admin\Http\Middleware\Bouncer as BouncerMiddleware;
 use Webkul\Admin\Http\Middleware\Locale;
@@ -66,10 +70,10 @@ class AdminServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
-                \Webkul\Admin\Console\Commands\CrmInvoiceCorrectCommand::class,
-                \Webkul\Admin\Console\Commands\CrmInvoiceVoidCommand::class,
-                \Webkul\Admin\Console\Commands\CrmCatalogReviewCommand::class,
-                \Webkul\Admin\Console\Commands\CrmPhotoboothCatalogCommand::class,
+                CrmInvoiceCorrectCommand::class,
+                CrmInvoiceVoidCommand::class,
+                CrmCatalogReviewCommand::class,
+                CrmPhotoboothCatalogCommand::class,
             ]);
         }
     }
@@ -106,6 +110,8 @@ class AdminServiceProvider extends ServiceProvider
     protected function registerConfig(): void
     {
         $this->mergeConfigFrom(dirname(__DIR__).'/Config/acl.php', 'acl');
+
+        $this->mergeConfigFrom(dirname(__DIR__).'/Config/acl_routes.php', 'acl_routes');
 
         $this->mergeConfigFrom(dirname(__DIR__).'/Config/menu.php', 'menu.admin');
 

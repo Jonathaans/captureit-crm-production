@@ -140,7 +140,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
             }
         );
 
-        Route::middleware('web')
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix('admin')
             ->group(
                 function () {
@@ -191,7 +191,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
          * Backup is POST-only, CSRF protected by web middleware, and the
          * controller applies an additional Administrator + ACL hard lock.
          */
-        Route::middleware('web')
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix('admin')
             ->group(
                 function () {
@@ -268,7 +268,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
         }
 
         /* CRM_FINANCE_SALES_DASHBOARD_V1 */
-        Route::middleware('web')
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix('admin/finance-sales-dashboard')
             ->controller(
                 FinanceSalesDashboardController::class
@@ -281,7 +281,7 @@ class CrmHardeningCoreServiceProvider extends ServiceProvider
                     ->name('admin.finance-sales-dashboard.export');
             });
         /* CRM_SALES_COMMISSION_PAID_DEALS_EXPORT_V1 */
-        Route::middleware('web')
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->get(
                 'admin/finance-sales-dashboard/commission-export',
                 [

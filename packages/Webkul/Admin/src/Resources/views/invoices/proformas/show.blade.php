@@ -18,7 +18,7 @@
                 <p class="fw-subtitle">{{ $snapshot['subject'] ?? '-' }}</p>
             </div>
             <div class="fw-actions">
-                @if (bouncer()->hasPermission('invoices.revise') && ($proforma->status === 'issued' || ($proforma->status === 'converted' && in_array($proforma->invoice?->status, ['unpaid', 'partial', 'paid']) && ! in_array($proforma->invoice?->event_status, ['cancel', 'cancelled', 'canceled']))))
+                @if (bouncer()->hasPermission('invoices.edit') && ($proforma->status === 'issued' || ($proforma->status === 'converted' && in_array($proforma->invoice?->status, ['unpaid', 'partial', 'paid']) && ! in_array($proforma->invoice?->event_status, ['cancel', 'cancelled', 'canceled']))))
                     <a class="secondary-button" href="{{ route('admin.commercial-revisions.edit', ['proforma', $proforma->id]) }}">Revisi Transaksi</a>
                 @endif
                 <span class="fw-badge fw-badge-{{ $proforma->status }}">{{ ['issued' => 'Menunggu Admin Sales', 'converted' => 'Sudah menjadi Invoice', 'cancelled' => 'Dibatalkan'][$proforma->status] ?? $proforma->status }}</span>

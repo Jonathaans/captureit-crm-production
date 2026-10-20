@@ -14,8 +14,7 @@ class FinanceSalesDashboardController extends Controller
 
     public function __construct(
         protected FinanceSalesDashboardService $dashboardService
-    ) {
-    }
+    ) {}
 
     public function index(Request $request): View
     {
@@ -35,7 +34,7 @@ class FinanceSalesDashboardController extends Controller
 
     public function export(Request $request): StreamedResponse
     {
-        $this->authorizeDashboard();
+        abort_unless(auth()->guard('user')->check() && bouncer()->hasPermission('invoices.financial-report.export'), 403);
 
         $filters = $this->dashboardService->normalizeFilters($request->all());
         $rows = $this->dashboardService->exportRows($filters);

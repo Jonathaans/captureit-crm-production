@@ -18,7 +18,7 @@
                 <div class="flex items-center gap-x-2.5">
                     <!-- Create button for person -->
                     <div class="flex items-center gap-x-2.5">
-                        @if (bouncer()->hasPermission('admin.settings.web_forms.create'))
+                        @if (bouncer()->hasPermission('settings.other_settings.web_forms.create'))
                             <button
                                 type="button"
                                 class="primary-button"
@@ -56,7 +56,7 @@
                         <div class="flex items-center gap-x-2.5">
                             {!! view_render_event('admin.settings.web_forms.index.create_button.before') !!}
             
-                            @if (bouncer()->hasPermission('admin.settings.web_forms.create'))
+                            @if (bouncer()->hasPermission('settings.other_settings.web_forms.create'))
                                 <a
                                     href="{{ route('admin.settings.web_forms.create') }}"
                                     class="primary-button"

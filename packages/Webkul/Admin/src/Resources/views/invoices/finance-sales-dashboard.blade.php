@@ -450,7 +450,9 @@
                 <div class="fsd-actions">
                     <a href="{{ route('admin.finance-sales-dashboard.index') }}" class="secondary-button">Reset</a>
                     <button type="submit" class="primary-button">Terapkan Filter</button>
+                    @if (bouncer()->hasPermission('invoices.financial-report.export'))
                     <a href="{{ route('admin.finance-sales-dashboard.export', $filters) }}" class="secondary-button">Export CSV</a>
+                    @endif
                 </div>
             </div>
         </form>

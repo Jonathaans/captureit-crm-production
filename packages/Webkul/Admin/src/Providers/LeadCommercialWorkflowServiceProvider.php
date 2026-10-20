@@ -6,11 +6,13 @@ use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Webkul\Admin\Console\Commands\CrmLeadCommercialWorkflowCheckCommand;
 use Webkul\Admin\Http\Controllers\Lead\LeadCommercialWorkflowController;
 use Webkul\Admin\Http\Middleware\InjectLeadCommercialActionUi;
 use Webkul\Admin\Services\LeadCommercialStageService;
 use Webkul\Admin\Services\LeadCommercialWorkflowService;
 use Webkul\Admin\Services\WorkflowNotificationService;
+use Webkul\Lead\Models\Lead;
 
 class LeadCommercialWorkflowServiceProvider extends ServiceProvider
 {
@@ -22,9 +24,7 @@ class LeadCommercialWorkflowServiceProvider extends ServiceProvider
             InjectLeadCommercialActionUi::class
         );
 
-        Route::middleware(
-            'web'
-        )
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix(
                 'admin'
             )
@@ -49,7 +49,7 @@ class LeadCommercialWorkflowServiceProvider extends ServiceProvider
                 ->runningInConsole()
         ) {
             $this->commands([
-                \Webkul\Admin\Console\Commands\CrmLeadCommercialWorkflowCheckCommand::class,
+                CrmLeadCommercialWorkflowCheckCommand::class,
             ]);
         }
     }
@@ -57,7 +57,7 @@ class LeadCommercialWorkflowServiceProvider extends ServiceProvider
     private function registerLeadCommercialNotifications(): void
     {
         $leadClass =
-            \Webkul\Lead\Models\Lead::class;
+            Lead::class;
 
         if (! class_exists($leadClass)) {
             return;
@@ -165,12 +165,10 @@ class LeadCommercialWorkflowServiceProvider extends ServiceProvider
                             'lead',
                             $lead->id,
                             [
-                                'sales_owner_id' =>
-                                    $lead->user_id
+                                'sales_owner_id' => $lead->user_id
                                     ?? null,
 
-                                'commercial_action' =>
-                                    'quotation',
+                                'commercial_action' => 'quotation',
                             ]
                         );
 
@@ -231,15 +229,12 @@ class LeadCommercialWorkflowServiceProvider extends ServiceProvider
                         'lead',
                         $lead->id,
                         [
-                            'sales_owner_id' =>
-                                $lead->user_id
+                            'sales_owner_id' => $lead->user_id
                                 ?? null,
 
-                            'quote_number' =>
-                                $quoteNumber,
+                            'quote_number' => $quoteNumber,
 
-                            'commercial_action' =>
-                                'invoice',
+                            'commercial_action' => 'invoice',
                         ]
                     );
             }

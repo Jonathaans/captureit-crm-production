@@ -13,6 +13,7 @@ use Webkul\Admin\Http\Requests\MassDestroyRequest;
 use Webkul\Attribute\Repositories\AttributeRepository;
 use Webkul\Attribute\Repositories\AttributeValueRepository;
 use Webkul\Core\Contracts\Validations\Code;
+use Webkul\Lead\Repositories\LeadRepository;
 
 class AttributeController extends Controller
 {
@@ -238,10 +239,25 @@ class AttributeController extends Controller
      */
     public function download()
     {
-        if (! request('path')) {
-            return false;
+        $data = request()->validate(['path' => ['required', 'string']]);
+        $value = $this->attributeValueRepository->findOneWhere(['text_value' => $data['path']]);
+        abort_unless($value && in_array($value->attribute?->type, ['file', 'image'], true), 404);
+
+        $permissions = match ($value->entity_type) {
+            'leads' => ['leads.view', 'leads.edit'],
+            'persons' => ['contacts.persons.view', 'contacts.persons.edit'],
+            'organizations' => ['contacts.organizations', 'contacts.organizations.edit'],
+            'products' => ['products.view', 'products.edit'],
+            'warehouses' => ['settings.inventory.warehouse', 'settings.inventory.warehouse.edit'],
+            default => [],
+        };
+        abort_unless(collect($permissions)->contains(fn ($key) => bouncer()->hasPermission($key)), 403);
+
+        if ($value->entity_type === 'leads') {
+            $lead = app(LeadRepository::class)->findOrFail($value->entity_id);
+            $this->preventUnauthorizedAccess([$lead->user_id]);
         }
 
-        return Storage::download(request('path'));
+        return Storage::download($value->text_value);
     }
 }
