@@ -353,9 +353,61 @@ it('requires the explicit transaction revision permission on GET PUT and legacy 
     auth()->guard('user')->user()->setRelation('role', (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => ['invoices', 'invoices.view', 'invoices.payment', 'quotes.edit']]));
     $this->getJson(route('admin.commercial-revisions.edit', ['invoice', $invoice->id]))->assertUnauthorized();
     $this->putJson(route('admin.commercial-revisions.update', ['invoice', $invoice->id]), $payload)->assertUnauthorized();
-    $this->putJson(route('admin.invoices.update', $invoice->id), ['subject' => 'Forbidden'])->assertForbidden();
+    $this->putJson(route('admin.invoices.update', $invoice->id), ['subject' => 'Forbidden'])->assertUnauthorized();
     expect((float) $invoice->fresh()->grand_total)->toBe(10000000.0)->and(DB::table('commercial_document_revisions')->count())->toBe(0);
 });
+
+it('lets Sales Admin edit linked invoice and proforma with either current or legacy ACL and updates financial reporting', function (string $permission, string $source) {
+    $pf = revisionProforma($this->quote);
+    $invoice = revisionInvoice($pf, 3000000);
+    $id = $source === 'invoice' ? $invoice->id : $pf->id;
+    $payments = Payment::all()->toArray();
+    auth()->guard('user')->user()->setRelation('role', (new Role)->forceFill([
+        'name' => 'Sales Admin', 'permission_type' => 'custom', 'permissions' => [$permission],
+    ]));
+    $editUrl = route('admin.commercial-revisions.edit', [$source, $id]);
+    $this->get(route('admin.invoices.edit', $invoice->id))->assertRedirect(route('admin.commercial-revisions.edit', ['invoice', $invoice->id]));
+    $this->get($editUrl)->assertOk()->assertSee('TOP / Ketentuan pembayaran');
+    $this->put(route('admin.commercial-revisions.update', [$source, $id]), revisionPayload($source, $id))
+        ->assertSessionHasNoErrors()->assertRedirect($editUrl);
+    expect((float) $this->quote->fresh()->grand_total)->toBe(12000000.0)
+        ->and((float) $pf->fresh()->amount)->toBe(12000000.0)
+        ->and((float) $invoice->fresh()->grand_total)->toBe(12000000.0)
+        ->and((float) $invoice->fresh()->balance_due)->toBe(9000000.0)
+        ->and(Payment::all()->toArray())->toBe($payments);
+    foreach (['invoices.payment', 'invoices.payment-void', 'invoices.print', 'invoices.expense', 'invoices.financial-report', 'invoices.financial-report.export'] as $other) {
+        expect(bouncer()->hasPermission($other))->toBeFalse();
+    }
+    $this->postJson(route('admin.invoices.payments.store', $invoice->id), ['amount' => 1000000])->assertUnauthorized();
+    // Finance sees the same committed revision; Sales Admin needs no report access to edit.
+    auth()->guard('user')->user()->role->permissions = ['invoices.financial-report'];
+    expect(revisionReport()['financialSummary']['invoiced'])->toBe(12000000.0)
+        ->and(revisionReport()['financialSummary']['outstanding'])->toBe(9000000.0);
+    $this->getJson($editUrl)->assertUnauthorized();
+    $this->putJson(route('admin.commercial-revisions.update', [$source, $id]), revisionPayload($source, $id, 14000000))->assertUnauthorized();
+    expect((float) $invoice->fresh()->grand_total)->toBe(12000000.0);
+})->with(['invoices.edit', 'invoices.revise'])->with(['invoice', 'proforma']);
+
+it('hides invoice actions and denies direct edits for a view-only Sales Admin including standalone invoices', function (bool $linked) {
+    Schema::create('delivery_orders', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('invoice_id');
+    });
+    $invoice = revisionInvoice(revisionProforma($this->quote));
+    if (! $linked) {
+        DB::table('invoices')->where('id', $invoice->id)->update(['quote_id' => null]);
+    }
+    auth()->guard('user')->user()->setRelation('role', (new Role)->forceFill([
+        'name' => 'Sales Admin', 'permission_type' => 'custom', 'permissions' => ['invoices.view'],
+    ]));
+    $this->get(route('admin.invoices.show', $invoice->id))->assertOk()
+        ->assertDontSee('href="'.route('admin.invoices.edit', $invoice->id).'"', false)
+        ->assertDontSee('href="'.route('admin.commercial-revisions.edit', ['invoice', $invoice->id]).'"', false)
+        ->assertDontSee('href="'.route('admin.invoices.print', $invoice->id).'"', false);
+    $this->getJson(route('admin.invoices.edit', $invoice->id))->assertUnauthorized();
+    $this->putJson(route('admin.invoices.update', $invoice->id), ['subject' => 'Forbidden'])->assertUnauthorized();
+    expect($invoice->fresh()->subject)->toBe('Event Awal');
+})->with([true, false]);
 
 it('grosses up the real paid DP pair in place without altering receipts dates project or operational history', function () {
     $this->quote->update(['grand_total' => 7500000, 'sub_total' => 7500000]);

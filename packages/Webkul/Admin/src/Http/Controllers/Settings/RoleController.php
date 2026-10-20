@@ -5,6 +5,7 @@ namespace Webkul\Admin\Http\Controllers\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Webkul\Admin\DataGrids\Settings\RoleDataGrid;
 use Webkul\Admin\Http\Controllers\Controller;
@@ -48,13 +49,9 @@ class RoleController extends Controller
             'name' => 'required',
             'permission_type' => 'required|in:all,custom',
             'description' => 'required',
+            'permissions' => 'exclude_if:permission_type,all|required_if:permission_type,custom|array|min:1',
+            'permissions.*' => ['string', 'distinct', Rule::in(array_column(config('acl'), 'key'))],
         ]);
-
-        if (request('permission_type') == 'custom') {
-            $this->validate(request(), [
-                'permissions' => 'required',
-            ]);
-        }
 
         Event::dispatch('settings.role.create.before');
 
@@ -64,6 +61,8 @@ class RoleController extends Controller
             'permission_type',
             'permissions',
         ]);
+
+        $data['permissions'] = request('permission_type') === 'custom' ? request('permissions') : [];
 
         $role = $this->roleRepository->create($data);
 
@@ -100,7 +99,8 @@ class RoleController extends Controller
             'name' => 'required',
             'permission_type' => 'required|in:all,custom',
             'description' => 'required',
-            'permissions' => 'required_if:permission_type,custom',
+            'permissions' => 'exclude_if:permission_type,all|required_if:permission_type,custom|array|min:1',
+            'permissions.*' => ['string', 'distinct', Rule::in(array_column(config('acl'), 'key'))],
         ]);
 
         Event::dispatch('settings.role.update.before', $id);
@@ -110,7 +110,7 @@ class RoleController extends Controller
             'description',
             'permission_type',
         ]), [
-            'permissions' => request()->has('permissions') ? request('permissions') : [],
+            'permissions' => request('permission_type') === 'custom' ? request('permissions') : [],
         ]);
 
         $role = $this->roleRepository->update($data, $id);

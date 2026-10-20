@@ -40,7 +40,7 @@ class CrmOperationsServiceProvider extends ServiceProvider
             }
         );
 
-        Route::middleware('web')
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix('admin')
             ->group(
                 function () {

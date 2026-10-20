@@ -40,15 +40,7 @@ class Acl
      */
     private function getAclConfig(): array
     {
-        static $aclConfig;
-
-        if ($aclConfig) {
-            return $aclConfig;
-        }
-
-        $aclConfig = config('acl');
-
-        return $aclConfig;
+        return config('acl', []);
     }
 
     /**
@@ -56,22 +48,17 @@ class Acl
      */
     public function getRoles(): Collection
     {
-        static $roles;
+        $roles = collect();
 
-        if ($roles) {
-            return $roles;
-        }
-
-        $roles = collect($this->getAclConfig())
-            ->mapWithKeys(function ($role) {
-                if (is_array($role['route'])) {
-                    return collect($role['route'])->mapWithKeys(function ($route) use ($role) {
-                        return [$route => $role['key']];
-                    });
-                } else {
-                    return [$role['route'] => $role['key']];
+        foreach ($this->getAclConfig() as $role) {
+            foreach ((array) $role['route'] as $route) {
+                if ($roles->has($route)) {
+                    throw new \LogicException("Duplicate ACL route: {$route}");
                 }
-            });
+
+                $roles->put($route, $role['key']);
+            }
+        }
 
         return $roles;
     }

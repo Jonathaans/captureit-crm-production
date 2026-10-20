@@ -3,19 +3,22 @@
 namespace Webkul\Admin\Providers;
 
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Webkul\Admin\Console\Commands\CrmInternalCommunicationCheckCommand;
 use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatAttachmentController;
-use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatController;
-use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatExperienceController;
-use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatConversationController;
 use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatAuditController;
+use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatController;
+use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatConversationController;
+use Webkul\Admin\Http\Controllers\InternalCommunication\InternalChatExperienceController;
 use Webkul\Admin\Http\Controllers\InternalCommunication\WorkflowNotificationController;
 use Webkul\Admin\Http\Middleware\InjectInternalCommunicationUi;
-use Webkul\Admin\Services\LeadWonNotificationDetector;
-use Webkul\Admin\Services\WorkflowNotificationService;
 use Webkul\Admin\Models\InternalMessage;
 use Webkul\Admin\Observers\InternalMessageAuditObserver;
+use Webkul\Admin\Services\WorkflowNotificationService;
+use Webkul\Invoice\Models\DeliveryOrder;
+use Webkul\Invoice\Models\WorkOrder;
 
 class InternalCommunicationServiceProvider extends ServiceProvider
 {
@@ -27,6 +30,7 @@ class InternalCommunicationServiceProvider extends ServiceProvider
             'internal_chat_realtime'
         );
     }
+
     public function boot(
         Router $router
     ): void {
@@ -49,16 +53,14 @@ class InternalCommunicationServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
-                \Webkul\Admin\Console\Commands\CrmInternalCommunicationCheckCommand::class,
+                CrmInternalCommunicationCheckCommand::class,
             ]);
         }
     }
 
     private function registerRoutes(): void
     {
-        Route::middleware(
-            'web'
-        )
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix(
                 'admin'
             )
@@ -124,7 +126,7 @@ class InternalCommunicationServiceProvider extends ServiceProvider
                         'admin.internal-chat.index'
                     );
 
-                                        Route::get(
+                    Route::get(
                         'internal-chat/unread-summary',
                         [
                             InternalChatController::class,
@@ -154,7 +156,7 @@ class InternalCommunicationServiceProvider extends ServiceProvider
                         'admin.internal-chat.messages.delete'
                     );
 
-Route::post(
+                    Route::post(
                         'internal-chat/direct/{userId}',
                         [
                             InternalChatController::class,
@@ -289,7 +291,7 @@ Route::post(
 
     private function registerBusinessNotifications(): void
     {
-                /*
+        /*
         |--------------------------------------------------------------------------
         | LEAD COMMERCIAL WORKFLOW DELEGATED V1.1
         |--------------------------------------------------------------------------
@@ -300,14 +302,14 @@ Route::post(
         | SPK and Surat Jalan notifications below remain unchanged.
         |
         */
-/*
-        |--------------------------------------------------------------------------
-        | SPK Released -> Sales Owner
-        |--------------------------------------------------------------------------
-        */
+        /*
+                |--------------------------------------------------------------------------
+                | SPK Released -> Sales Owner
+                |--------------------------------------------------------------------------
+                */
 
         $workOrderClass =
-            \Webkul\Invoice\Models\WorkOrder::class;
+            WorkOrder::class;
 
         if (class_exists($workOrderClass)) {
             $workOrderClass::updated(
@@ -373,7 +375,7 @@ Route::post(
             );
         }
 
-                /*
+        /*
         |--------------------------------------------------------------------------
         | Surat Jalan Created -> Warehouse V1.2
         |--------------------------------------------------------------------------
@@ -388,7 +390,7 @@ Route::post(
         */
 
         $deliveryOrderClass =
-            \Webkul\Invoice\Models\DeliveryOrder::class;
+            DeliveryOrder::class;
 
         if (class_exists($deliveryOrderClass)) {
             $deliveryOrderClass::created(
@@ -420,14 +422,12 @@ Route::post(
                         $number;
 
                     $meta = [
-                        'work_order_id' =>
-                            $deliveryOrder
-                                ->work_order_id
+                        'work_order_id' => $deliveryOrder
+                            ->work_order_id
                             ?? null,
 
-                        'invoice_id' =>
-                            $deliveryOrder
-                                ->invoice_id
+                        'invoice_id' => $deliveryOrder
+                            ->invoice_id
                             ?? null,
                     ];
 
@@ -438,7 +438,7 @@ Route::post(
                         )
                     ) {
                         $workOrder =
-                            \Illuminate\Support\Facades\DB::table(
+                            DB::table(
                                 'work_orders'
                             )
                                 ->where(
@@ -506,14 +506,14 @@ Route::post(
                 }
             );
         }
-/*
-        |--------------------------------------------------------------------------
-        | Surat Jalan Released -> Warehouse
-        |--------------------------------------------------------------------------
-        */
+        /*
+                |--------------------------------------------------------------------------
+                | Surat Jalan Released -> Warehouse
+                |--------------------------------------------------------------------------
+                */
 
         $deliveryOrderClass =
-            \Webkul\Invoice\Models\DeliveryOrder::class;
+            DeliveryOrder::class;
 
         if (class_exists($deliveryOrderClass)) {
             $deliveryOrderClass::updated(
@@ -582,7 +582,7 @@ Route::post(
                         )
                     ) {
                         $workOrderNumber =
-                            \Illuminate\Support\Facades\DB::table(
+                            DB::table(
                                 'work_orders'
                             )
                                 ->where(

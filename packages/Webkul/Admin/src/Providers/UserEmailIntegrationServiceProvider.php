@@ -13,9 +13,7 @@ class UserEmailIntegrationServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
-        Route::middleware(
-            'web'
-        )
+        Route::middleware(['web', 'admin_locale', 'user'])
             ->prefix(
                 'admin'
             )

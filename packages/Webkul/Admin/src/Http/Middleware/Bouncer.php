@@ -78,24 +78,35 @@ class Bouncer
      */
     public function checkIfAuthorized()
     {
-        if (Route::currentRouteName() === 'admin.mail.index') {
+        $route = Route::currentRouteName();
+
+        if ($route === 'admin.mail.index') {
             bouncer()->allow('mail.'.(request()->route('route') ?: 'inbox'));
 
             return;
         }
 
-        if (
-            Route::currentRouteName() === 'admin.products.store'
-            && request()->has('quick_add')
-            && bouncer()->hasPermission('products.create.quick-create')
-        ) {
+        $quickPermission = config('acl_routes.quick_create', [])[$route] ?? null;
+
+        if ($quickPermission && request()->filled('quick_add') && bouncer()->hasPermission($quickPermission)) {
+            return;
+        }
+
+        if (in_array($route, config('acl_routes.authenticated', []), true)) {
             return;
         }
 
         $roles = acl()->getRoles();
+        $permission = $roles->get($route) ?? (config('acl_routes.permissions', [])[$route] ?? null);
 
-        if (isset($roles[Route::currentRouteName()])) {
-            bouncer()->allow($roles[Route::currentRouteName()]);
+        if (in_array($route, ['admin.settings.attributes.lookup', 'admin.settings.attributes.lookup_entity'], true)) {
+            $permission = config('acl_routes.lookups', [])[request()->route('lookup')] ?? null;
         }
+
+        abort_unless(
+            $permission && collect((array) $permission)->contains(fn ($key) => bouncer()->hasPermission($key)),
+            401,
+            'This action is unauthorized.'
+        );
     }
 }

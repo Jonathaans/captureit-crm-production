@@ -43,6 +43,6 @@ class CommercialRevisionController extends Controller
 
     private function authorizeRevision(): void
     {
-        abort_unless(auth()->guard('user')->check() && bouncer()->hasPermission('invoices.revise'), 403);
+        abort_unless(auth()->guard('user')->check() && bouncer()->hasPermission('invoices.edit'), 403);
     }
 }

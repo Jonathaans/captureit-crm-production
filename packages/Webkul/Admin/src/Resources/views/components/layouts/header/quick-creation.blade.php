@@ -189,6 +189,7 @@
                                                 @submit="handleSubmit($event, createMail)"
                                                 ref="mailForm"
                                             >
+                                                <input type="hidden" name="quick_add" value="mail" />
                                                 <input type="hidden" name="is_draft" value="0" />
 
                                                 <!-- To -->

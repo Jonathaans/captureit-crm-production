@@ -13,6 +13,7 @@ class InvoiceDataGrid extends DataGrid
 {
     /* CRM_TARGETED_PERFORMANCE_OPTIMIZATION_V1 */
     protected $sortColumn = 'invoices.id';
+
     /**
      * Prepare query builder.
      */
@@ -62,7 +63,7 @@ class InvoiceDataGrid extends DataGrid
         /**
          * Native DataGrid filter mapping.
          */
-        
+
         /*
          * CRM_INVOICE_DATAGRID_FAST_PRODUCTS_V1
          *
@@ -79,9 +80,9 @@ class InvoiceDataGrid extends DataGrid
         $queryBuilder->addSelect(
             DB::raw(
                 "(SELECT GROUP_CONCAT(DISTINCT ii_product.name ORDER BY ii_product.name SEPARATOR ', ')"
-                ." FROM invoice_items ii_product"
-                ." WHERE ii_product.invoice_id = invoices.id"
-                .") as products"
+                .' FROM invoice_items ii_product'
+                .' WHERE ii_product.invoice_id = invoices.id'
+                .') as products'
             )
         );
 
@@ -102,7 +103,7 @@ class InvoiceDataGrid extends DataGrid
                 ? 'invoice_product_filter_items.name'
                 : 'products'
         );
-$this->addFilter(
+        $this->addFilter(
             'invoice_number',
             'invoices.invoice_number'
         );
@@ -181,36 +182,36 @@ $this->addFilter(
         ]);
 
         /**
- * Business Unit.
- */
-$this->addColumn([
-    'index' => 'business_unit',
-    'label' => 'Business Unit',
-    'type' => 'string',
+         * Business Unit.
+         */
+        $this->addColumn([
+            'index' => 'business_unit',
+            'label' => 'Business Unit',
+            'type' => 'string',
 
-    'searchable' => false,
-    'sortable' => false,
-    'filterable' => true,
+            'searchable' => false,
+            'sortable' => false,
+            'filterable' => true,
 
-    'visibility' => false,
+            'visibility' => false,
 
-    'filterable_type' => 'dropdown',
+            'filterable_type' => 'dropdown',
 
-    'filterable_options' => [
-        [
-            'label' => 'Varbel - EO',
-            'value' => 'varbel',
-        ],
-        [
-            'label' => 'Vartech - Event Tech',
-            'value' => 'vartech',
-        ],
-        [
-            'label' => 'Capture It - Photobooth',
-            'value' => 'capture_it',
-        ],
-    ],
-]);
+            'filterable_options' => [
+                [
+                    'label' => 'Varbel - EO',
+                    'value' => 'varbel',
+                ],
+                [
+                    'label' => 'Vartech - Event Tech',
+                    'value' => 'vartech',
+                ],
+                [
+                    'label' => 'Capture It - Photobooth',
+                    'value' => 'capture_it',
+                ],
+            ],
+        ]);
 
         /**
          * Project Name.
@@ -320,13 +321,12 @@ $this->addColumn([
          * Keep this as a string because the displayed value is
          * formatted as Indonesian Rupiah by the closure.
          */
-        
         $this->addColumn([
-            'index'      => 'products',
-            'label'      => 'Product',
-            'type'       => 'string',
+            'index' => 'products',
+            'label' => 'Product',
+            'type' => 'string',
             'searchable' => false,
-            'sortable'   => false,
+            'sortable' => false,
             'filterable' => true,
             'filterable_type' => 'dropdown',
             'filterable_options' => Cache::remember(
@@ -382,7 +382,7 @@ $this->addColumn([
                 return $badges;
             },
         ]);
-$this->addColumn([
+        $this->addColumn([
             'index' => 'grand_total',
             'label' => 'Grand Total',
             'type' => 'string',
@@ -556,30 +556,34 @@ $this->addColumn([
      */
     public function prepareActions(): void
     {
-        $this->addAction([
-            'index' => 'view',
-            'icon' => 'icon-eye',
-            'title' => 'Manage Invoice',
-            'method' => 'GET',
-            'url' => fn ($row) => route(
-                'admin.invoices.show',
-                $row->id
-            ),
-        ]);
+        if (bouncer()->hasPermission('invoices.view')) {
+            $this->addAction([
+                'index' => 'view',
+                'icon' => 'icon-eye',
+                'title' => 'Manage Invoice',
+                'method' => 'GET',
+                'url' => fn ($row) => route(
+                    'admin.invoices.show',
+                    $row->id
+                ),
+            ]);
+        }
 
         /**
          * Edit invoice.
          */
-        $this->addAction([
-            'index' => 'edit',
-            'icon' => 'icon-edit',
-            'title' => 'Edit Invoice',
-            'method' => 'GET',
-            'url' => fn ($row) => route(
-                'admin.invoices.edit',
-                $row->id
-            ),
-        ]);
+        if (bouncer()->hasPermission('invoices.edit')) {
+            $this->addAction([
+                'index' => 'edit',
+                'icon' => 'icon-edit',
+                'title' => 'Edit Invoice',
+                'method' => 'GET',
+                'url' => fn ($row) => route(
+                    'admin.invoices.edit',
+                    $row->id
+                ),
+            ]);
+        }
 
         if (bouncer()->hasPermission('invoices.print')) {
             $this->addAction([

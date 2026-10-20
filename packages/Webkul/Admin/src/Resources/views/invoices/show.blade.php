@@ -96,18 +96,18 @@
         </div>
 
         <div class="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
-            @if (! $invoice->quote_id)
+            @if (! $invoice->quote_id && bouncer()->hasPermission('invoices.edit'))
             <a
                 href="{{ route('admin.invoices.edit', $invoice->id) }}"
                 class="secondary-button"
             >
                 Edit Invoice
             </a>
-            @elseif (bouncer()->hasPermission('invoices.revise') && in_array($invoice->status, ['unpaid', 'partial', 'paid']) && ! in_array($invoice->event_status, ['cancel', 'cancelled', 'canceled']))
+            @elseif ($invoice->quote_id && bouncer()->hasPermission('invoices.edit') && in_array($invoice->status, ['unpaid', 'partial', 'paid']) && ! in_array($invoice->event_status, ['cancel', 'cancelled', 'canceled']))
                 <a href="{{ route('admin.commercial-revisions.edit', ['invoice', $invoice->id]) }}" class="secondary-button">Revisi Transaksi</a>
             @endif
 
-            @if ($invoice->quote)
+            @if ($invoice->quote && bouncer()->hasPermission('quotes.edit'))
                 <a
                     href="{{ route('admin.quotes.edit', $invoice->quote->id) }}"
                     class="secondary-button"
@@ -116,12 +116,14 @@
                 </a>
             @endif
 
+            @if (bouncer()->hasPermission('invoices.print'))
             <a
                 href="{{ route('admin.invoices.print', $invoice->id) }}"
                 class="primary-button"
             >
                 Print Invoice
                     </a>
+            @endif
             @if ($projectWorkOrder && bouncer()->hasPermission('work-orders.view'))
                 <a href="{{ route('admin.invoices.work-orders.open', $invoice->id) }}" class="secondary-button">Buka SPK</a>
             @elseif ($invoice->status !== 'void' && ! $projectWorkOrder && bouncer()->hasPermission('work-orders.generate'))
