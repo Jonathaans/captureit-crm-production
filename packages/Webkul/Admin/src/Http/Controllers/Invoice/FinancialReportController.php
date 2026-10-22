@@ -386,7 +386,8 @@ class FinancialReportController extends Controller
         $quoteIds = $references->pluck('quote_id')->filter()->unique()->values();
         $standaloneIds = $references->whereNull('quote_id')->pluck('id');
 
-        return Invoice::query()->notVoided()
+        // Historical costs still belong to this project after a billing document is voided.
+        return Invoice::query()
             ->with(['person.organization', 'quote.person.organization'])
             ->withSum('activePayments as payments_sum_amount', 'amount')->withSum('expenses', 'amount')
             ->whereNotNull('issued_at')
@@ -394,7 +395,7 @@ class FinancialReportController extends Controller
             ->orderBy('issued_at')->orderBy('id')->get()
             ->groupBy(fn (Invoice $invoice): string => $invoice->quote_id ? 'quote:'.$invoice->quote_id : 'invoice:'.$invoice->id)
             ->map(function (Collection $invoices): array {
-                $confirmed = $invoices->where('event_status', 'confirm');
+                $confirmed = $invoices->where('event_status', 'confirm')->where('status', '!=', 'void');
                 $first = $confirmed->first();
                 $invoiced = (float) $confirmed->sum('grand_total');
                 $expense = (float) $invoices->sum('expenses_sum_amount');

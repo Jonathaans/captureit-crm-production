@@ -17,8 +17,20 @@ class ProformaInvoiceService
 
     public function create(Quote $quote, array $input, ?int $createdBy = null): ProformaInvoice
     {
-        return DB::transaction(function () use ($quote, $input, $createdBy) {
-            $quote = Quote::with(['items', 'person.organization'])->lockForUpdate()->findOrFail($quote->id);
+        return $this->createDocument($quote, $input, $createdBy);
+    }
+
+    /** Server-owned agreement preserved by the validated invoice replacement flow. */
+    public function createFromSnapshot(Quote $agreement, array $input, int $createdBy): ProformaInvoice
+    {
+        return $this->createDocument($agreement, $input, $createdBy, true);
+    }
+
+    private function createDocument(Quote $quote, array $input, ?int $createdBy, bool $useSnapshot = false): ProformaInvoice
+    {
+        return DB::transaction(function () use ($quote, $input, $createdBy, $useSnapshot) {
+            $current = Quote::with(['items', 'person.organization'])->lockForUpdate()->findOrFail($quote->id);
+            $quote = $useSnapshot ? $quote : $current;
             $summary = $this->billing->summarize($quote);
             $input = Validator::make($input, [
                 'billing_type' => ['required', 'in:down_payment,full_payment,settlement'],

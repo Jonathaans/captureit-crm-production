@@ -17,6 +17,10 @@ Tanpa DP juga wajib lewat proforma penuh Rp10 juta. TOP menentukan pembayaran se
 
 Menu: **Invoices → Proforma** atau tombol **Buat Proforma** pada quote. Pilih jenis proforma, nominal DP bila diperlukan, TOP, serta tanggal jatuh tempo. Di detail proforma, Admin Sales memilih dasar pemindahan. Nomor proforma dan riwayatnya tetap tersimpan serta terhubung ke nomor invoice; siapa, kapan, dan alasan pemindahan dicatat.
 
+Jika DP sudah menjadi invoice tetapi belum dibayar dan pelanggan meminta tagihan
+penuh, gunakan **Ganti ke Full Payment** pada invoice DP. Invoice pengganti memakai
+quotation yang sama, bukan quotation baru. Lihat [panduan penggantian DP](invoice-dp-full-replacement.md).
+
 Pelunasan diterbitkan manual sesuai perjanjian, bukan otomatis berdasarkan tanggal event. Proforma pelunasan tersedia setelah invoice DP dibayar. Tanggal penerimaan tidak boleh di masa depan atau sebelum proforma, dan periode keuangan tertutup tetap dilindungi. Proforma dapat dicetak/disimpan sebagai PDF melalui dialog cetak browser.
 
 ## Konsistensi data

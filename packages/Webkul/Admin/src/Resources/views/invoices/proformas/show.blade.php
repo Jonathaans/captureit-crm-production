@@ -47,7 +47,11 @@
                         <div class="fw-between"><h2 class="fw-title">Invoice telah diterbitkan</h2><span class="fw-badge {{ $proforma->invoice->status === 'void' ? 'fw-badge-cancelled' : 'fw-badge-converted' }}">{{ strtoupper($proforma->invoice->status) }}</span></div>
                         <p style="margin:16px 0;font-weight:600">{{ $proforma->invoice->invoice_number }} · {{ $proforma->billingLabel() }}</p>
                         @if ($proforma->invoice->status === 'void')
-                            <p class="fw-note">Invoice hasil konversi sudah VOID. Catatan pembayaran sebelumnya dibatalkan sebagai salah input, tanpa uang diterima. Proforma ini disimpan sebagai riwayat.</p>
+                            @if ($proforma->invoice->replaced_by_invoice_id)
+                                <p class="fw-note">Invoice DP hasil konversi telah diganti dengan <a class="underline" href="{{ route('admin.invoices.show', $proforma->invoice->replaced_by_invoice_id) }}">{{ $proforma->invoice->replacementInvoice->invoice_number }}</a>. Proforma ini disimpan sebagai riwayat.</p>
+                            @else
+                                <p class="fw-note">Invoice hasil konversi sudah VOID. Catatan pembayaran sebelumnya dibatalkan sebagai salah input, tanpa uang diterima. Proforma ini disimpan sebagai riwayat.</p>
+                            @endif
                         @endif
                         <p class="fw-muted">Alasan konversi semula: {{ $proforma->conversion_reason === 'event_confirmed' ? 'Event sudah deal / oke' : 'Pembayaran diterima' }}.<br>Dipindahkan {{ $proforma->converted_at?->format('d/m/Y H:i') }} oleh {{ $proforma->converter?->name ?? '-' }}.</p>
                         @if ($proforma->conversion_note)<p class="fw-subtitle">{{ $proforma->conversion_note }}</p>@endif

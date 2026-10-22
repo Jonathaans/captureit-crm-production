@@ -101,7 +101,13 @@
             @if ($proforma->status === 'converted')<p class="document-status">SUDAH DIPINDAHKAN KE INVOICE</p>@endif
         </div>
         @if ($proforma->invoice?->status === 'void')
-            <div class="void-note"><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat. Catatan pembayaran pada invoice tersebut dibatalkan sebagai salah input.</div>
+            <div class="void-note"><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat.
+                @if ($proforma->invoice->replaced_by_invoice_id)
+                    Invoice DP telah diganti dengan {{ $proforma->invoice->replacementInvoice->invoice_number }}.
+                @else
+                    Catatan pembayaran pada invoice tersebut dibatalkan sebagai salah input.
+                @endif
+            </div>
         @endif
         <table class="meta-table">
             <tr>

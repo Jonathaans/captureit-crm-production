@@ -501,8 +501,18 @@
 @if ($invoice->status === 'void')
     <div style="border: 3px solid #991b1b; padding: 12px; margin-bottom: 14px; color: #991b1b;">
         <strong>VOID / DIBATALKAN — BUKAN TAGIHAN AKTIF</strong><br>
-        Riwayat salah input pembayaran dibatalkan tanpa uang diterima.<br>
-        {{ $invoice->voidCorrection?->reason ?? 'Koreksi invoice' }}
+        @if ($invoice->replaced_by_invoice_id)
+            Dibatalkan—Diganti Invoice Baru: {{ $invoice->replacementInvoice->invoice_number }}.<br>
+            {{ $invoice->replacementRecord->reason }}
+        @else
+            Riwayat salah input pembayaran dibatalkan tanpa uang diterima.<br>
+            {{ $invoice->voidCorrection?->reason ?? 'Koreksi invoice' }}
+        @endif
+    </div>
+@endif
+@if ($invoice->replaces_invoice_id)
+    <div style="border: 1px solid #cbd5e1; padding: 8px; margin-bottom: 12px;">
+        Invoice Full Payment ini menggantikan invoice DP {{ $invoice->replacesInvoice->invoice_number }} yang telah dibatalkan.
     </div>
 @endif
 

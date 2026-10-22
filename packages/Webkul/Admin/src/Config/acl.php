@@ -103,7 +103,7 @@ return [
     ], [
         'key' => 'invoices.revise',
         'name' => 'Revisi Transaksi (Quote, Proforma, Invoice)',
-        'route' => ['admin.commercial-revisions.edit', 'admin.commercial-revisions.update'],
+        'route' => ['admin.commercial-revisions.edit', 'admin.commercial-revisions.update', 'admin.invoices.replacements.preview', 'admin.invoices.replacements.store'],
         'sort' => 2,
     ], [
         /**
