@@ -92,7 +92,7 @@ class FinancialReportController extends Controller
     }
 
     /**
-     * Export exactly what the current filters are showing.
+     * Export the finance team's invoice list for the current filters.
      */
     public function export(Request $request): StreamedResponse
     {
@@ -102,168 +102,44 @@ class FinancialReportController extends Controller
             return $this->exportTopProducts($filters);
         }
 
-        $financialSummary = $this->buildFinancialSummary($filters);
-
-        $invoicePerformance = $this->buildInvoicePerformance($filters);
-
-        $cashTransactions = $this->buildCashTransactions($filters);
-        $projectPerformance = $this->buildProjectPerformance($filters);
+        $invoicePerformance = $this->buildInvoicePerformance($filters)
+            ->sortBy([['issued_at', 'asc'], ['id', 'asc']]);
         $fileName = $this->buildExportFileName($filters);
 
         return response()->streamDownload(
-            function () use (
-                $filters,
-                $financialSummary,
-                $invoicePerformance,
-                $cashTransactions,
-                $projectPerformance
-            ) {
+            function () use ($invoicePerformance): void {
                 $handle = fopen('php://output', 'w');
 
                 if ($handle === false) {
                     return;
                 }
 
-                /*
-                 * UTF-8 BOM for Excel.
-                 */
+                // UTF-8 BOM for Excel; the first row is the table header.
                 fwrite($handle, "\xEF\xBB\xBF");
 
                 $writeRow = static function ($stream, array $row): void {
-                    fputcsv(
-                        $stream,
-                        $row,
-                        ';',
-                        '"',
-                        ''
-                    );
+                    fputcsv($stream, $row, ';', '"', '');
                 };
-
-                /*
-                |--------------------------------------------------------------------------
-                | REPORT META
-                |--------------------------------------------------------------------------
-                */
-
-                $writeRow($handle, [
-                    'FINANCIAL REPORT',
-                ]);
-
-                $writeRow($handle, [
-                    'Year',
-                    $filters['year'],
-                ]);
-
-                $writeRow($handle, [
-                    'Month',
-                    $filters['month']
-                        ? Carbon::createFromDate(
-                            $filters['year'],
-                            $filters['month'],
-                            1
-                        )->format('F')
-                        : 'ALL MONTHS',
-                ]);
-
-                $writeRow($handle, [
-                    'Business Unit',
-                    $filters['business_unit']
-                        ? BusinessUnit::label($filters['business_unit'])
-                        : 'ALL BUSINESS UNITS',
-                ]);
-
-                $writeRow($handle, [
-                    'Event Status',
-                    $filters['event_status']
-                        ? strtoupper($filters['event_status'])
-                        : 'ALL EVENT STATUSES',
-                ]);
-
-                $writeRow($handle, [
-                    'Product',
-                    $filters['product']
-                        ?: 'ALL PRODUCTS',
-                ]);
-
-                $writeRow($handle, []);
-
-                /*
-                |--------------------------------------------------------------------------
-                | SUMMARY
-                |--------------------------------------------------------------------------
-                |
-                | Labels are intentionally explicit to avoid mixing:
-                | project/invoice performance vs period cash-flow.
-                |
-                */
-
-                $writeRow($handle, [
-                    'SUMMARY',
-                ]);
-
-                $writeRow($handle, [
-                    'Metric',
-                    'Amount',
-                ]);
-
-                $writeRow($handle, [
-                    'Total Invoiced - Active Confirmed Invoice Value',
-                    $financialSummary['invoiced'],
-                ]);
-
-                $writeRow($handle, [
-                    'Cash Received - Actual Invoice Payments in Period',
-                    $financialSummary['received'],
-                ]);
-
-                $writeRow($handle, [
-                    'Receivable - Current Confirmed Invoice Balance',
-                    $financialSummary['outstanding'],
-                ]);
-
-                $writeRow($handle, [
-                    'Expense - Cash Out During Period',
-                    $financialSummary['expense'],
-                ]);
-
-                $writeRow($handle, [
-                    'Cash Margin - Actual Cash In minus Expense',
-                    $financialSummary['cash_surplus'],
-                ]);
-
-                $writeRow($handle, []);
-                $this->writeSupportingExport($handle, $writeRow, $cashTransactions, $projectPerformance);
-                $writeRow($handle, []);
-
-                /*
-                |--------------------------------------------------------------------------
-                | INVOICE DETAIL
-                |--------------------------------------------------------------------------
-                */
 
                 $writeRow($handle, [
                     'Project Code',
                     'Business Unit',
-                    'Invoice',
-                    'Billing Type',
-                    'Invoice Date',
-                    'Customer',
+                    'No Invoice',
+                    'Jenis Invoice',
+                    'Tanggal Inv',
+                    'Nama Customer',
                     'Company',
-                    'Project / Subject',
-                    'Product',
-                    'Event Status',
-                    'Payment Status',
-                    'Invoice Value',
-                    'Paid To Date',
-                    'Payment Received In Period',
-                    'Outstanding Current',
-                    'Expenses Linked to This Invoice',
-                    'Expense In Period',
-                    'Invoice Margin - Invoice Value minus Linked Expenses',
-                    'Cash Surplus In Period',
-                    'PPH',
-                    'Net Payable after PPH',
-                    'Invoice Margin after PPH',
+                    'No. Telepon Pemesan',
+                    'Nama Event',
+                    'Tanggal Event',
+                    'Produk',
+                    'Status Project',
+                    'Status Pembayaran',
+                    'Nilai Invoice',
+                    'Nilai Pembayaran',
+                    'Nilai Pembayaran Periode',
+                    'Sisa Hutang',
+                    'Sales',
                 ]);
 
                 foreach ($invoicePerformance as $invoice) {
@@ -272,11 +148,13 @@ class FinancialReportController extends Controller
                         $invoice['business_unit_label'],
                         $invoice['invoice_number'],
                         strtoupper(str_replace('_', ' ', $invoice['billing_type'])),
-                        $invoice['issued_at']
-                            ?->format('Y-m-d'),
-                        $invoice['customer'],
+                        $invoice['issued_at']?->format('j M Y'),
+                        $invoice['recipient_name'],
                         $invoice['company'],
+                        // Keep leading zeroes and +country codes as text in spreadsheets.
+                        $invoice['customer_phone'] !== '' ? "'".$invoice['customer_phone'] : '',
                         $invoice['subject'],
+                        $invoice['event_date']?->format('j M Y'),
                         $invoice['products'],
                         strtoupper($invoice['event_status']),
                         strtoupper($invoice['status']),
@@ -284,13 +162,7 @@ class FinancialReportController extends Controller
                         $invoice['paid_to_date'],
                         $invoice['received_in_period'],
                         $invoice['outstanding'],
-                        $invoice['project_expense'],
-                        $invoice['expense_in_period'],
-                        $invoice['estimated_profit'],
-                        $invoice['cash_surplus_in_period'],
-                        $invoice['pph_amount'],
-                        $invoice['net_payable'],
-                        $invoice['net_margin'],
+                        $invoice['sales'],
                     ]);
                 }
 
@@ -544,26 +416,6 @@ class FinancialReportController extends Controller
             })->values();
     }
 
-    private function writeSupportingExport($handle, callable $writeRow, Collection $cashTransactions, Collection $projects): void
-    {
-        $writeRow($handle, ['CASH TRANSACTIONS IN PERIOD']);
-        $writeRow($handle, ['Basis', 'Transaction dates; includes payments/expenses on invoices issued outside this period.']);
-        $writeRow($handle, ['Transaction Type', 'Transaction Date', 'Invoice', 'Project', 'Business Unit', 'Customer', 'Company', 'Reference', 'Description', 'Cash In', 'Cash Out']);
-        foreach ($cashTransactions as $row) {
-            $writeRow($handle, [$row['type'], $row['date']->format('Y-m-d'), $row['invoice_number'], $row['project_code'], $row['business_unit'], $row['customer'], $row['company'], $row['reference'], $row['description'], $row['cash_in'], $row['cash_out']]);
-        }
-        $writeRow($handle, []);
-        $writeRow($handle, ['PROJECT POSITION - CURRENT']);
-        $writeRow($handle, ['Basis', 'Projects with a confirmed invoice in the selected period; all issued project invoices to date. Confirmed invoice values minus expenses on project invoices. Not a historical closing balance.']);
-        $writeRow($handle, ['Project', 'Subject', 'Company', 'Confirmed Invoices', 'Invoice Count', 'Total Invoiced', 'Paid To Date', 'Outstanding Current', 'Project Expenses', 'Invoiced Project Margin before PPH', 'PPH', 'Project Margin after PPH']);
-        foreach ($projects as $row) {
-            $writeRow($handle, [$row['project_code'], $row['subject'], $row['company'], $row['invoice_numbers'], $row['invoice_count'], $row['invoiced'], $row['received'], $row['outstanding'], $row['expense'], $row['margin'], $row['pph'], $row['net_margin']]);
-        }
-        $writeRow($handle, []);
-        $writeRow($handle, ['INVOICES ISSUED IN PERIOD']);
-        $writeRow($handle, ['Basis', 'Invoice issue dates; outstanding and linked expenses are current. Unissued quote/proforma values are excluded.']);
-    }
-
     /**
      * Per-invoice performance.
      *
@@ -576,6 +428,8 @@ class FinancialReportController extends Controller
             ->with([
                 'person.organization',
                 'quote.person.organization',
+                'user',
+                'quote.user',
                 'activePayments',
                 'expenses',
                 'items',
@@ -597,6 +451,16 @@ class FinancialReportController extends Controller
             ->get()
             ->map(function (Invoice $invoice) use ($filters) {
                 $invoiceValue = (float) $invoice->grand_total;
+                $identity = $invoice->billToIdentity();
+                $hasRecipientSnapshot = filled($invoice->bill_to_person_name) || filled($invoice->bill_to_company_name);
+                $customer = $invoice->person_id
+                    ? $invoice->person
+                    : (! $hasRecipientSnapshot ? $invoice->quote?->person : null);
+                $customerPhone = collect($customer?->contact_numbers ?? [])
+                    ->map(fn ($number) => trim((string) (is_array($number) ? ($number['value'] ?? '') : $number)))
+                    ->filter(fn (string $number): bool => $number !== '')
+                    ->unique()
+                    ->implode('; ');
 
                 $productNames = $invoice
                     ->items
@@ -659,11 +523,15 @@ class FinancialReportController extends Controller
                     'invoice_number' => $invoice->invoice_number,
                     'billing_type' => $invoice->billing_type ?: 'full_payment',
                     'customer' => $invoice->person?->name ?? '-',
-                    'company' => $invoice->billToIdentity()['company_name'] ?? '-',
+                    'recipient_name' => $identity['person_name'],
+                    'company' => $identity['company_name'] ?? '-',
+                    'customer_phone' => $customerPhone,
                     'subject' => $invoice->subject ?? '-',
                     'products' => $productNames->implode('; '),
                     'product_list' => $productNames->all(),
                     'issued_at' => $invoice->issued_at,
+                    'event_date' => $invoice->event_date ?? $invoice->quote?->event_date,
+                    'sales' => $invoice->user?->name ?? $invoice->quote?->user?->name ?? '',
                     'event_status' => $invoice->event_status ?? 'confirm',
                     'status' => $invoice->status ?? 'unpaid',
 

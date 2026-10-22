@@ -25,7 +25,7 @@
                         <summary>Ekspor <span aria-hidden="true">⌄</span></summary>
                         <div class="fw-export-menu">
                             @if (bouncer()->hasPermission('invoices.financial-report.export'))
-                                <a href="{{ route('admin.invoices.financial-report.export', $exportFilters) }}">Financial Report<small>Seluruh rincian sesuai filter aktif</small></a>
+                                <a href="{{ route('admin.invoices.financial-report.export', $exportFilters) }}">Financial Report<small>Daftar invoice sesuai filter aktif</small></a>
                                 <a href="{{ route('admin.invoices.financial-report.export', array_merge($exportFilters, ['section' => 'top-products'])) }}">Produk teratas<small>Seluruh produk sesuai filter aktif</small></a>
                             @endif
                             @if (bouncer()->hasPermission('invoices.expense.export-all'))

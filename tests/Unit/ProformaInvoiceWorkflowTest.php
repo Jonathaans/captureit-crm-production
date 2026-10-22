@@ -659,15 +659,18 @@ describe('individual payment void', function () {
         expect(PaymentVoidRecord::count())->toBe(2);
     });
 
-    it('removes prior month cash from reports and exports but preserves invoiced value and restores receivable', function () {
+    it('removes prior month cash from reports while keeping the export limited to issued invoices', function () {
         $invoice = invoiceVoidFixture($this);
         DB::table('payments')->where('id', 6)->update(['reference_number' => 'WRONG-RECEIPT-REF']);
         $other = Invoice::create(['invoice_number' => 'OTHER-INV', 'grand_total' => 1000, 'balance_due' => 1000, 'issued_at' => '2026-10-01', 'event_status' => 'confirm']);
         app(PaymentService::class)->addPayment($other, ['amount' => 500, 'paid_at' => '2026-09-29', 'reference_number' => 'VALID-RECEIPT']);
         $service = app(PaymentVoidService::class);
         $service->apply($invoice->id, 6, $service->preview($invoice->id, 6)['fingerprint'], 'Pembayaran salah catat September', 7, true);
-        expect(proformaFinancialData(['month' => 9])['financialSummary']['received'])->toBe(500.0)
-            ->and(proformaFinancialCsv(['month' => 9]))->toContain('VALID-RECEIPT')->not->toContain('WRONG-RECEIPT-REF');
+        $september = proformaFinancialData(['month' => 9]);
+        expect($september['financialSummary']['received'])->toBe(500.0)
+            ->and($september['cashTransactions']->pluck('reference')->all())->toBe(['VALID-RECEIPT'])
+            ->and(proformaFinancialCsv(['month' => 9]))->toContain('No Invoice')
+            ->not->toContain('OTHER-INV', $invoice->invoice_number, 'VALID-RECEIPT', 'WRONG-RECEIPT-REF');
         $report = proformaFinancialData();
         expect($report['financialSummary']['invoiced'])->toBe(3751000.0)
             ->and($report['financialSummary']['outstanding'])->toBe(3750500.0)
@@ -1018,7 +1021,8 @@ it('reports only the actual 3 million DP then 7 million settlement and groups th
         ->and($report['financialSummary']['cash_surplus'])->toBe(4000000.0)
         ->and($report['invoiceStats']['total'])->toBe(2)
         ->and(app(ProformaFollowUpService::class)->summary()['count'])->toBe(0);
-    expect(proformaFinancialCsv())->toContain('PROJECT POSITION - CURRENT', '4000000', 'Company Awal');
+    expect(proformaFinancialCsv())->toContain($dp->invoice_number, $settlement->invoice_number, '3000000', '7000000', 'Company Awal')
+        ->not->toContain('PROJECT POSITION - CURRENT', '4000000');
 });
 
 it('keeps top products on actual invoice snapshots when a quote is revised before conversion', function () {
@@ -1035,7 +1039,7 @@ it('keeps top products on actual invoice snapshots when a quote is revised befor
     expect(proformaFinancialCsv(['section' => 'top-products']))->toContain('Allocated Invoice Value', '3000000')->not->toContain('Changed Product', '20000000');
 });
 
-it('reconciles cash received and expenses on older invoices with the period export', function () {
+it('keeps older invoice cash movements on the dashboard and outside the invoice period export', function () {
     $proforma = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'full_payment']));
     $invoice = $this->billing->approveProforma($proforma);
     $this->travelTo(now()->parse('2026-11-03 12:00:00'));
@@ -1050,7 +1054,10 @@ it('reconciles cash received and expenses on older invoices with the period expo
         ->and($report['cashTransactions']->sum('cash_in'))->toBe(10000000.0)
         ->and($report['cashTransactions']->sum('cash_out'))->toBe(6000000.0);
     $csv = proformaFinancialCsv(['month' => 11]);
-    expect($csv)->toContain('CASH TRANSACTIONS IN PERIOD', 'NOV-RECEIPT', 'NOV-COST', $invoice->invoice_number);
+    expect($report['cashTransactions']->pluck('reference')->all())->toContain('NOV-RECEIPT', 'NOV-COST');
+    expect($csv)->toContain('No Invoice', 'Nilai Pembayaran Periode')
+        ->not->toContain('CASH TRANSACTIONS IN PERIOD', 'NOV-RECEIPT', 'NOV-COST', $invoice->invoice_number);
+    expect(proformaFinancialCsv(['month' => 10]))->toContain($invoice->invoice_number, '10000000');
     $annual = proformaFinancialData(['month' => '']);
     expect($annual['monthlyPerformance'][9]['revenue'])->toBe(10000000.0)
         ->and($annual['monthlyPerformance'][10]['received'])->toBe(10000000.0)

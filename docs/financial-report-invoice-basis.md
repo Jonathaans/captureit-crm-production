@@ -5,14 +5,14 @@ Aturan finance: **nilai resmi mengikuti invoice**. Proforma hanya dokumen perant
 ## Angka resmi
 
 - **Total Invoiced:** nilai invoice confirmed yang terbit pada periode terpilih. Invoice DP hanya menyumbang nominal DP, pelunasan hanya nominal pelunasan. Sisa nilai penawaran tidak diakui. Kartu/kolom Unbilled berbasis quote dihapus dari Financial Report.
-- **Cash Received / Expense:** pembayaran dan biaya yang tercatat pada invoice, berdasarkan tanggal transaksi. Transaksi untuk invoice dari bulan lain tetap masuk. Rincian kas pada halaman dan CSV memuat seluruh transaksi tersebut agar bisa direkonsiliasi dengan ringkasan.
+- **Cash Received / Expense:** pembayaran dan biaya yang tercatat pada invoice, berdasarkan tanggal transaksi. Transaksi untuk invoice dari bulan lain tetap masuk. Rincian kas pada halaman memuat seluruh transaksi tersebut agar bisa direkonsiliasi dengan ringkasan. CSV Financial Report hanya berisi daftar invoice menurut tanggal terbit.
 - **Receivable:** saldo saat ini dari invoice confirmed yang terbit pada periode terpilih. Ini bukan seluruh piutang perusahaan dan bukan saldo historis penutupan periode. Pembayaran bulan berikutnya mengurangi saldo saat laporan lama dibuka kembali; label menjelaskan hal ini.
 - **Cash Margin:** uang diterima dikurangi biaya pada periode transaksi yang dipilih.
 - **Posisi Proyek dari Invoice:** pilih proyek yang memiliki invoice confirmed pada periode/filter terpilih, lalu gabungkan seluruh invoice yang sudah terbit untuk proyek tersebut. Total dan margin hanya memakai nilai invoice confirmed. Biaya dari seluruh invoice proyek dihitung satu kali, termasuk biaya pada invoice yang kemudian dibatalkan. Proforma dan sisa nilai quote tidak disertakan. Ini posisi proyek saat ini lintas periode, bukan penutupan bulanan.
 - **Invoice Performance:** tetap rincian masing-masing invoice menurut tanggal terbit. Label margin/biaya menjelaskan bahwa nilainya milik invoice tersebut, bukan keseluruhan proyek.
 - **Top Product:** produk, unit bisnis, nominal, dan alokasi pembayaran berasal dari snapshot invoice, bukan quote terbaru. Setiap invoice menyumbang nominal pada bulan penerbitannya. DP dan pelunasan proyek yang sama dihitung satu proyek per produk dalam periode terpilih; kuantitas yang ditagihkan ulang tidak digandakan. Pembayaran pada Top Product adalah yang diterima sampai saat ini pada invoice terpilih, bukan kas per bulan.
 
-Company dan kolom PPH tetap ada pada detail ekspor invoice. PPH masih kolom kosong untuk diisi manual, tanpa kalkulasi atau potongan pajak otomatis.
+CSV terbaru mengikuti [format ringkas tim finance](financial-export-finance-columns.md), termasuk Company dan nomor telepon pemesan. Kolom PPH tidak ditampilkan; perhitungan sisa hutang tetap mengikuti nilai kas yang harus dibayar setelah PPH dan pembayaran aktif.
 
 ## Pemantauan Caca / Admin Sales
 
@@ -43,7 +43,7 @@ Jika biaya Rp6 juta dicatat pada invoice DP, setelah kedua invoice terbit posisi
 
 ## Ekspor dan deploy
 
-CSV Financial Report sekarang memuat ringkasan, rincian kas berdasarkan tanggal transaksi, posisi proyek saat ini, lalu detail invoice berdasarkan tanggal terbit. Label basis periode dicantumkan agar bagian yang berbeda tidak dijumlahkan menjadi satu total. Pemakai parser CSV perlu memperhatikan bagian baru dan label margin invoice yang diperjelas.
+CSV Financial Report sekarang hanya memuat header dan satu baris per invoice menurut tanggal terbit, mengikuti format ringkas tim finance. Ringkasan, rincian kas, dan posisi proyek tetap tersedia di halaman laporan. Urutan dan arti kolom serta langkah deploy perubahan export dijelaskan dalam [panduan format export](financial-export-finance-columns.md).
 
 Tidak ada migration atau dependency baru. Setelah merge, ikuti backup/maintenance/update source pada panduan VPS, jalankan build Admin untuk style panel baru, lalu segarkan cache:
 
