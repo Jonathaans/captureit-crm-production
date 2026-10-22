@@ -7,6 +7,7 @@ use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoicePaymentController;
+use Webkul\Admin\Http\Controllers\Invoice\InvoiceReplacementController;
 use Webkul\Admin\Http\Controllers\Invoice\PaymentVoidController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Http\Controllers\PurchaseOrder\PurchaseOrderController;
@@ -16,6 +17,11 @@ use Webkul\Admin\Http\Controllers\WorkOrder\WorkOrderController;
 Route::controller(CommercialRevisionController::class)->prefix('commercial-revisions')->group(function () {
     Route::get('{documentType}/{id}', 'edit')->whereIn('documentType', ['quote', 'proforma', 'invoice'])->whereNumber('id')->name('admin.commercial-revisions.edit');
     Route::put('{documentType}/{id}', 'update')->whereIn('documentType', ['quote', 'proforma', 'invoice'])->whereNumber('id')->name('admin.commercial-revisions.update');
+});
+
+Route::controller(InvoiceReplacementController::class)->prefix('invoices')->group(function () {
+    Route::get('{id}/replace-with-full', 'preview')->whereNumber('id')->name('admin.invoices.replacements.preview');
+    Route::post('{id}/replace-with-full', 'store')->whereNumber('id')->name('admin.invoices.replacements.store');
 });
 
 Route::controller(ProformaInvoiceController::class)->prefix('proformas')->group(function () {

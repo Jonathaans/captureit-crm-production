@@ -179,6 +179,21 @@ class Invoice extends Model implements InvoiceContract
         return $this->hasMany(ExpenseProxy::modelClass());
     }
 
+    public function replacementInvoice()
+    {
+        return $this->belongsTo(self::class, 'replaced_by_invoice_id');
+    }
+
+    public function replacesInvoice()
+    {
+        return $this->belongsTo(self::class, 'replaces_invoice_id');
+    }
+
+    public function replacementRecord()
+    {
+        return $this->hasOne(InvoiceReplacement::class, 'source_invoice_id');
+    }
+
     public function deliveryOrders()
     {
         return $this->hasMany(
@@ -197,9 +212,9 @@ class Invoice extends Model implements InvoiceContract
 
     public function projectInvoiceIds(): array
     {
-        $parentId = $this->operationalInvoiceId();
+        $parentId = (int) ($this->replaces_invoice_id ?: $this->operationalInvoiceId());
 
         return static::where('dp_invoice_id', $parentId)->where('billing_type', 'settlement')->where('quote_id', $this->quote_id)
-            ->pluck('id')->push($parentId)->push($this->id)->unique()->all();
+            ->pluck('id')->push($parentId)->push($this->id)->push($this->replaced_by_invoice_id)->filter()->unique()->all();
     }
 }

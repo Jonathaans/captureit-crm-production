@@ -194,13 +194,9 @@ class FlexibleQuoteBillingService
         return $this->createInvoice($proforma, 'payment_received', $createdBy, $payment);
     }
 
-    private function createInvoice(
-        ProformaInvoice $proforma,
-        string $reason,
-        ?int $createdBy,
-        array $payment = [],
-        ?string $note = null
-    ): Invoice {
+    /** Serialize numbering before acquiring quote/invoice locks. */
+    public function withInvoiceNumberLock(callable $callback): mixed
+    {
         $connection = DB::connection();
         $usesNamedLock = $connection->getDriverName() === 'mysql';
 
@@ -217,6 +213,24 @@ class FlexibleQuoteBillingService
         }
 
         try {
+            return $callback();
+        } finally {
+            if ($usesNamedLock) {
+                $connection->selectOne(
+                    "SELECT RELEASE_LOCK('crm_invoice_number_v1')"
+                );
+            }
+        }
+    }
+
+    private function createInvoice(
+        ProformaInvoice $proforma,
+        string $reason,
+        ?int $createdBy,
+        array $payment = [],
+        ?string $note = null
+    ): Invoice {
+        return $this->withInvoiceNumberLock(function () use ($proforma, $reason, $createdBy, $payment, $note) {
             return DB::transaction(function () use ($proforma, $reason, $createdBy, $payment, $note) {
                 $lockedQuote = Quote::query()
                     ->with(['items', 'person.organization'])
@@ -437,13 +451,7 @@ class FlexibleQuoteBillingService
                     'user',
                 ]);
             }, 3);
-        } finally {
-            if ($usesNamedLock) {
-                $connection->selectOne(
-                    "SELECT RELEASE_LOCK('crm_invoice_number_v1')"
-                );
-            }
-        }
+        });
     }
 
     /**

@@ -18,7 +18,8 @@ class CrmReadOnlyArchivePolicyService
         // Voided billing keeps historical operational documents, but cannot gain
         // new financial obligations or operational children through another route.
         if (in_array($table, ['expenses', 'purchase_orders', 'work_orders', 'delivery_orders'], true)
-            && $this->parentStatusReason($model, 'invoice_id', 'invoices', ['void'], 'Invoice') !== null) {
+            && $this->parentStatusReason($model, 'invoice_id', 'invoices', ['void'], 'Invoice') !== null
+            && ! $this->isExistingReplacementOperation($model, $operation)) {
             throw ValidationException::withMessages(['archive' => 'Invoice VOID dan dokumen terkait tidak dapat diubah atau ditambah.']);
         }
 
@@ -72,6 +73,19 @@ class CrmReadOnlyArchivePolicyService
         ]);
     }
 
+    /** Billing replacement must not freeze a real delivery return or an existing vendor PO. */
+    private function isExistingReplacementOperation(Model $model, string $operation): bool
+    {
+        if ($operation !== 'update' || ! $model->exists || ! in_array($model->getTable(), ['purchase_orders', 'work_orders', 'delivery_orders'], true)) {
+            return false;
+        }
+        $invoice = DB::table('invoices')->where('id', $this->raw($model, 'invoice_id'))->first();
+        $replacement = $invoice->replaced_by_invoice_id ?? null;
+
+        return $replacement && DB::table('invoices')->where('id', $replacement)
+            ->where('replaces_invoice_id', $invoice->id)->where('status', '!=', 'void')->exists();
+    }
+
     /**
      * Permit clerical Bill To corrections without reopening commercial data.
      */
@@ -108,6 +122,10 @@ class CrmReadOnlyArchivePolicyService
 
         if ($table === 'inventory_stock_movements') {
             return 'Inventory movement adalah ledger permanen (append-only).';
+        }
+
+        if ($table === 'invoice_replacements') {
+            return 'Riwayat penggantian invoice adalah audit permanen.';
         }
 
         return match ($table) {

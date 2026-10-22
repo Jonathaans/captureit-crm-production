@@ -107,6 +107,11 @@
                 <a href="{{ route('admin.commercial-revisions.edit', ['invoice', $invoice->id]) }}" class="secondary-button">Revisi Transaksi</a>
             @endif
 
+            @if ($invoice->billing_type === 'down_payment' && $invoice->status === 'unpaid' && $invoice->event_status === 'confirm'
+                && bouncer()->hasPermission('invoices.view') && bouncer()->hasPermission('invoices.revise') && bouncer()->hasPermission('invoices.generate'))
+                <a href="{{ route('admin.invoices.replacements.preview', $invoice->id) }}" class="secondary-button">Ganti ke Full Payment</a>
+            @endif
+
             @if ($invoice->quote)
                 <a
                     href="{{ route('admin.quotes.edit', $invoice->quote->id) }}"
@@ -154,7 +159,9 @@
     @endif
     <!-- ========================================================= -->
 
-    @if ($invoice->status === 'void')
+    @if ($invoice->replaced_by_invoice_id || $invoice->replaces_invoice_id)
+        @include('admin::invoices.replacements.notice')
+    @elseif ($invoice->status === 'void')
         <div class="my-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
             <p class="font-semibold">Invoice dibatalkan karena koreksi. Dokumen ini bukan tagihan aktif.</p>
             <p>Seluruh pembayaran di bawah adalah riwayat salah input dan tidak dihitung sebagai penerimaan. SPK, DO, dan stok tetap menyimpan riwayat pekerjaan yang sudah terlaksana.</p>
@@ -687,7 +694,7 @@
                         </h2>
 
                         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {{ $invoice->status === 'void' ? 'DIBATALKAN: riwayat salah input, tanpa uang diterima.' : 'Riwayat pencatatan pembayaran. Pembayaran VOID tidak dihitung sebagai penerimaan.' }}
+                            {{ $invoice->replaced_by_invoice_id ? 'Invoice DP telah diganti. Tidak ada pembayaran dipindahkan ke invoice pengganti.' : ($invoice->status === 'void' ? 'DIBATALKAN: riwayat salah input, tanpa uang diterima.' : 'Riwayat pencatatan pembayaran. Pembayaran VOID tidak dihitung sebagai penerimaan.') }}
                         </p>
                     </div>
 
