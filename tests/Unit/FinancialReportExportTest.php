@@ -22,26 +22,36 @@ beforeEach(function (): void {
     Schema::create('invoices', function (Blueprint $table): void {
         $table->increments('id');
         $table->integer('person_id')->nullable();
+        $table->integer('user_id')->nullable();
+        $table->date('event_date')->nullable();
         $table->integer('quote_id')->nullable();
         foreach (['invoice_number', 'project_code', 'business_unit', 'subject', 'billing_type', 'event_status', 'status', 'bill_to_display_mode', 'bill_to_person_name', 'bill_to_company_name'] as $column) {
             $table->string($column)->default('');
         }
         $table->decimal('grand_total', 16, 4)->default(0);
         $table->decimal('quote_total_snapshot', 16, 4)->nullable();
-        $table->dateTime('issued_at');
+        $table->decimal('pph_amount', 16, 4)->default(0);
+        $table->dateTime('issued_at')->nullable();
     });
     Schema::create('quotes', function (Blueprint $table): void {
         $table->increments('id');
         $table->integer('person_id')->nullable();
+        $table->integer('user_id')->nullable();
+        $table->date('event_date')->nullable();
         $table->decimal('grand_total', 16, 4)->default(0);
         foreach (['bill_to_display_mode', 'bill_to_person_name', 'bill_to_company_name'] as $column) {
             $table->string($column)->default('');
         }
     });
+    Schema::create('users', function (Blueprint $table): void {
+        $table->increments('id');
+        $table->string('name');
+    });
     Schema::create('persons', function (Blueprint $table): void {
         $table->increments('id');
         $table->string('name');
         $table->integer('organization_id')->nullable();
+        $table->json('contact_numbers')->nullable();
     });
     Schema::create('organizations', function (Blueprint $table): void {
         $table->increments('id');
@@ -65,6 +75,10 @@ beforeEach(function (): void {
         });
     }
 
+    DB::table('users')->insert([
+        ['id' => 1, 'name' => 'Invoice Sales'],
+        ['id' => 2, 'name' => 'Quote Sales'],
+    ]);
     DB::table('organizations')->insert([
         ['id' => 1, 'name' => 'Current Customer Company'],
         ['id' => 2, 'name' => 'Quote Customer Company'],
@@ -103,18 +117,20 @@ function financialExportRows(array $filters = []): array
     $stream = fopen('php://temp', 'w+');
     fwrite($stream, substr($csv, 3));
     rewind($stream);
-    $header = null;
+    $header = fgetcsv($stream, 0, ';', '"', '');
+    expect($header)->toBe([
+        'Project Code', 'Business Unit', 'No Invoice', 'Jenis Invoice', 'Tanggal Inv',
+        'Nama Customer', 'Company', 'No. Telepon Pemesan', 'Nama Event', 'Tanggal Event', 'Produk',
+        'Status Project', 'Status Pembayaran', 'Nilai Invoice', 'Nilai Pembayaran',
+        'Nilai Pembayaran Periode', 'Sisa Hutang', 'Sales',
+    ]);
+
     $rows = [];
     while (($row = fgetcsv($stream, 0, ';', '"', '')) !== false) {
-        if ($row[0] === 'Project Code') {
-            $header = $row;
-        } elseif ($header !== null) {
-            expect($row)->toHaveCount(count($header));
-            $rows[] = array_combine($header, $row);
-        }
+        expect($row)->toHaveCount(count($header));
+        $rows[] = array_combine($header, $row);
     }
     fclose($stream);
-    expect($header)->toContain('Company', 'PPH');
 
     return $rows;
 }
@@ -127,12 +143,10 @@ it('exports corrected contact companies with snapshot fallbacks and unchanged fi
 
     expect($rows)->toHaveCount(1)
         ->and($rows[0]['Company'])->toBe($expected)
-        ->and($rows[0]['PPH'])->toBe('0')
-        ->and($rows[0]['Net Payable after PPH'])->toBe('1000')
-        ->and($rows[0]['Invoice Value'])->toBe('1000')
-        ->and($rows[0]['Paid To Date'])->toBe('300')
-        ->and($rows[0]['Outstanding Current'])->toBe('700')
-        ->and($rows[0]['Cash Surplus In Period'])->toBe('200');
+        ->and($rows[0]['Nilai Invoice'])->toBe('1000')
+        ->and($rows[0]['Nilai Pembayaran'])->toBe('300')
+        ->and($rows[0]['Sisa Hutang'])->toBe('700')
+        ->and($rows[0]['Nilai Pembayaran Periode'])->toBe('300');
 })->with([
     'corrected invoice contact takes priority' => [['bill_to_company_name' => 'Invoice Company'], ['bill_to_company_name' => 'Quote Company'], 'Current Customer Company'],
     'invoice recipient remains independent of quote' => [[], ['bill_to_company_name' => 'Quote Company'], 'Current Customer Company'],
@@ -150,6 +164,8 @@ it('keeps period business unit status and product filters in the financial expor
         ['issued_at' => '2025-10-03'],
         ['business_unit' => 'varbel'],
         ['event_status' => 'cancel'],
+        ['status' => 'void'],
+        ['issued_at' => null],
         ['product' => 'Other product'],
     ] as $index => $override) {
         $id = $index + 2;
@@ -163,6 +179,126 @@ it('keeps period business unit status and product filters in the financial expor
     }
 
     $rows = financialExportRows();
-    expect(array_column($rows, 'Invoice'))->toBe(['INV-001']);
+    expect(array_column($rows, 'No Invoice'))->toBe(['INV-001']);
     expect(financialExportRows(['month' => 12]))->toBe([]);
 });
+
+it('exports only the requested invoice columns with event date and sales', function (): void {
+    DB::table('invoices')->where('id', 1)->update([
+        'project_code' => 'PRJ-2026-00001', 'subject' => 'Wedding Event',
+        'event_date' => '2026-11-12', 'user_id' => 1, 'billing_type' => 'down_payment',
+    ]);
+    DB::table('quotes')->where('id', 1)->update(['event_date' => '2026-11-10', 'user_id' => 2]);
+    DB::table('invoice_items')->insert([
+        ['invoice_id' => 1, 'name' => 'Photobooth'],
+        ['invoice_id' => 1, 'name' => 'Print'],
+    ]);
+
+    expect(financialExportRows())->toBe([[
+        'Project Code' => 'PRJ-2026-00001',
+        'Business Unit' => 'Capture It - Photobooth',
+        'No Invoice' => 'INV-001',
+        'Jenis Invoice' => 'DOWN PAYMENT',
+        'Tanggal Inv' => '3 Oct 2026',
+        'Nama Customer' => 'Customer',
+        'Company' => 'Current Customer Company',
+        'No. Telepon Pemesan' => '',
+        'Nama Event' => 'Wedding Event',
+        'Tanggal Event' => '12 Nov 2026',
+        'Produk' => 'Photobooth; Print',
+        'Status Project' => 'CONFIRM',
+        'Status Pembayaran' => 'PARTIAL',
+        'Nilai Invoice' => '1000',
+        'Nilai Pembayaran' => '300',
+        'Nilai Pembayaran Periode' => '300',
+        'Sisa Hutang' => '700',
+        'Sales' => 'Invoice Sales',
+    ]]);
+});
+
+it('uses quotation details only when event date or sales is missing on the invoice', function (array $invoice, string $date, string $sales): void {
+    DB::table('quotes')->where('id', 1)->update(['event_date' => '2026-11-10', 'user_id' => 2]);
+    DB::table('invoices')->where('id', 1)->update($invoice);
+
+    $row = financialExportRows()[0];
+
+    expect($row['Tanggal Event'])->toBe($date)
+        ->and($row['Sales'])->toBe($sales);
+})->with([
+    'legacy invoice' => [['user_id' => null], '10 Nov 2026', 'Quote Sales'],
+    'invoice date wins' => [['event_date' => '2026-11-12'], '12 Nov 2026', 'Quote Sales'],
+    'invoice salesperson wins' => [['user_id' => 1], '10 Nov 2026', 'Invoice Sales'],
+    'missing salesperson' => [['user_id' => 999], '10 Nov 2026', 'Quote Sales'],
+    'standalone invoice without details' => [['quote_id' => null], '', ''],
+]);
+
+it('keeps total receipts separate from period receipts and preserves PPH adjusted receivables', function (): void {
+    DB::table('invoices')->where('id', 1)->update(['pph_amount' => 50]);
+    DB::table('payments')->insert([
+        ['invoice_id' => 1, 'amount' => 100, 'paid_at' => '2026-09-30'],
+        ['invoice_id' => 1, 'amount' => 200, 'paid_at' => '2026-11-01'],
+    ]);
+
+    $row = financialExportRows()[0];
+
+    expect($row['Nilai Invoice'])->toBe('1000')
+        ->and($row['Nilai Pembayaran'])->toBe('600')
+        ->and($row['Nilai Pembayaran Periode'])->toBe('300')
+        ->and($row['Sisa Hutang'])->toBe('350')
+        ->and(financialExportRows(['month' => 'all'])[0]['Nilai Pembayaran Periode'])->toBe('600')
+        ->and(financialExportRows(['month' => 11]))->toBe([]);
+});
+
+it('excludes voided payments from both payment columns and the outstanding balance', function (): void {
+    $paymentId = DB::table('payments')->value('id');
+    DB::table('payment_voids')->insert([
+        'payment_id' => $paymentId, 'invoice_id' => 1, 'invoice_number' => 'INV-001',
+        'actor_id' => 1, 'reason' => 'Duplicate receipt', 'snapshot' => '{}',
+        'result' => '{}', 'created_at' => '2026-10-06',
+    ]);
+
+    $row = financialExportRows()[0];
+
+    expect($row['Nilai Pembayaran'])->toBe('0')
+        ->and($row['Nilai Pembayaran Periode'])->toBe('0')
+        ->and($row['Sisa Hutang'])->toBe('1000');
+});
+
+it('orders exported invoices by issue date with a stable order on the same date', function (): void {
+    foreach ([2 => '2026-10-01', 3 => '2026-10-03'] as $id => $issuedAt) {
+        DB::table('invoices')->insert([
+            'id' => $id, 'invoice_number' => 'INV-00'.$id, 'issued_at' => $issuedAt,
+            'business_unit' => 'capture_it', 'event_status' => 'confirm', 'grand_total' => 2000,
+        ]);
+        DB::table('invoice_items')->insert(['invoice_id' => $id, 'name' => 'Photobooth']);
+    }
+
+    expect(array_column(financialExportRows(), 'No Invoice'))->toBe(['INV-002', 'INV-001', 'INV-003']);
+});
+
+it('exports customer phone numbers as text without losing leading zeroes or country codes', function (array $numbers, string $expected): void {
+    DB::table('persons')->where('id', 1)->update(['contact_numbers' => json_encode($numbers)]);
+
+    expect(financialExportRows()[0]['No. Telepon Pemesan'])->toBe($expected);
+})->with([
+    'local number' => [[['value' => '081234567890', 'label' => 'home']], "'081234567890"],
+    'country code' => [[['value' => '+6281234567890', 'label' => 'work']], "'+6281234567890"],
+    'multiple numbers and duplicate blanks' => [[['value' => ' 081234567890 '], ['value' => ''], ['value' => '081234567890'], ['value' => '+6289876543210']], "'081234567890; +6289876543210"],
+    'legacy flat values' => [['081234567890'], "'081234567890"],
+    'no phone' => [[], ''],
+]);
+
+it('takes the phone from the selected recipient without borrowing another customer phone', function (array $invoice, string $expectedCustomer, string $expectedPhone): void {
+    DB::table('persons')->where('id', 2)->update(['contact_numbers' => json_encode([['value' => '081200000002']])]);
+    DB::table('invoices')->where('id', 1)->update($invoice);
+
+    $row = financialExportRows()[0];
+
+    expect($row['Nama Customer'])->toBe($expectedCustomer)
+        ->and($row['No. Telepon Pemesan'])->toBe($expectedPhone);
+})->with([
+    'invoice contact with no phone' => [['person_id' => 1], 'Customer', ''],
+    'legacy quote contact' => [['person_id' => null], 'Quote Customer', "'081200000002"],
+    'standalone invoice' => [['person_id' => null, 'quote_id' => null], '-', ''],
+    'independent invoice snapshot' => [['person_id' => null, 'bill_to_person_name' => 'Snapshot Customer'], 'Snapshot Customer', ''],
+]);
