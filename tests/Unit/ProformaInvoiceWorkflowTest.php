@@ -810,7 +810,7 @@ describe('unpaid DP replacement with full payment', function () {
         expect(Invoice::count())->toBe(1)->and(InvoiceReplacement::count())->toBe(0);
     });
 
-    it('renders the confirmation and replacement history and labels original and replacement PDFs accurately', function () {
+    it('renders replacement history in admin and prints the full invoice normally', function () {
         $dp = invoiceReplacementFixture($this);
         paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.revise', 'invoices.generate', 'work-orders.view']);
         $this->get(route('admin.invoices.show', $dp->id))->assertOk()->assertSee('Ganti ke Full Payment');
@@ -826,7 +826,8 @@ describe('unpaid DP replacement with full payment', function () {
         }
         expect(view('admin::invoices.pdf', ['invoice' => $dp])->render())->toContain('Dibatalkan—Diganti Invoice Baru', $new->invoice_number)
             ->not->toContain('Riwayat salah input pembayaran dibatalkan');
-        expect(view('admin::invoices.pdf', ['invoice' => $new])->render())->toContain('menggantikan invoice DP', $dp->invoice_number);
+        expect(view('admin::invoices.pdf', ['invoice' => $new])->render())->toContain($new->invoice_number)
+            ->not->toContain('menggantikan invoice DP', $dp->invoice_number);
         $this->get(route('admin.proformas.show', ProformaInvoice::where('invoice_id', $dp->id)->first()->id))->assertOk()
             ->assertSee($new->invoice_number)->assertDontSee('Catatan pembayaran sebelumnya dibatalkan sebagai salah input');
     });
