@@ -510,11 +510,6 @@
         @endif
     </div>
 @endif
-@if ($invoice->replaces_invoice_id)
-    <div style="border: 1px solid #cbd5e1; padding: 8px; margin-bottom: 12px;">
-        Invoice Full Payment ini menggantikan invoice DP {{ $invoice->replacesInvoice->invoice_number }} yang telah dibatalkan.
-    </div>
-@endif
 
 @php
     /*
