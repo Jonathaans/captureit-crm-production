@@ -145,6 +145,15 @@
                     </a>
                 @endif
 
+                @if (bouncer()->hasPermission('inventory.consumable-usage'))
+                    <a
+                        href="{{ route('admin.inventory.consumable-usage.index') }}"
+                        class="secondary-button"
+                    >
+                        Penggunaan Consumable
+                    </a>
+                @endif
+
                 @if (bouncer()->hasPermission('inventory.consumables.create'))
                     <a
                         href="{{ route('admin.inventory.consumables.create') }}"

@@ -1,20 +1,30 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Webkul\Admin\Http\Controllers\Inventory\InventoryAlertController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryAssetController;
+use Webkul\Admin\Http\Controllers\Inventory\InventoryConsumableController;
+use Webkul\Admin\Http\Controllers\Inventory\InventoryConsumableUsageController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryDashboardController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryItemController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryMaintenanceController;
-use Webkul\Admin\Http\Controllers\Inventory\InventoryAlertController;
-use Webkul\Admin\Http\Controllers\Inventory\InventoryConsumableController;
-use Webkul\Admin\Http\Controllers\Inventory\InventoryQaController;
+use Webkul\Admin\Http\Controllers\Inventory\InventoryMissingRecoveryScanController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryMovementController;
+use Webkul\Admin\Http\Controllers\Inventory\InventoryQaController;
 use Webkul\Admin\Http\Controllers\Inventory\InventoryStockOpnameController;
 
 Route::prefix('inventory')
     ->group(function () {
         Route::get('/', [InventoryDashboardController::class, 'index'])
             ->name('admin.inventory.dashboard');
+
+        Route::controller(InventoryConsumableUsageController::class)
+            ->prefix('consumable-usage')
+            ->group(function () {
+                Route::get('/', 'index')->name('admin.inventory.consumable-usage.index');
+                Route::get('{id}', 'show')->whereNumber('id')->name('admin.inventory.consumable-usage.show');
+                Route::put('{id}', 'update')->whereNumber('id')->name('admin.inventory.consumable-usage.update');
+            });
 
         Route::controller(InventoryAlertController::class)
             ->prefix('alerts')
@@ -109,7 +119,7 @@ Route::prefix('inventory')
             });
 
         /* INVENTORY_MISSING_RECOVERY_STATION_ROUTES_V2 */
-        Route::controller(\Webkul\Admin\Http\Controllers\Inventory\InventoryMissingRecoveryScanController::class)
+        Route::controller(InventoryMissingRecoveryScanController::class)
             ->prefix('missing-recovery')
             ->group(function () {
                 Route::get('/', 'station')
@@ -125,7 +135,7 @@ Route::prefix('inventory')
                     ->name('admin.inventory.missing-recovery.clear');
             });
         /* INVENTORY_MISSING_RECOVERY_SCAN_ROUTES_V1 */
-        Route::controller(\Webkul\Admin\Http\Controllers\Inventory\InventoryMissingRecoveryScanController::class)
+        Route::controller(InventoryMissingRecoveryScanController::class)
             ->prefix('assets')
             ->group(function () {
                 Route::get('{id}/recover-missing-scan', 'create')

@@ -336,6 +336,19 @@ return [
         ],
         'sort' => 2,
     ], [
+        'key' => 'inventory.consumable-usage',
+        'name' => 'Penggunaan Consumable',
+        'route' => [
+            'admin.inventory.consumable-usage.index',
+            'admin.inventory.consumable-usage.show',
+        ],
+        'sort' => 3,
+    ], [
+        'key' => 'inventory.consumable-usage.edit',
+        'name' => 'Catat / Koreksi Penggunaan Consumable',
+        'route' => 'admin.inventory.consumable-usage.update',
+        'sort' => 1,
+    ], [
         'key' => 'inventory.items',
         'name' => 'Inventory Items',
         'route' => 'admin.inventory.items.index',
