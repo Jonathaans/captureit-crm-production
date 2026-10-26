@@ -221,3 +221,80 @@ it('enforces one current usage per consumable and surat jalan at the database le
     expect(fn () => DB::table('inventory_consumable_usages')->insert(['delivery_order_id' => 1, 'inventory_item_id' => 1, 'quantity' => 1]))
         ->toThrow(QueryException::class);
 });
+
+it('opens the form through native links in every SJ cell and saves the visible input fields', function () {
+    $this->actingAs(consumableUsageUser(['inventory.consumable-usage', 'inventory.consumable-usage.edit']), 'user');
+    $response = $this->get(route('admin.inventory.consumable-usage.index'))->assertOk();
+    $document = consumableUsageHtml($response->getContent());
+    $xpath = new DOMXPath($document);
+    $links = $xpath->query('//tr[@data-consumable-order="1"]//a');
+
+    expect($links->length)->toBe(8);
+    foreach ($links as $link) {
+        expect($link->getAttribute('href'))->toBe(route('admin.inventory.consumable-usage.show', 1));
+    }
+    expect(trim($links->item(7)->textContent))->toBe('Input Penggunaan');
+
+    // Follow the same ordinary link a browser uses, without running any JavaScript.
+    $form = $this->get($links->item(7)->getAttribute('href'))->assertOk();
+    $formXPath = new DOMXPath(consumableUsageHtml($form->getContent()));
+    expect($formXPath->query('//section[@data-consumable-fallback]//select[@name="items[0][inventory_item_id]"]')->length)->toBe(1)
+        ->and($formXPath->query('//section[@data-consumable-fallback]//input[@name="items[0][quantity]"]')->length)->toBe(1)
+        ->and($formXPath->query('//section[@data-consumable-fallback]//select[@disabled]')->length)->toBe(0);
+    $formAction = $formXPath->query('//input[@name="usage_revision"]/ancestor::form')->item(0)->getAttribute('action');
+    $revision = $formXPath->query('//input[@name="usage_revision"]')->item(0)->getAttribute('value');
+
+    $this->post($formAction, [
+        '_method' => 'PUT', 'usage_revision' => $revision,
+        'items' => [['inventory_item_id' => 1, 'quantity' => 2, 'notes' => 'Input dari form surat jalan']],
+    ])->assertRedirect(route('admin.inventory.consumable-usage.show', 1))->assertSessionHasNoErrors();
+    expect(InventoryItem::find(1)->quantity_on_hand)->toBe('18.00')
+        ->and(InventoryStockMovement::sole()->performed_by)->toBe(7)
+        ->and(InventoryStockMovement::sole()->reference_number)->toBe('SJ-2610-0001');
+});
+
+it('keeps a GET usage action for clients still using the datagrid API', function () {
+    $response = $this->getJson(route('admin.inventory.consumable-usage.index'))->assertOk()
+        ->assertJsonPath('actions.0.title', 'Input Penggunaan')
+        ->assertJsonPath('actions.0.method', 'GET');
+    $record = $response->json('records.0');
+    expect($record['actions'][0]['url'])->toBe(route('admin.inventory.consumable-usage.show', $record['id']));
+});
+
+it('searches filters dates sorts and paginates the native SJ list', function () {
+    $this->actingAs(consumableUsageUser(['inventory.consumable-usage']), 'user');
+    $this->get(route('admin.inventory.consumable-usage.index', ['search' => 'INV-001']))
+        ->assertOk()->assertSee('SJ-2610-0001')->assertDontSee('SJ-2610-0002');
+    $this->get(route('admin.inventory.consumable-usage.index', ['event_from' => '2026-10-27', 'event_to' => '2026-10-27']))
+        ->assertOk()->assertSee('SJ-2610-0002')->assertDontSee('SJ-2610-0001');
+    $sorted = $this->get(route('admin.inventory.consumable-usage.index', ['sort' => 'event_date', 'direction' => 'asc']))->assertOk();
+    $xpath = new DOMXPath(consumableUsageHtml($sorted->getContent()));
+    expect($xpath->query('//tr[@data-consumable-order]')->item(0)->getAttribute('data-consumable-order'))->toBe('1');
+
+    for ($id = 3; $id <= 24; $id++) {
+        DB::table('delivery_orders')->insert(['id' => $id, 'delivery_order_number' => 'SJ-PAGE-'.$id, 'customer_name' => 'Pagination', 'event_date' => '2026-10-28']);
+    }
+    $firstPage = $this->get(route('admin.inventory.consumable-usage.index', ['search' => 'Pagination', 'per_page' => 20]))
+        ->assertOk()->assertSee('Berikutnya')->assertSee('1–20 dari 22 surat jalan');
+    $xpath = new DOMXPath(consumableUsageHtml($firstPage->getContent()));
+    expect($xpath->query('//tr[@data-consumable-order]')->length)->toBe(20)
+        ->and($xpath->query('//a[normalize-space(.)="Berikutnya"]')->item(0)->getAttribute('href'))->toContain('search=Pagination');
+    $lastPage = $this->get(route('admin.inventory.consumable-usage.index', ['search' => 'Pagination', 'per_page' => 20, 'page' => 2]))
+        ->assertOk()->assertSee('Sebelumnya');
+    $xpath = new DOMXPath(consumableUsageHtml($lastPage->getContent()));
+    expect($xpath->query('//tr[@data-consumable-order]')->length)->toBe(2);
+});
+
+function consumableUsageHtml(string $html): DOMDocument
+{
+    $previous = libxml_use_internal_errors(true);
+    try {
+        $document = new DOMDocument;
+        $document->loadHTML($html, LIBXML_NONET);
+
+        return $document;
+    } finally {
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+    }
+}
