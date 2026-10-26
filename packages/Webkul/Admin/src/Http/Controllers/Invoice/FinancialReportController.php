@@ -308,13 +308,28 @@ class FinancialReportController extends Controller
     }
 
     /**
+     * Billing rows and counts use the same cohort as the invoice export.
+     * Cancelled events retain their documents and actual cash history, but no
+     * longer contribute an active invoice value, even with no status filter.
+     */
+    private function invoiceReportQuery(array $filters): Builder
+    {
+        $query = Invoice::query()->notVoided()->whereNotNull('issued_at')
+            ->where(fn (Builder $query) => $query->whereNull('event_status')
+                ->orWhereNotIn('event_status', ['cancel', 'cancelled', 'canceled']));
+
+        $this->applyInvoicePeriod($query, $filters);
+        $this->applyInvoiceDimensions($query, $filters);
+
+        return $query;
+    }
+
+    /**
      * Summary values shown in top cards.
      */
     private function buildFinancialSummary(array $filters): array
     {
-        $invoices = Invoice::query()->notVoided()->whereNotNull('issued_at')->where('event_status', 'confirm');
-        $this->applyInvoicePeriod($invoices, $filters);
-        $this->applyInvoiceDimensions($invoices, $filters);
+        $invoices = $this->invoiceReportQuery($filters)->where('event_status', 'confirm');
         $invoiced = (float) (clone $invoices)->sum('grand_total');
         $outstanding = (float) (clone $invoices)->withSum('activePayments as payments_sum_amount', 'amount')->get()->sum(
             fn (Invoice $invoice): float => max(0, $invoice->cashPayable() - (float) $invoice->payments_sum_amount)
@@ -376,9 +391,7 @@ class FinancialReportController extends Controller
     /** Current project position for projects with a confirmed invoice in the chosen period. */
     private function buildProjectPerformance(array $filters): Collection
     {
-        $cohort = Invoice::query()->notVoided()->whereNotNull('issued_at')->where('event_status', 'confirm');
-        $this->applyInvoicePeriod($cohort, $filters);
-        $this->applyInvoiceDimensions($cohort, $filters);
+        $cohort = $this->invoiceReportQuery($filters)->where('event_status', 'confirm');
         $references = $cohort->get(['id', 'quote_id']);
         if ($references->isEmpty()) {
             return collect();
@@ -425,7 +438,7 @@ class FinancialReportController extends Controller
      */
     private function buildInvoicePerformance(array $filters)
     {
-        $query = Invoice::query()->notVoided()
+        $query = $this->invoiceReportQuery($filters)
             ->with([
                 'person.organization',
                 'quote.person.organization',
@@ -434,18 +447,7 @@ class FinancialReportController extends Controller
                 'activePayments',
                 'expenses',
                 'items',
-            ])
-            ->whereNotNull('issued_at');
-
-        $this->applyInvoicePeriod(
-            $query,
-            $filters
-        );
-
-        $this->applyInvoiceDimensions(
-            $query,
-            $filters
-        );
+            ]);
 
         return $query
             ->latest('issued_at')
@@ -563,18 +565,7 @@ class FinancialReportController extends Controller
      */
     private function buildInvoiceStats(array $filters): array
     {
-        $query = Invoice::query()->notVoided()
-            ->whereNotNull('issued_at');
-
-        $this->applyInvoicePeriod(
-            $query,
-            $filters
-        );
-
-        $this->applyInvoiceDimensions(
-            $query,
-            $filters
-        );
+        $query = $this->invoiceReportQuery($filters);
 
         return [
             'total' => (clone $query)->count(),

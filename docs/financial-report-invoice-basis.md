@@ -9,10 +9,19 @@ Aturan finance: **nilai resmi mengikuti invoice**. Proforma hanya dokumen perant
 - **Receivable:** saldo saat ini dari invoice confirmed yang terbit pada periode terpilih. Ini bukan seluruh piutang perusahaan dan bukan saldo historis penutupan periode. Pembayaran bulan berikutnya mengurangi saldo saat laporan lama dibuka kembali; label menjelaskan hal ini.
 - **Cash Margin:** uang diterima dikurangi biaya pada periode transaksi yang dipilih.
 - **Posisi Proyek dari Invoice:** pilih proyek yang memiliki invoice confirmed pada periode/filter terpilih, lalu gabungkan seluruh invoice yang sudah terbit untuk proyek tersebut. Total dan margin hanya memakai nilai invoice confirmed. Biaya dari seluruh invoice proyek dihitung satu kali, termasuk biaya pada invoice yang kemudian dibatalkan. Proforma dan sisa nilai quote tidak disertakan. Ini posisi proyek saat ini lintas periode, bukan penutupan bulanan.
-- **Invoice Performance:** tetap rincian masing-masing invoice menurut tanggal terbit. Label margin/biaya menjelaskan bahwa nilainya milik invoice tersebut, bukan keseluruhan proyek.
+- **Invoice Performance:** rincian masing-masing invoice menurut tanggal terbit, tanpa invoice VOID atau event Cancel. Aturan yang sama berlaku untuk jumlah invoice, status pembayaran, dan CSV. Label margin/biaya menjelaskan bahwa nilainya milik invoice tersebut, bukan keseluruhan proyek.
 - **Top Product:** produk, unit bisnis, nominal, dan alokasi pembayaran berasal dari snapshot invoice, bukan quote terbaru. Setiap invoice menyumbang nominal pada bulan penerbitannya. DP dan pelunasan proyek yang sama dihitung satu proyek per produk dalam periode terpilih; kuantitas yang ditagihkan ulang tidak digandakan. Pembayaran pada Top Product adalah yang diterima sampai saat ini pada invoice terpilih, bukan kas per bulan.
 
 CSV terbaru mengikuti [format ringkas tim finance](financial-export-finance-columns.md), termasuk Company dan nomor telepon pemesan. Kolom PPH tidak ditampilkan; perhitungan sisa hutang tetap mengikuti nilai kas yang harus dibayar setelah PPH dan pembayaran aktif.
+
+## Pembatalan invoice
+
+- Invoice VOID, termasuk DP yang diganti ke Full Payment, tidak ikut nilai tagihan, piutang, jumlah invoice, rincian invoice, maupun export. Dalam penggantian DP Rp3 juta menjadi Full Payment Rp10 juta, hanya invoice baru Rp10 juta yang dihitung.
+- Bila status event diubah menjadi **Cancel**, tagihan dan piutangnya keluar dari laporan. Rincian dan export juga mengecualikannya meskipun filter **Semua status event** dipilih. Ejaan legacy `cancelled` dan `canceled` mengikuti aturan yang sama.
+- Dokumen asli dan nominalnya tetap disimpan untuk riwayat; perubahan laporan tidak menghapus invoice. Status Cancel tetap berarti pembatalan event. Gunakan **Ganti ke Full Payment** jika event berlangsung dan hanya jenis tagihannya yang berubah.
+- Pembayaran sah yang sudah diterima dan biaya aktual tetap tercatat pada arus kas sesuai tanggal transaksinya. Cancel tidak otomatis berarti uang dikembalikan. Filter **Cancel** digunakan untuk meninjau arus kas event yang dibatalkan, tanpa memasukkan invoice itu kembali ke daftar atau total tagihan.
+
+Contoh: dua invoice confirmed Rp10 juta dan Rp3 juta menghasilkan total Rp13 juta. Jika invoice Rp3 juta dibatalkan, total tagihan dan daftar invoice menjadi Rp10 juta. Bila sebelumnya ada penerimaan Rp1 juta dan biaya Rp500 ribu pada invoice yang dibatalkan, kedua transaksi tersebut tetap ada di rincian kas.
 
 ## Pemantauan Caca / Admin Sales
 

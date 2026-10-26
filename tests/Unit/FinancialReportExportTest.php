@@ -216,6 +216,23 @@ it('exports only the requested invoice columns with event date and sales', funct
     ]]);
 });
 
+it('removes cancelled invoice values from exports even when all event statuses are selected', function (string $status): void {
+    DB::table('invoices')->insert([
+        'id' => 2, 'invoice_number' => 'CANCELLED-002', 'business_unit' => 'capture_it',
+        'issued_at' => '2026-10-03', 'event_status' => $status, 'status' => 'unpaid', 'grand_total' => 2000,
+    ]);
+    DB::table('invoice_items')->insert(['invoice_id' => 2, 'name' => 'Photobooth']);
+
+    foreach ([10, 'all'] as $month) {
+        $rows = financialExportRows(['month' => $month, 'event_status' => '']);
+        expect(array_column($rows, 'No Invoice'))->toBe(['INV-001'])
+            ->and(array_sum(array_column($rows, 'Nilai Invoice')))->toEqual(1000)
+            ->and(financialExportRows(['month' => $month, 'event_status' => 'cancel']))->toBe([]);
+    }
+
+    expect(DB::table('invoices')->where('id', 2)->value('grand_total'))->toEqual(2000);
+})->with(['cancel', 'cancelled', 'canceled']);
+
 it('uses quotation details only when event date or sales is missing on the invoice', function (array $invoice, string $date, string $sales): void {
     DB::table('quotes')->where('id', 1)->update(['event_date' => '2026-11-10', 'user_id' => 2]);
     DB::table('invoices')->where('id', 1)->update($invoice);

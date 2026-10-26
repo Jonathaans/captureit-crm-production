@@ -1367,6 +1367,51 @@ it('keeps older invoice cash movements on the dashboard and outside the invoice 
     expect(proformaFinancialData(['month' => 10])['financialSummary']['outstanding'])->toBe(0.0);
 });
 
+it('removes cancelled invoices from financial totals counts details and exports through the event status action', function (bool $hasPayment) {
+    $invoice = $this->billing->approveProforma($this->proformas->create($this->quote, $this->input));
+    if ($hasPayment) {
+        app(PaymentService::class)->addPayment($invoice, ['amount' => 1000000, 'paid_at' => '2026-10-12']);
+    }
+    DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 500000, 'expense_date' => '2026-10-12']);
+    $before = proformaFinancialData();
+    expect($before['financialSummary']['invoiced'])->toBe(3000000.0)
+        ->and($before['invoiceStats']['total'])->toBe(1)
+        ->and(proformaFinancialCsv())->toContain($invoice->invoice_number);
+
+    $this->withoutMiddleware(CanInstall::class);
+    config(['app.key' => str_repeat('a', 32)]);
+    $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => [
+        'invoices', 'invoices.view', 'invoices.event-status', 'invoices.financial-report', 'invoices.financial-report.export',
+    ]]);
+    $this->actingAs((new User)->forceFill(['id' => 17, 'name' => 'Finance', 'status' => 1])->setRelation('role', $role), 'user');
+    $this->put(route('admin.invoices.event-status.update', $invoice->id), ['event_status' => 'cancel'])
+        ->assertRedirect(route('admin.invoices.show', $invoice->id))->assertSessionHasNoErrors();
+
+    foreach ([['month' => 10], ['month' => 'all'], ['event_status' => 'cancel'], ['event_status' => 'confirm'], ['business_unit' => 'capture_it', 'product' => 'Photobooth']] as $filters) {
+        $report = proformaFinancialData($filters);
+        expect($report['financialSummary']['invoiced'])->toBe(0.0)
+            ->and($report['financialSummary']['outstanding'])->toBe(0.0)
+            ->and($report['invoiceStats'])->toBe(['total' => 0, 'paid' => 0, 'partial' => 0, 'unpaid' => 0])
+            ->and($report['invoicePerformance'])->toBeEmpty()
+            ->and($report['projectPerformance'])->toBeEmpty()
+            ->and($report['topProducts'])->toBeEmpty()
+            ->and($report['monthlyPerformance']->sum('revenue'))->toEqual(0)
+            ->and(proformaFinancialCsv($filters))->not->toContain($invoice->invoice_number);
+        if (($filters['event_status'] ?? '') !== 'confirm') {
+            expect($report['financialSummary']['received'])->toBe($hasPayment ? 1000000.0 : 0.0)
+                ->and($report['financialSummary']['expense'])->toBe(500000.0)
+                ->and($report['cashTransactions']->sum('cash_out'))->toBe(500000.0);
+        }
+    }
+    $this->get(route('admin.invoices.financial-report', ['year' => 2026, 'month' => 10]))
+        ->assertOk()->assertSee('event Cancel tidak masuk daftar maupun total invoice');
+    $this->get(route('admin.invoices.financial-report.export', ['year' => 2026, 'month' => 10]))
+        ->assertOk()->assertStreamedContent(proformaFinancialCsv());
+    expect($invoice->fresh()->event_status)->toBe('cancel')
+        ->and((float) $invoice->fresh()->grand_total)->toBe(3000000.0)
+        ->and(Payment::count())->toBe($hasPayment ? 1 : 0);
+})->with(['unpaid' => false, 'partially paid' => true]);
+
 it('attributes DP and settlement values to their invoice months while keeping one current project position', function () {
     $dp = $this->billing->confirmProformaPayment($this->proformas->create($this->quote, $this->input), $this->receipt);
     $this->travelTo(now()->parse('2026-11-02 12:00:00'));
