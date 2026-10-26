@@ -112,6 +112,10 @@
                 <a href="{{ route('admin.invoices.replacements.preview', $invoice->id) }}" class="secondary-button">Ganti ke Full Payment</a>
             @endif
 
+            @if (in_array($invoice->status, ['unpaid', 'partial', 'paid']) && bouncer()->hasPermission('invoices.view') && bouncer()->hasPermission('invoices.cancel'))
+                <a href="{{ route('admin.invoices.cancel.preview', $invoice->id) }}" class="secondary-button">Batalkan Invoice</a>
+            @endif
+
             @if ($invoice->quote)
                 <a
                     href="{{ route('admin.quotes.edit', $invoice->quote->id) }}"
@@ -164,7 +168,11 @@
     @elseif ($invoice->status === 'void')
         <div class="my-4 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
             <p class="font-semibold">Invoice dibatalkan karena koreksi. Dokumen ini bukan tagihan aktif.</p>
-            <p>Seluruh pembayaran di bawah adalah riwayat salah input dan tidak dihitung sebagai penerimaan. SPK, DO, dan stok tetap menyimpan riwayat pekerjaan yang sudah terlaksana.</p>
+            @if ($invoice->voidCorrection?->kind === 'invoice_cancel')
+                <p>Nilai invoice ini tidak lagi dihitung sebagai tagihan atau piutang dalam Financial Report. Status event, biaya aktual, dan riwayat pekerjaan tetap tersimpan.</p>
+            @else
+                <p>Seluruh pembayaran di bawah adalah riwayat salah input dan tidak dihitung sebagai penerimaan. SPK, DO, dan stok tetap menyimpan riwayat pekerjaan yang sudah terlaksana.</p>
+            @endif
             <p class="mt-2">Alasan: {{ $invoice->voidCorrection?->reason ?? '-' }}</p>
             <p>Dicatat: {{ $invoice->voidCorrection?->created_at?->format('d M Y H:i') ?? '-' }} · Pengguna CRM #{{ $invoice->voidCorrection?->actor_id ?? '-' }}</p>
         </div>

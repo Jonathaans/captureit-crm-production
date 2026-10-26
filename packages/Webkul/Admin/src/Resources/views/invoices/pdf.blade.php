@@ -504,6 +504,9 @@
         @if ($invoice->replaced_by_invoice_id)
             Dibatalkan—Diganti Invoice Baru: {{ $invoice->replacementInvoice->invoice_number }}.<br>
             {{ $invoice->replacementRecord->reason }}
+        @elseif ($invoice->voidCorrection?->kind === 'invoice_cancel')
+            Tagihan dibatalkan. Nominal asli disimpan sebagai riwayat.<br>
+            {{ $invoice->voidCorrection->reason }}
         @else
             Riwayat salah input pembayaran dibatalkan tanpa uang diterima.<br>
             {{ $invoice->voidCorrection?->reason ?? 'Koreksi invoice' }}

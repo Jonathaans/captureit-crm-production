@@ -171,7 +171,7 @@ class Invoice extends Model implements InvoiceContract
     public function voidCorrection()
     {
         return $this->hasOne(InvoiceVoidRecord::class, 'invoice_number', 'invoice_number')
-            ->where('kind', 'invoice_void');
+            ->whereIn('kind', ['invoice_void', 'invoice_cancel']);
     }
 
     public function expenses()

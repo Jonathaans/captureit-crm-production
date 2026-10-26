@@ -4,7 +4,7 @@ namespace Webkul\Invoice\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/** Read-only presentation of the explicit maintenance audit. */
+/** Read-only presentation of an audited invoice correction or cancellation. */
 class InvoiceVoidRecord extends Model
 {
     protected $table = 'crm_data_corrections';

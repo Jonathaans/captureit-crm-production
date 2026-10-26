@@ -49,6 +49,8 @@
                         @if ($proforma->invoice->status === 'void')
                             @if ($proforma->invoice->replaced_by_invoice_id)
                                 <p class="fw-note">Invoice DP hasil konversi telah diganti dengan <a class="underline" href="{{ route('admin.invoices.show', $proforma->invoice->replaced_by_invoice_id) }}">{{ $proforma->invoice->replacementInvoice->invoice_number }}</a>. Proforma ini disimpan sebagai riwayat.</p>
+                            @elseif ($proforma->invoice->voidCorrection?->kind === 'invoice_cancel')
+                                <p class="fw-note">Invoice hasil konversi telah dibatalkan dan tidak lagi menjadi tagihan aktif. Proforma ini disimpan sebagai riwayat.</p>
                             @else
                                 <p class="fw-note">Invoice hasil konversi sudah VOID. Catatan pembayaran sebelumnya dibatalkan sebagai salah input, tanpa uang diterima. Proforma ini disimpan sebagai riwayat.</p>
                             @endif

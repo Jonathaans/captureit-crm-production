@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Webkul\Admin\Http\Controllers\Invoice\CommercialRevisionController;
 use Webkul\Admin\Http\Controllers\Invoice\ExpenseExportController;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
+use Webkul\Admin\Http\Controllers\Invoice\InvoiceCancellationController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoiceDeliveryOrderController;
 use Webkul\Admin\Http\Controllers\Invoice\InvoicePaymentController;
@@ -22,6 +23,11 @@ Route::controller(CommercialRevisionController::class)->prefix('commercial-revis
 Route::controller(InvoiceReplacementController::class)->prefix('invoices')->group(function () {
     Route::get('{id}/replace-with-full', 'preview')->whereNumber('id')->name('admin.invoices.replacements.preview');
     Route::post('{id}/replace-with-full', 'store')->whereNumber('id')->name('admin.invoices.replacements.store');
+});
+
+Route::controller(InvoiceCancellationController::class)->prefix('invoices')->group(function () {
+    Route::get('{id}/cancel', 'preview')->whereNumber('id')->name('admin.invoices.cancel.preview');
+    Route::post('{id}/cancel', 'store')->whereNumber('id')->name('admin.invoices.cancel.store');
 });
 
 Route::controller(ProformaInvoiceController::class)->prefix('proformas')->group(function () {
