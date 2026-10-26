@@ -12,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
+use Webkul\Admin\Http\Middleware\InjectInternalCommunicationUi;
 use Webkul\Admin\Services\FinanceSalesDashboardService;
 use Webkul\Admin\Services\FinancialReportAuditService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
@@ -19,6 +20,7 @@ use Webkul\Admin\Services\InvoiceCancellationService;
 use Webkul\Admin\Services\InvoiceCorrectionService;
 use Webkul\Admin\Services\InvoiceReplacementService;
 use Webkul\Admin\Services\InvoiceVoidService;
+use Webkul\Admin\Services\OperationsDashboardService;
 use Webkul\Admin\Services\PaymentVoidService;
 use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
@@ -1906,4 +1908,169 @@ it('refreshes corrected contact names across quote proforma and invoice displays
     DB::table('persons')->insert(['id' => 2, 'name' => 'Different Recipient']);
     $this->quote->update(['person_id' => 2]);
     expect($invoice->fresh()->billToIdentity()['person_name'])->toBe('Nama Person Baru');
+});
+
+describe('visual financial audit dashboard', function () {
+    beforeEach(function () {
+        paymentVoidLogin($this, ['operations-dashboard']);
+        $this->withoutMiddleware(InjectInternalCommunicationUi::class);
+        auth()->guard('user')->user()->role->name = 'Administrator';
+        // Keep unrelated operations/backup checks outside these financial UI tests.
+        $this->mock(OperationsDashboardService::class, fn ($mock) => $mock->shouldReceive('build')->andReturn([
+            'role' => 'Administrator', 'cards' => [], 'links' => [],
+        ]));
+    });
+
+    it('shows cancellation history without running reconciliation automatically and escapes user text', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $input = invoiceCancellationInput($invoice);
+        $input['reason'] = 'Duplikat <script>alert("x")</script> dari invoice sebelumnya';
+        app(InvoiceCancellationService::class)->cancel($invoice->id, $input, 7);
+        $this->mock(FinancialReportAuditService::class, fn ($mock) => $mock->shouldNotReceive('audit'));
+        $response = $this->get(route('admin.operations-dashboard.index'))->assertOk()
+            ->assertSee('Audit Financial Report')->assertSee('Audit belum dijalankan')
+            ->assertSee($invoice->invoice_number)->assertSee('Finance correction actor')
+            ->assertSee($input['reason'])->assertDontSee('<script>alert("x")</script>', false)
+            ->assertDontSee('Semua pemeriksaan cocok');
+        expect($response->viewData('financialAudit')['result'])->toBeNull()
+            ->and($response->viewData('financialAudit')['history']->total())->toBe(1);
+    });
+
+    it('renders every real ledger check and downloads the same audit without changing transactions', function () {
+        $invoice = invoiceCancellationFixture($this);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $valid = Invoice::create(['invoice_number' => 'VALID-AUDIT', 'issued_at' => '2026-10-10', 'grand_total' => 5000000, 'balance_due' => 5000000, 'status' => 'unpaid', 'event_status' => 'confirm']);
+        DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 100000, 'expense_date' => '2026-10-10']);
+        $filters = ['year' => 2026, 'month' => 'all', 'invoice' => $invoice->invoice_number];
+        $tables = ['invoices', 'payments', 'expenses', 'crm_data_corrections', 'invoice_items'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all();
+        $before = $snapshot();
+        $response = $this->get(route('admin.operations-dashboard.index', $filters + ['run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Semua pemeriksaan cocok')->assertSee('29 pemeriksaan')
+            ->assertSee('Rp 5.000.000,0000')->assertSee('Rp 100.000,0000')->assertSee('invoice_cancel');
+        $dashboard = $response->viewData('financialAudit');
+        expect($dashboard['result']['ok'])->toBeTrue()->and($dashboard['passed'])->toBe(29)->and($dashboard['failed'])->toBe(0)
+            ->and($dashboard['result']['checks']['invoice.count']['actual'])->toBe(1.0)
+            ->and($dashboard['result']['checks']['summary.expense']['actual'])->toBe(100000.0)
+            ->and($dashboard['result']['checks']['csv.invoice_numbers']['actual'])->toBe([$valid->invoice_number]);
+        foreach ($dashboard['result']['checks'] as $key => $check) {
+            $response->assertSee($key);
+        }
+        $download = $this->get(route('admin.operations-dashboard.financial-audit.export', $filters))->assertOk()
+            ->assertHeader('content-type', 'application/json')->assertJsonPath('ok', true)
+            ->assertJsonPath('read_only', true)->assertJsonPath('invoice.included_in_invoice_report', false);
+        expect($download->json('checks'))->toEqual($dashboard['result']['checks'])
+            ->and($download->headers->get('content-disposition'))->toContain('attachment;', '.json')
+            ->and($download->headers->get('cache-control'))->toContain('no-store')
+            ->and($download->json('checked_at'))->not->toBeEmpty()
+            ->and($snapshot())->toBe($before);
+    });
+
+    it('highlights a real report mismatch instead of showing a successful banner', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $result = app(FinancialReportAuditService::class)->audit(['year' => 2026]);
+        $result['checks']['summary.invoiced']['actual'] += 100;
+        $result['checks']['summary.invoiced']['ok'] = false;
+        $result['ok'] = false;
+        $this->mock(FinancialReportAuditService::class, fn ($mock) => $mock->shouldReceive('audit')->once()->andReturn($result));
+        $response = $this->get(route('admin.operations-dashboard.index', ['year' => 2026, 'run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Ada selisih yang perlu diperiksa')->assertSee('1 selisih')
+            ->assertSee('audit-failed-row', false)->assertSee('Rp 100,0000')->assertDontSee('Semua pemeriksaan cocok');
+        expect($response->viewData('financialAudit')['groups']['summary']['checks']['summary.invoiced']['difference'])->toBe(100.0);
+    });
+
+    it('keeps an event already Cancel distinct from a new Confirm reduction', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $invoice->update(['event_status' => 'cancel']);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $this->get(route('admin.operations-dashboard.index', ['year' => 2026, 'invoice' => $invoice->invoice_number, 'run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Snapshot sebelum pembatalan tidak mencatat event Confirm')
+            ->assertSee('Rp 3.750.000,0000')->assertSee('Semua pemeriksaan cocok');
+    });
+
+    it('includes the console invoice and erroneous payment void in visual history', function () {
+        $invoice = invoiceVoidFixture($this);
+        $void = app(InvoiceVoidService::class);
+        $void->apply($invoice->invoice_number, $void->preview($invoice->invoice_number)['fingerprint'], 'Invoice dan pembayaran salah input tanpa uang diterima', 7, true);
+        $this->get(route('admin.operations-dashboard.index', ['year' => 2026, 'invoice' => $invoice->invoice_number, 'run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Void invoice & pembayaran salah input')->assertSee('Pembayaran salah input di-void: Rp 3.750.000,0000')
+            ->assertSee('invoice_void')->assertSee('Semua pemeriksaan cocok');
+        expect(DB::table('payments')->count())->toBe(1);
+    });
+
+    it('applies combined report filters to web and JSON using the CLI reconciliation engine', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $this->get(route('admin.operations-dashboard.index', [
+            'year' => 2026, 'month' => 10, 'business_unit' => 'capture_it', 'event_status' => 'confirm',
+            'product' => 'Photobooth', 'invoice' => $invoice->invoice_number, 'run_financial_audit' => 1,
+        ]))->assertOk()->assertViewHas('financialAudit', fn ($dashboard) => $dashboard['result']['filters'] === [
+            'year' => 2026, 'month' => 10, 'business_unit' => 'capture_it', 'event_status' => 'confirm', 'product' => 'Photobooth',
+        ] && count($dashboard['result']['checks']) === 22 && $dashboard['result']['ok']);
+    });
+
+    it('shows validation errors without a success result for invalid filters', function (array $input) {
+        invoiceCancellationFixture($this);
+        $this->mock(FinancialReportAuditService::class, fn ($mock) => $mock->shouldNotReceive('audit'));
+        $this->get(route('admin.operations-dashboard.index', $input + ['run_financial_audit' => 1]))->assertOk()
+            ->assertViewHas('financialAudit', fn ($dashboard) => $dashboard['result'] === null && $dashboard['error'] !== null)
+            ->assertDontSee('Semua pemeriksaan cocok');
+    })->with([
+        'year' => [['year' => 9999]], 'month' => [['month' => 13]],
+        'unit' => [['business_unit' => 'invalid']], 'event' => [['event_status' => 'void']],
+        'array product' => [['product' => ['Photobooth']]],
+    ]);
+
+    it('keeps the dashboard usable for an unknown invoice and rejects its JSON export', function () {
+        invoiceCancellationFixture($this);
+        $filters = ['year' => 2026, 'invoice' => 'UNKNOWN'];
+        $this->get(route('admin.operations-dashboard.index', $filters + ['run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Nomor invoice tidak ditemukan.')->assertDontSee('Semua pemeriksaan cocok');
+        $this->getJson(route('admin.operations-dashboard.financial-audit.export', $filters))->assertUnprocessable()->assertJsonValidationErrors('invoice');
+    });
+
+    it('does not turn an execution error into a pass or expose internal error details', function () {
+        invoiceCancellationFixture($this);
+        $this->mock(FinancialReportAuditService::class, fn ($mock) => $mock->shouldReceive('audit')->once()->andThrow(new RuntimeException('private database detail')));
+        $this->get(route('admin.operations-dashboard.index', ['run_financial_audit' => 1]))->assertOk()
+            ->assertSee('Audit belum berhasil dijalankan')->assertDontSee('Semua pemeriksaan cocok')->assertDontSee('private database detail');
+    });
+
+    it('paginates and searches all action dates while retaining orphaned audit evidence', function () {
+        $invoice = invoiceCancellationFixture($this);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $original = (array) DB::table('crm_data_corrections')->first();
+        unset($original['id']);
+        for ($i = 1; $i <= 16; $i++) {
+            DB::table('crm_data_corrections')->insert(array_replace($original, [
+                'invoice_number' => 'HISTORY-'.$i, 'created_at' => '2020-01-01 12:00:00',
+                'actor_id' => 999, 'reason' => 'Historical missing invoice '.$i,
+            ]));
+        }
+        DB::table('crm_data_corrections')->insert(array_replace($original, ['invoice_number' => 'OTHER-CORRECTION', 'kind' => 'remove_duplicate']));
+        $first = $this->get(route('admin.operations-dashboard.index', ['year' => 2026]))->assertOk()
+            ->assertSee('17 catatan')->assertSee('Pengguna tidak tersedia')->assertSee('DOKUMEN TIDAK TERSEDIA')
+            ->assertSee('Halaman 1 dari 2')->assertDontSee('OTHER-CORRECTION');
+        expect($first->viewData('financialAudit')['history']->nextPageUrl())->toContain('year=2026', 'history_page=2', '#financial-audit-history');
+        $this->get(route('admin.operations-dashboard.index', ['year' => 2026, 'history_page' => 2]))->assertOk()->assertSee($invoice->invoice_number)->assertSee('Halaman 2 dari 2');
+        $this->get(route('admin.operations-dashboard.index', ['year' => 2026, 'history_search' => 'Finance correction actor']))->assertOk()
+            ->assertSee('1 catatan')->assertSee($invoice->invoice_number)->assertDontSee('HISTORY-16');
+    });
+
+    it('denies both HTML and JSON before reading financial data for unauthorized users', function (?string $role, array $permissions, bool $guest) {
+        $this->mock(FinancialReportAuditService::class, fn ($mock) => $mock->shouldNotReceive('audit'));
+        if ($guest) {
+            auth()->guard('user')->logout();
+        } else {
+            auth()->guard('user')->user()->setRelation('role', (new Role)->forceFill([
+                'name' => $role, 'permission_type' => 'custom', 'permissions' => $permissions,
+            ]));
+        }
+        foreach (['admin.operations-dashboard.index', 'admin.operations-dashboard.financial-audit.export'] as $route) {
+            $this->get(route($route, ['run_financial_audit' => 1]))->assertForbidden();
+        }
+    })->with([
+        'guest' => [null, [], true], 'finance with operations ACL' => ['Admin Finance', ['operations-dashboard'], false],
+        'sales with operations ACL' => ['Sales User', ['operations-dashboard'], false],
+        'Administrator without operations ACL' => ['Administrator', ['invoices.financial-report'], false],
+    ]);
 });

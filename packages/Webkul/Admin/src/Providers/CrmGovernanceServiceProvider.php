@@ -30,6 +30,9 @@ class CrmGovernanceServiceProvider extends ServiceProvider
                         'admin.operations-dashboard.index'
                     );
 
+                    Route::get('operations-dashboard/financial-audit/export', [OperationsDashboardController::class, 'financialAuditExport'])
+                        ->name('admin.operations-dashboard.financial-audit.export');
+
                     Route::get(
                         'financial-periods',
                         [

@@ -1119,7 +1119,10 @@ return [
     [
         'key' => 'operations-dashboard',
         'name' => 'Operations Dashboard',
-        'route' => 'admin.operations-dashboard.index',
+        'route' => [
+            'admin.operations-dashboard.index',
+            'admin.operations-dashboard.financial-audit.export',
+        ],
         'sort' => 92,
     ],
     [

@@ -33,6 +33,63 @@ Rp10 juta menghasilkan total Rp10 juta, bukan Rp13 juta.
 
 ## Pemeriksaan baca-saja pada VPS
 
+### Tampilan pada Operations Dashboard
+
+Buka **Operational Dashboard → Audit Financial Report** sebagai Administrator
+yang memiliki izin `operations-dashboard`. Pembatasan Administrator berlaku
+di backend untuk halaman dan unduhan JSON, meskipun role lain mendapat izin
+Operations Dashboard secara tidak sengaja.
+
+1. Pilih tahun, bulan, unit usaha, status event, dan nama produk yang sama dengan
+   Financial Report. Isi nomor invoice jika ingin memeriksa dokumen tertentu.
+2. Klik **Jalankan Audit**. Membuka dashboard biasa tidak menjalankan rekonsiliasi.
+3. Periksa indikator cocok/selisih, seluruh kelompok pemeriksaan, nilai transaksi
+   sumber, nilai laporan, dan selisih. Semua pemeriksaan dari command ditampilkan;
+   daftar ID/nomor invoice dapat dibuka seluruhnya. Nominal memakai empat desimal.
+4. **Unduh Audit JSON Terbaru** menjalankan ulang engine yang sama dengan filter
+   yang sama, lalu mengunduh hasil dan waktu pemeriksaan. Jika transaksi berubah
+   setelah halaman dibuka, hasil unduhan dapat berbeda dari tampilan sebelumnya.
+5. **Riwayat Pembatalan & Void Invoice** memuat `invoice_cancel` dan `invoice_void`
+   dari catatan koreksi yang sudah tersimpan: waktu, pelaku/ID pengguna, alasan,
+   nominal/status snapshot sebelum tindakan, piutang sebelum, dan saldo sekarang.
+   Riwayat mencakup seluruh tanggal tindakan, tidak dibatasi filter periode laporan;
+   cari nomor/alasan/pelaku dan gunakan halaman berikutnya untuk catatan lainnya.
+   Bukti koreksi tetap tampil ketika invoice atau pengguna asal sudah tidak tersedia.
+
+Hasil hijau berarti laporan cocok dengan transaksi yang tercatat; hasil tersebut
+tidak membuktikan tidak ada duplikasi bisnis dengan nomor invoice berbeda.
+Snapshot event yang sudah Cancel sebelum VOID juga tidak boleh dianggap sebagai
+pengurangan baru dari tagihan Confirm. Dashboard menampilkan penjelasan ini.
+Jika filter/nomor salah atau proses audit gagal, halaman menampilkan pesan gagal
+dan tidak menampilkan hasil sukses.
+
+Fitur ini tidak menyimpan riwayat eksekusi audit baru. Hasil rekonsiliasi dihitung
+saat diminta; riwayat pembatalan berasal dari bukti transaksi yang sudah ada.
+Tidak ada perubahan formula laporan atau penulisan data bisnis oleh fitur audit.
+
+Setelah perubahan tampilan di-merge, perbarui source dan cache dari folder aplikasi:
+
+```bash
+cd /var/www/captureit-crm
+git status --short
+git fetch origin
+git pull --ff-only origin main
+composer dump-autoload --no-dev --optimize
+php artisan optimize:clear
+php artisan config:cache
+php artisan view:cache
+```
+
+Pastikan checkout berada di `main` dan perubahan lokal sudah ditinjau sebelum pull.
+Tidak ada migration, dependensi Composer baru, atau build frontend untuk tampilan
+ini. Pemeriksaan rute unduhan:
+
+```bash
+php artisan route:list --name=admin.operations-dashboard.financial-audit
+```
+
+### Command terminal
+
 Setelah source yang menambahkan command ini di-merge dan di-deploy, jalankan dari
 folder aplikasi menggunakan user deployment biasa:
 
