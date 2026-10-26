@@ -57,3 +57,6 @@ Aktifkan izin **Batalkan Invoice** pada role custom yang bertanggung jawab.
 Verifikasi dengan invoice percobaan: buat dua invoice, batalkan satu, lalu cocokkan
 total tagihan/piutang, jumlah invoice, rincian dan CSV Financial Report. Pembatalan
 invoice pelanggan dilakukan satu per satu berdasarkan dokumen yang benar.
+
+Untuk menelusuri seluruh jalur perhitungan dan memeriksa angka langsung dari
+ledger VPS tanpa mengubah data, gunakan [panduan audit Financial Report](financial-report-cancellation-audit.md).
