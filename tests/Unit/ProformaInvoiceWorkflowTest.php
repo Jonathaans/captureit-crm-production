@@ -13,6 +13,7 @@ use Tests\TestCase;
 use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Services\FinanceSalesDashboardService;
+use Webkul\Admin\Services\FinancialReportAuditService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\InvoiceCancellationService;
 use Webkul\Admin\Services\InvoiceCorrectionService;
@@ -22,6 +23,7 @@ use Webkul\Admin\Services\PaymentVoidService;
 use Webkul\Admin\Services\ProformaFollowUpService;
 use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Admin\Services\SalesCommissionExportService;
+use Webkul\Admin\Services\TopProductReportService;
 use Webkul\Core\Support\PphGrossUp;
 use Webkul\Installer\Http\Middleware\CanInstall;
 use Webkul\Invoice\Models\DeliveryOrder;
@@ -1120,6 +1122,191 @@ describe('invoice cancellation', function () {
         'invoice' => "CREATE TRIGGER fail_cancel BEFORE UPDATE ON invoices WHEN NEW.status = 'void' BEGIN SELECT RAISE(ABORT, 'fail cancel'); END",
         'audit' => "CREATE TRIGGER fail_cancel BEFORE INSERT ON crm_data_corrections BEGIN SELECT RAISE(ABORT, 'fail audit'); END",
     ]);
+});
+
+describe('financial cancellation reconciliation', function () {
+    it('reconciles every financial path after cancellation with PPh cross-year receipts and retained expenses', function (bool $pph, array $filters) {
+        $invoice = invoiceCancellationFixture($this);
+        DB::table('invoices')->where('id', $invoice->id)->update(['pph_amount' => $pph ? 75000 : 0, 'balance_due' => $pph ? 3675000 : 3750000]);
+        $invoice->refresh();
+        $valid = $invoice->replicate()->forceFill(['invoice_number' => 'VALID-DUPLICATE', 'issued_at' => '2026-10-09']);
+        $valid->save();
+        $valid->items()->create(['name' => 'Photobooth', 'quantity' => 1, 'price' => 3750000, 'total' => 3750000]);
+        app(PaymentService::class)->addPayment($valid, ['amount' => 1000000, 'paid_at' => '2027-01-10']);
+        $old = Invoice::create(['invoice_number' => 'PREVIOUS-YEAR', 'business_unit' => 'varbel', 'issued_at' => '2025-12-01', 'grand_total' => 1000, 'balance_due' => 1000, 'status' => 'unpaid', 'event_status' => 'confirm']);
+        $old->items()->create(['name' => 'Other product', 'quantity' => 1, 'price' => 1000, 'total' => 1000]);
+        app(PaymentService::class)->addPayment($old, ['amount' => 1000, 'paid_at' => '2026-10-10']);
+        $eventCancelled = Invoice::create(['invoice_number' => 'EVENT-CANCELLED', 'business_unit' => 'capture_it', 'issued_at' => '2026-10-01', 'grand_total' => 500000, 'balance_due' => 500000, 'status' => 'unpaid', 'event_status' => 'confirm']);
+        $eventCancelled->items()->create(['name' => 'Photobooth', 'quantity' => 1, 'price' => 500000, 'total' => 500000]);
+        app(PaymentService::class)->addPayment($eventCancelled, ['amount' => 100000, 'paid_at' => '2026-10-10']);
+        DB::table('invoices')->where('id', $eventCancelled->id)->update(['event_status' => 'cancel']);
+        DB::table('expenses')->insert([
+            ['invoice_id' => $invoice->id, 'amount' => 500000, 'expense_date' => '2026-09-20'],
+            ['invoice_id' => $invoice->id, 'amount' => 250000, 'expense_date' => '2026-10-10'],
+            ['invoice_id' => $valid->id, 'amount' => 150000, 'expense_date' => '2026-11-10'],
+            ['invoice_id' => $old->id, 'amount' => 50000, 'expense_date' => '2026-10-10'],
+            ['invoice_id' => $eventCancelled->id, 'amount' => 25000, 'expense_date' => '2026-10-10'],
+        ]);
+        // Reopen the 2026 report after the January receipt actually occurred.
+        $this->travelTo(now()->parse('2027-01-15 12:00:00'));
+        $input = array_replace(['year' => 2026, 'month' => 'all'], $filters);
+        $before = app(FinancialReportAuditService::class)->audit($input, $invoice->invoice_number);
+        expect($before['ok'])->toBeTrue()->and($before['checks']['summary.invoiced']['actual'])->toBe(7500000.0);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.cancel', 'invoices.financial-report', 'invoices.financial-report.export']);
+        $this->post(route('admin.invoices.cancel.store', $invoice->id), invoiceCancellationInput($invoice))->assertRedirect()->assertSessionHasNoErrors();
+        $after = app(FinancialReportAuditService::class)->audit($input, $invoice->invoice_number);
+        $netOutstanding = $pph ? 2675000.0 : 2750000.0;
+        $dimension = ! empty($filters['business_unit']) || ! empty($filters['product']);
+        $confirmedOnly = ($filters['event_status'] ?? null) === 'confirm';
+        $received = ($dimension ? 0 : 1000) + ($confirmedOnly ? 0 : 100000);
+        $expense = (($input['month'] === 'all') ? 900000 : 250000) + ($dimension ? 0 : 50000) + ($confirmedOnly ? 0 : 25000);
+        expect($after['ok'])->toBeTrue()->and($after['read_only'])->toBeTrue()
+            ->and($after['checks']['summary.invoiced']['actual'])->toBe(3750000.0)
+            ->and($after['checks']['summary.outstanding']['actual'])->toBe($netOutstanding)
+            ->and($after['checks']['summary.received']['actual'])->toBe((float) $received)
+            ->and($after['checks']['summary.expense']['actual'])->toBe((float) $expense)
+            ->and($after['checks']['summary.cash_surplus']['actual'])->toBe((float) ($received - $expense))
+            ->and($after['checks']['invoice.count']['actual'])->toBe(1.0)
+            ->and($after['checks']['csv.invoice_value']['actual'])->toBe(3750000.0)
+            ->and($after['checks']['csv.outstanding']['actual'])->toBe($netOutstanding)
+            ->and($after['checks']['project.invoiced']['actual'])->toBe(3750000.0)
+            ->and($after['checks']['project.expense']['actual'])->toBe(900000.0)
+            ->and($after['cancelled_invoices_excluded'])->toContain($invoice->invoice_number)
+            ->and($after['invoice']['included_in_invoice_report'])->toBeFalse()
+            ->and($after['invoice']['confirmed_value_before_cancellation'])->toBe(3750000.0)
+            ->and($after['invoice']['receivable_before_cancellation'])->toBe($pph ? 3675000.0 : 3750000.0);
+        expect($before['checks']['summary.invoiced']['actual'] - $after['checks']['summary.invoiced']['actual'])->toBe(3750000.0)
+            ->and($before['checks']['summary.outstanding']['actual'] - $after['checks']['summary.outstanding']['actual'])->toBe($pph ? 3675000.0 : 3750000.0)
+            ->and($before['checks']['summary.received']['actual'])->toBe($after['checks']['summary.received']['actual'])
+            ->and($before['checks']['summary.expense']['actual'])->toBe($after['checks']['summary.expense']['actual']);
+        expect(app('router')->getRoutes()->getByName('admin.invoices.financial-report')->getActionName())->toBe(FinancialReportController::class.'@index');
+        $this->get(route('admin.invoices.financial-report', $input))->assertOk()
+            ->assertSee('Rp 3.750.000')->assertSee('Rp '.number_format($netOutstanding, 0, ',', '.'));
+        $csv = $this->get(route('admin.invoices.financial-report.export', $input))->assertOk()->streamedContent();
+        expect($csv)->toContain('VALID-DUPLICATE')->not->toContain($invoice->invoice_number, 'PREVIOUS-YEAR', 'EVENT-CANCELLED');
+        $top = $this->get(route('admin.invoices.financial-report.export', $input + ['section' => 'top-products']))->assertOk()->streamedContent();
+        expect($top)->toContain('3750000')->not->toContain('7500000');
+        $ranking = app(TopProductReportService::class)->rows(['year' => 2026, 'month' => $input['month'] === 'all' ? null : 10] + $filters);
+        expect($ranking->sum('sales_value'))->toBe(3750000.0)->and($ranking->sum('received_allocated'))->toBe(1000000.0)
+            ->and(app(FinanceSalesDashboardService::class)->exportRows([])->pluck('id')->all())->toBe([$valid->id])
+            ->and(app(FinanceSalesDashboardService::class)->build([])['metrics']['outstanding_total'])->toBe($netOutstanding)
+            ->and(app(SalesCommissionExportService::class)->rows(['paid_from' => '2026-01-01', 'paid_to' => '2027-12-31'])->pluck('deal_key')->all())->toBe(['invoice:'.$old->id]);
+        $collectionCsv = $this->get(route('admin.finance-sales-dashboard.export'))->assertOk()->streamedContent();
+        expect($collectionCsv)->toContain($valid->invoice_number)->not->toContain($invoice->invoice_number, 'EVENT-CANCELLED');
+    })->with([false, true])->with([
+        'annual all filters' => [[]],
+        'October' => [['month' => 10]],
+        'business unit' => [['business_unit' => 'capture_it']],
+        'product' => [['product' => 'Photobooth']],
+        'confirmed' => [['event_status' => 'confirm']],
+        'combined' => [['month' => 10, 'business_unit' => 'capture_it', 'product' => 'Photobooth', 'event_status' => 'confirm']],
+    ]);
+
+    it('reduces a real DP settlement chain from ten million to its three million paid DP and permits correct rebilling', function () {
+        invoiceCancellationFixture($this);
+        $quote = $this->quote->replicate()->forceFill(['quote_number' => 'Q-REAL-STAGES', 'business_unit' => 'varbel', 'grand_total' => 10000000]);
+        $quote->save();
+        $quote->items()->create(['name' => 'Photobooth', 'unit' => 'day', 'quantity' => 1, 'price' => 10000000, 'total' => 10000000]);
+        $dp = $this->billing->confirmProformaPayment($this->proformas->create($quote, $this->input), $this->receipt, 7);
+        $settlement = $this->billing->approveProforma($this->billing->createFromQuote($quote, array_replace($this->input, ['billing_type' => 'settlement'])));
+        DB::table('expenses')->insert(['invoice_id' => $dp->id, 'amount' => 6000000, 'expense_date' => '2026-10-12']);
+        $filters = ['year' => 2026, 'business_unit' => 'varbel'];
+        $service = app(FinancialReportAuditService::class);
+        $before = $service->audit($filters, $settlement->invoice_number);
+        expect($before['ok'])->toBeTrue()->and($before['checks']['summary.invoiced']['actual'])->toBe(10000000.0)
+            ->and($before['checks']['summary.outstanding']['actual'])->toBe(7000000.0);
+        app(InvoiceCancellationService::class)->cancel($settlement->id, invoiceCancellationInput($settlement), 7);
+        $after = $service->audit($filters, $settlement->invoice_number);
+        expect($after['ok'])->toBeTrue()->and($after['checks']['summary.invoiced']['actual'])->toBe(3000000.0)
+            ->and($after['checks']['summary.outstanding']['actual'])->toBe(0.0)
+            ->and($after['checks']['summary.received']['actual'])->toBe(3000000.0)
+            ->and($after['checks']['summary.expense']['actual'])->toBe(6000000.0)
+            ->and($after['checks']['project.margin']['actual'])->toBe(-3000000.0);
+        $next = $this->billing->approveProforma($this->billing->createFromQuote($quote, array_replace($this->input, ['billing_type' => 'settlement'])));
+        expect($next->id)->not->toBe($settlement->id)->and($next->invoice_number)->not->toBe($settlement->invoice_number);
+        $rebilled = $service->audit($filters);
+        expect($rebilled['ok'])->toBeTrue()->and($rebilled['checks']['summary.invoiced']['actual'])->toBe(10000000.0)
+            ->and($rebilled['checks']['summary.outstanding']['actual'])->toBe(7000000.0)
+            ->and($rebilled['checks']['invoice.count']['actual'])->toBe(2.0);
+    });
+
+    it('keeps four decimal invoice and PPh precision when removing a cancelled balance', function () {
+        $invoice = invoiceCancellationFixture($this);
+        DB::table('invoices')->where('id', $invoice->id)->update(['grand_total' => 1234.5678, 'pph_amount' => 24.6914, 'balance_due' => 1209.8764]);
+        $invoice->refresh();
+        $audit = app(FinancialReportAuditService::class);
+        $before = $audit->audit(['year' => 2026], $invoice->invoice_number);
+        expect($before['ok'])->toBeTrue()->and($before['checks']['summary.invoiced']['actual'])->toBe(1234.5678)
+            ->and($before['checks']['summary.outstanding']['actual'])->toBe(1209.8764);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $after = $audit->audit(['year' => 2026], $invoice->invoice_number);
+        expect($after['ok'])->toBeTrue()->and($after['checks']['summary.invoiced']['actual'])->toBe(0.0)
+            ->and($after['checks']['summary.outstanding']['actual'])->toBe(0.0);
+    });
+
+    it('reconciles the console void path including fictitious receipts from a previous month', function () {
+        $invoice = invoiceVoidFixture($this);
+        $void = app(InvoiceVoidService::class);
+        $void->apply($invoice->invoice_number, $void->preview($invoice->invoice_number)['fingerprint'], 'Invoice dan pembayaran salah input tanpa uang diterima', 7, true);
+        foreach (['all', 9, 10] as $month) {
+            $result = app(FinancialReportAuditService::class)->audit(['year' => 2026, 'month' => $month], $invoice->invoice_number);
+            expect($result['ok'])->toBeTrue()->and($result['checks']['summary.invoiced']['actual'])->toBe(0.0)
+                ->and($result['checks']['summary.received']['actual'])->toBe(0.0)
+                ->and($result['invoice']['audit_kind'])->toBe('invoice_void');
+        }
+    });
+
+    it('reconciles DP to full payment replacement without adding the old DP on top of the full invoice', function () {
+        (require base_path('database/migrations/2026_10_07_000000_create_crm_data_corrections_table.php'))->up();
+        $dp = invoiceReplacementFixture($this);
+        $new = app(InvoiceReplacementService::class)->replace($dp->id, invoiceReplacementInput($dp), 7);
+        $result = app(FinancialReportAuditService::class)->audit(['year' => 2026], $dp->invoice_number);
+        expect($result['ok'])->toBeTrue()->and($result['checks']['summary.invoiced']['actual'])->toBe(10000000.0)
+            ->and($result['checks']['summary.outstanding']['actual'])->toBe(10000000.0)
+            ->and($result['checks']['summary.expense']['actual'])->toBe(6000000.0)
+            ->and($result['checks']['invoice.count']['actual'])->toBe(1.0)
+            ->and($result['checks']['csv.invoice_numbers']['actual'])->toBe([$new->invoice_number])
+            ->and($result['invoice']['included_in_invoice_report'])->toBeFalse();
+    });
+
+    it('reconciles event cancellation while retaining the real receipt and removing the invoice obligation', function () {
+        $invoice = invoiceCancellationFixture($this);
+        app(PaymentService::class)->addPayment($invoice, ['amount' => 1000000, 'paid_at' => '2026-09-30']);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.event-status']);
+        $this->put(route('admin.invoices.event-status.update', $invoice->id), ['event_status' => 'cancel'])->assertRedirect()->assertSessionHasNoErrors();
+        $result = app(FinancialReportAuditService::class)->audit(['year' => 2026], $invoice->invoice_number);
+        expect($result['ok'])->toBeTrue()->and($result['checks']['summary.invoiced']['actual'])->toBe(0.0)
+            ->and($result['checks']['summary.outstanding']['actual'])->toBe(0.0)
+            ->and($result['checks']['summary.received']['actual'])->toBe(1000000.0)
+            ->and($result['checks']['invoice.count']['actual'])->toBe(0.0);
+    });
+
+    it('runs the VPS audit without altering any invoice payment cost stock or audit row', function () {
+        $invoice = invoiceCancellationFixture($this);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $tables = ['invoices', 'payments', 'expenses', 'crm_data_corrections', 'payment_voids'];
+        $snapshot = fn () => collect($tables)->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all() + invoiceVoidProtectedHistory();
+        $before = $snapshot();
+        $this->artisan('crm:financial-report-audit', ['--year' => 2026, '--invoice' => $invoice->invoice_number])
+            ->expectsOutputToContain('"ok": true')->assertSuccessful();
+        expect($snapshot())->toBe($before);
+        $this->artisan('crm:financial-report-audit', ['--year' => 2026, '--month' => 13])->assertFailed();
+        $this->artisan('crm:financial-report-audit', ['--year' => 2026, '--invoice' => 'NOT-FOUND'])->assertFailed();
+        expect($snapshot())->toBe($before);
+    });
+
+    it('detects a stale card that still counts a cancelled invoice and returns a failing audit', function () {
+        $invoice = invoiceCancellationFixture($this);
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        $data = proformaFinancialData(['month' => 'all']);
+        $data['financialSummary']['invoiced'] = 3750000.0;
+        $controller = Mockery::mock(FinancialReportController::class, [app(TopProductReportService::class)])->makePartial();
+        $controller->shouldReceive('index')->andReturn(view('admin::invoices.financial-report', $data));
+        app()->instance(FinancialReportController::class, $controller);
+        $result = app(FinancialReportAuditService::class)->audit(['year' => 2026]);
+        expect($result['ok'])->toBeFalse()->and($result['checks']['summary.invoiced'])->toBe(['expected' => 0.0, 'actual' => 3750000.0, 'ok' => false]);
+        $this->artisan('crm:financial-report-audit', ['--year' => 2026])->expectsOutputToContain('"ok": false')->assertFailed();
+    });
 });
 
 describe('individual payment void', function () {
