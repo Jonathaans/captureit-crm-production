@@ -136,6 +136,14 @@ return [
     ],
 
     [
+        'key' => 'inventory.consumable-usage',
+        'name' => 'Penggunaan Consumable',
+        'route' => 'admin.inventory.consumable-usage.index',
+        'sort' => 5,
+        'icon-class' => '',
+    ],
+
+    [
         'key' => 'inventory.maintenance',
         'name' => 'Maintenance & Repair',
         'route' => 'admin.inventory.maintenance.index',

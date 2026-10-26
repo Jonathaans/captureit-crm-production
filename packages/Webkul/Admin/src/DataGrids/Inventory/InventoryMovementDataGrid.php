@@ -248,6 +248,7 @@ class InventoryMovementDataGrid extends DataGrid
             'filterable_type'    => 'dropdown',
             'filterable_options' => [
                 ['label' => 'Surat Jalan', 'value' => 'delivery_order'],
+                ['label' => 'Penggunaan Consumable', 'value' => 'consumable_usage'],
                 ['label' => 'Stock Opname', 'value' => 'stock_opname'],
                 ['label' => 'Missing Recovery', 'value' => 'missing_recovery'],
                 ['label' => 'Maintenance', 'value' => 'maintenance'],
@@ -315,6 +316,7 @@ class InventoryMovementDataGrid extends DataGrid
     {
         $types = [
             'delivery_order'        => ['SURAT JALAN', '#fff7ed', '#c2410c'],
+            'consumable_usage'      => ['PENGGUNAAN CONSUMABLE', '#ecfeff', '#0e7490'],
             'stock_opname'          => ['STOCK OPNAME', '#ecfeff', '#0e7490'],
             'missing_recovery'      => ['MISSING RECOVERY', '#dcfce7', '#15803d'],
             'maintenance'           => ['MAINTENANCE', '#f3e8ff', '#7e22ce'],
