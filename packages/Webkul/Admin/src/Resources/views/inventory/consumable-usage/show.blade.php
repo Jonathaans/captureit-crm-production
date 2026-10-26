@@ -85,7 +85,47 @@
                 :initial-rows='@json(old("items", $initialRows))'
                 :editable='@json($canEdit)'
                 :cancelled='@json($order->status === "cancelled")'
-            ></v-consumable-usage-form>
+            >
+                {{-- Keep the first input usable while the Vue enhancement loads. --}}
+                @php
+                    $fallbackRows = old('items', $initialRows);
+                    $fallbackRows = is_array($fallbackRows) ? array_values($fallbackRows) : [];
+                    if (! $fallbackRows && $canEdit && $order->status !== 'cancelled' && $items->isNotEmpty()) {
+                        $fallbackRows = [['inventory_item_id' => '', 'quantity' => '', 'notes' => '']];
+                    }
+                @endphp
+                <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900" data-consumable-fallback>
+                    <h2 class="text-lg font-bold">Pemakaian Consumable Tambahan</h2>
+                    <p class="mt-1 text-sm text-gray-500">Isi total jumlah terpakai. Stok langsung disesuaikan saat disimpan.</p>
+                    @foreach ($fallbackRows as $index => $row)
+                        @continue(! is_array($row))
+                        <div class="mt-4 grid gap-3 rounded-lg border p-4 dark:border-gray-800">
+                            <div>
+                                <label for="fallback-consumable-{{ $index }}" class="mb-1 block text-sm font-medium">Consumable</label>
+                                <select id="fallback-consumable-{{ $index }}" name="items[{{ $index }}][inventory_item_id]" class="w-full rounded-md border px-3 py-2 dark:border-gray-800 dark:bg-gray-900" @disabled(! $canEdit) required>
+                                    <option value="" disabled @selected(empty($row['inventory_item_id']))>Pilih ribbon, frame, atau consumable</option>
+                                    @foreach ($items as $item)
+                                        <option value="{{ $item['id'] }}" @selected((string) ($row['inventory_item_id'] ?? '') === (string) $item['id']) @disabled(! $item['active'] && (string) ($row['inventory_item_id'] ?? '') !== (string) $item['id'])>
+                                            {{ $item['code'] }} — {{ $item['name'] }} (tersedia {{ $item['available'] }} {{ $item['unit'] }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="fallback-quantity-{{ $index }}" class="mb-1 block text-sm font-medium">Jumlah Terpakai</label>
+                                <input id="fallback-quantity-{{ $index }}" name="items[{{ $index }}][quantity]" type="number" min="0" step="0.01" value="{{ $row['quantity'] ?? '' }}" class="w-full rounded-md border px-3 py-2 dark:border-gray-800 dark:bg-gray-900" @disabled(! $canEdit) required>
+                            </div>
+                            <div>
+                                <label for="fallback-notes-{{ $index }}" class="mb-1 block text-sm font-medium">Catatan</label>
+                                <input id="fallback-notes-{{ $index }}" name="items[{{ $index }}][notes]" value="{{ $row['notes'] ?? '' }}" maxlength="2000" class="w-full rounded-md border px-3 py-2 dark:border-gray-800 dark:bg-gray-900" @disabled(! $canEdit)>
+                            </div>
+                        </div>
+                    @endforeach
+                    @if ($canEdit)
+                        <button type="submit" class="primary-button mt-4">Simpan Penggunaan</button>
+                    @endif
+                </section>
+            </v-consumable-usage-form>
         </form>
     </div>
 
@@ -147,6 +187,9 @@
                 },
                 created() {
                     this.rows = (Array.isArray(this.initialRows) ? this.initialRows : []).map(row => ({ ...row, key: this.sequence++ }));
+                    if (!this.rows.length && this.editable && !this.cancelled && this.items.length) {
+                        this.addRow();
+                    }
                 },
                 methods: {
                     addRow() {

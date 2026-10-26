@@ -1,6 +1,6 @@
 # Penggunaan Consumable per Surat Jalan
 
-Menu **Inventory → Penggunaan Consumable** dan tombol di Inventory Dashboard membuka daftar surat jalan dengan kolom Surat Jalan Number, Project Code, Project Name, Customer, Invoice, Sales Person, dan Event Date. Klik nomor surat jalan untuk membuka formulir event.
+Menu **Inventory → Penggunaan Consumable** dan tombol di Inventory Dashboard membuka daftar surat jalan dengan kolom Surat Jalan Number, Project Code, Project Name, Customer, Invoice, Sales Person, dan Event Date. Klik nomor surat jalan, informasi lain di barisnya, atau tombol **Input Penggunaan** untuk membuka formulir event. Tautan dan kolom input awal dirender langsung oleh server agar tetap tersedia saat komponen JavaScript belum siap. Daftar mendukung pencarian, rentang tanggal event, pengurutan kolom, dan pagination.
 
 ## Pemakaian
 

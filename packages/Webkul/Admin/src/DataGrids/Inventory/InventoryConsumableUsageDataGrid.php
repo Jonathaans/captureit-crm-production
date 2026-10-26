@@ -45,6 +45,12 @@ class InventoryConsumableUsageDataGrid extends DeliveryOrderDataGrid
 
     public function prepareActions(): void
     {
-        // The Surat Jalan number opens the usage form.
+        $this->addAction([
+            'index' => 'usage',
+            'icon' => '',
+            'title' => 'Input Penggunaan',
+            'method' => 'GET',
+            'url' => fn ($row) => route('admin.inventory.consumable-usage.show', $row->id),
+        ]);
     }
 }
