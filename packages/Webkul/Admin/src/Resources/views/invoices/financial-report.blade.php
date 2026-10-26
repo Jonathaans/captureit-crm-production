@@ -165,8 +165,9 @@
                 <span><strong>{{ $invoiceStats['partial'] }}</strong> dibayar sebagian</span>
                 <span><strong>{{ $invoiceStats['unpaid'] }}</strong> belum dibayar</span>
             </div>
-            <span class="fw-muted">Proforma tidak masuk angka laporan.</span>
+            <span class="fw-muted">Proforma, invoice VOID, dan event Cancel tidak masuk daftar maupun total invoice.</span>
         </div>
+        <p class="fw-muted">Pembayaran dan biaya aktual tetap tercatat pada rincian kas meskipun event dibatalkan. Filter Cancel menampilkan arus kas event tersebut.</p>
         @if ($proformaFollowUp !== null)
             @include('admin::invoices.proformas.follow-up')
         @endif

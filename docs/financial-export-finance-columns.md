@@ -32,7 +32,8 @@ Dua kolom pembayaran pada contoh diberi nama berbeda agar total kumulatif dan pe
 ## Perilaku yang dipertahankan
 
 - Filter tahun, bulan, business unit, status event, dan produk tetap berlaku. Export diurutkan dari tanggal invoice tertua; ID invoice menjadi pembeda urutan pada tanggal yang sama.
-- Invoice belum terbit, invoice void, serta quotation/proforma yang belum menjadi invoice tidak ikut export. Pembayaran void tidak ikut kedua kolom pembayaran maupun saldo.
+- Invoice belum terbit, invoice VOID, event Cancel (termasuk ejaan legacy `cancelled`/`canceled`), serta quotation/proforma yang belum menjadi invoice tidak ikut export, termasuk saat memilih semua status event. Pembayaran void tidak ikut kedua kolom pembayaran maupun saldo.
+- Pembatalan tidak menghapus dokumen asli. Pembayaran sah dan biaya aktual pada event yang dibatalkan tetap tersedia pada rincian kas di halaman laporan. Filter Cancel menghasilkan CSV header saja karena tidak ada tagihan aktif dari event tersebut.
 - Nama file, format CSV pemisah titik koma, dan UTF-8 BOM tetap digunakan. Jika tidak ada invoice yang cocok, export hanya berisi header.
 - Dashboard, perhitungan keuangan, export Produk Teratas, export expense terpisah, dan izin export tetap mengikuti alur yang sudah ada.
 
