@@ -46,6 +46,10 @@
             </div>
         </div>
         {{-- CRM_FULL_QA_BACKUP_CENTER_V1 --}}
+        @isset($financialAudit)
+            @include('admin::operations-dashboard.financial-audit', ['auditDashboard' => $financialAudit])
+        @endisset
+
         @isset($qa)
             @php
                 $qaTone = $qa['status'] === 'pass'
