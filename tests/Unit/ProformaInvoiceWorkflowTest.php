@@ -14,6 +14,7 @@ use Webkul\Admin\Http\Controllers\Invoice\FinancialReportController;
 use Webkul\Admin\Http\Controllers\Invoice\ProformaInvoiceController;
 use Webkul\Admin\Services\FinanceSalesDashboardService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
+use Webkul\Admin\Services\InvoiceCancellationService;
 use Webkul\Admin\Services\InvoiceCorrectionService;
 use Webkul\Admin\Services\InvoiceReplacementService;
 use Webkul\Admin\Services\InvoiceVoidService;
@@ -910,6 +911,216 @@ function paymentVoidLogin($test, array $permissions = ['invoices', 'invoices.vie
     $role = (new Role)->forceFill(['permission_type' => 'custom', 'permissions' => $permissions]);
     $test->actingAs((new User)->forceFill(['id' => 7, 'name' => 'Finance', 'status' => 1])->setRelation('role', $role), 'user');
 }
+
+function invoiceCancellationFixture($test): Invoice
+{
+    $invoice = invoiceVoidFixture($test);
+    DB::table('payments')->delete();
+    DB::table('invoices')->where('id', $invoice->id)->update(['status' => 'unpaid', 'paid_amount' => 0, 'balance_due' => 3750000]);
+
+    return $invoice->fresh();
+}
+
+function invoiceCancellationInput(Invoice $invoice): array
+{
+    return [
+        'expected' => app(InvoiceCancellationService::class)->preview($invoice->id)['fingerprint'],
+        'reason' => 'Invoice duplikat, tagihan yang benar menggunakan invoice lainnya',
+        'acknowledge' => 1,
+    ];
+}
+
+describe('invoice cancellation', function () {
+    it('cancels one duplicate through admin and removes only its billing from every report and export', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $duplicate = $invoice->replicate()->forceFill(['invoice_number' => 'INV-DUPLICATE']);
+        $duplicate->save();
+        $duplicate->items()->create(['name' => 'Photobooth', 'quantity' => 1, 'price' => 3750000, 'total' => 3750000]);
+        $proforma = ProformaInvoice::create([
+            'proforma_number' => 'PF-CANCELLED-INVOICE', 'quote_id' => $invoice->quote_id, 'invoice_id' => $invoice->id,
+            'billing_type' => 'down_payment', 'billing_method' => 'nominal', 'billing_percentage' => 50,
+            'issued_at' => '2026-10-08', 'due_at' => '2026-10-12', 'amount' => 3750000, 'status' => 'converted',
+            'quote_snapshot' => ['attributes' => $this->quote->fresh()->getAttributes(), 'items' => $this->quote->items->toArray()],
+        ]);
+        $sourceProforma = $proforma->fresh()->getAttributes();
+        DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 500000, 'expense_date' => '2026-10-12']);
+        $before = invoiceVoidProtectedHistory();
+        expect(proformaFinancialData()['financialSummary']['invoiced'])->toBe(7500000.0);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.cancel', 'work-orders.view']);
+        $url = route('admin.invoices.cancel.preview', $invoice->id);
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()->assertSee($url, false);
+        $this->get($url)->assertOk()->assertSee('Batalkan Invoice')->assertSee('3.750.000,00')->assertSee('Alasan pembatalan');
+        $input = invoiceCancellationInput($invoice);
+        $this->post(route('admin.invoices.cancel.store', $invoice->id), $input)
+            ->assertRedirect(route('admin.invoices.show', $invoice->id))->assertSessionHasNoErrors();
+        foreach ([['month' => 10], ['month' => 'all'], ['event_status' => 'confirm'], ['business_unit' => 'capture_it', 'product' => 'Photobooth']] as $filters) {
+            $report = proformaFinancialData($filters);
+            expect($report['financialSummary']['invoiced'])->toBe(3750000.0)
+                ->and($report['financialSummary']['outstanding'])->toBe(3750000.0)
+                ->and($report['financialSummary']['received'])->toBe(0.0)
+                ->and($report['financialSummary']['expense'])->toBe(500000.0)
+                ->and($report['invoiceStats']['total'])->toBe(1)
+                ->and($report['invoicePerformance']->pluck('invoice_number')->all())->toBe([$duplicate->invoice_number])
+                ->and($report['projectPerformance']->sum('invoiced'))->toBe(3750000.0)
+                ->and($report['projectPerformance']->sum('expense'))->toBe(500000.0)
+                ->and($report['topProducts']->sum('sales_value'))->toBe(3750000.0)
+                ->and(proformaFinancialCsv($filters))->toContain($duplicate->invoice_number)->not->toContain($invoice->invoice_number);
+            if (($filters['month'] ?? null) === 'all') {
+                expect($report['monthlyPerformance']->sum('revenue'))->toEqual(3750000);
+            }
+        }
+        expect(invoiceVoidProtectedHistory())->toBe($before)
+            ->and($proforma->fresh()->getAttributes())->toBe($sourceProforma)
+            ->and($invoice->fresh()->status)->toBe('void')->and($invoice->fresh()->event_status)->toBe('confirm')
+            ->and((float) $invoice->fresh()->grand_total)->toBe(3750000.0)
+            ->and((float) $invoice->fresh()->balance_due)->toBe(0.0)
+            ->and($duplicate->fresh()->status)->toBe('unpaid')
+            ->and($invoice->fresh()->voidCorrection->kind)->toBe('invoice_cancel')
+            ->and($invoice->fresh()->voidCorrection->actor_id)->toBe(7)
+            ->and($invoice->fresh()->voidCorrection->snapshot['invoice']['balance_due'])->toEqual(3750000);
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()->assertSee('VOID / DIBATALKAN')
+            ->assertSee($input['reason'])->assertDontSee($url, false);
+        $invoice->refresh();
+        expect(view('admin::invoices.pdf', compact('invoice'))->render())->toContain('BUKAN TAGIHAN AKTIF', $input['reason'])
+            ->not->toContain('Riwayat salah input pembayaran dibatalkan');
+        $this->get(route('admin.proformas.show', $proforma->id))->assertOk()->assertSee('Invoice hasil konversi telah dibatalkan')
+            ->assertDontSee('Catatan pembayaran sebelumnya dibatalkan sebagai salah input');
+        expect(view('admin::invoices.proformas.print', ['proforma' => $proforma->fresh()])->render())
+            ->toContain('Tagihan pada invoice tersebut telah dibatalkan')->not->toContain('dibatalkan sebagai salah input');
+        expect(fn () => $invoice->update(['status' => 'unpaid']))->toThrow(ValidationException::class);
+        expect(fn () => $invoice->voidCorrection->delete())->toThrow(LogicException::class);
+        expect(fn () => app(PaymentService::class)->addPayment($invoice, ['amount' => 1]))->toThrow(ValidationException::class);
+        expect(fn () => app(WorkOrderService::class)->createFromInvoice($invoice))->toThrow(ValidationException::class);
+    });
+
+    it('requires explicit cancellation permission for both preview and submission', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $input = invoiceCancellationInput($invoice);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.event-status', 'invoices.payment-void']);
+        $this->getJson(route('admin.invoices.cancel.preview', $invoice->id))->assertUnauthorized();
+        $this->postJson(route('admin.invoices.cancel.store', $invoice->id), $input)->assertUnauthorized();
+        $this->get(route('admin.invoices.show', $invoice->id))->assertOk()
+            ->assertDontSee(route('admin.invoices.cancel.preview', $invoice->id), false);
+        paymentVoidLogin($this, ['invoices', 'invoices.cancel']);
+        $this->getJson(route('admin.invoices.cancel.preview', $invoice->id))->assertForbidden();
+        $this->postJson(route('admin.invoices.cancel.store', $invoice->id), $input)->assertForbidden();
+        expect($invoice->fresh()->status)->toBe('unpaid')->and(DB::table('crm_data_corrections')->count())->toBe(0);
+    });
+
+    it('rejects active payments even when the payment status or cached paid amount is wrong', function (string $status) {
+        $invoice = invoiceVoidFixture($this);
+        DB::table('invoices')->where('id', $invoice->id)->update(['status' => $status, 'paid_amount' => $status === 'unpaid' ? 0 : 3750000]);
+        $service = app(InvoiceCancellationService::class);
+        expect($service->preview($invoice->id)['blockers'])->not->toBeEmpty();
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.cancel']);
+        $this->get(route('admin.invoices.cancel.preview', $invoice->id))->assertOk()->assertSee('Void Pembayaran')
+            ->assertDontSee('name="acknowledge"', false);
+        $this->postJson(route('admin.invoices.cancel.store', $invoice->id), invoiceCancellationInput($invoice))->assertUnprocessable();
+        expect(Payment::notVoided()->sum('amount'))->toEqual(3750000)
+            ->and($invoice->fresh()->status)->toBe($status)->and(DB::table('crm_data_corrections')->count())->toBe(0);
+    })->with(['paid', 'partial', 'unpaid']);
+
+    it('requires a reason confirmation and current preview and never trusts a submitted actor', function () {
+        $invoice = invoiceCancellationFixture($this);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.cancel']);
+        $input = invoiceCancellationInput($invoice);
+        foreach ([['reason' => '       '], ['reason' => str_repeat('a', 2001)], ['acknowledge' => 0], ['expected' => '']] as $invalid) {
+            $this->postJson(route('admin.invoices.cancel.store', $invoice->id), array_replace($input, $invalid))->assertUnprocessable();
+        }
+        expect(fn () => app(InvoiceCancellationService::class)->cancel($invoice->id, $input, 999))->toThrow(ValidationException::class);
+        $this->postJson(route('admin.invoices.cancel.store', $invoice->id), $input + ['actor_id' => 999])->assertRedirect();
+        expect($invoice->fresh()->voidCorrection->actor_id)->toBe(7);
+    });
+
+    it('blocks open operations dependent billing and locked financial periods', function (string $dependency) {
+        $invoice = invoiceCancellationFixture($this);
+        match ($dependency) {
+            'spk' => DB::table('work_orders')->update(['status' => 'released']),
+            'do' => DB::table('delivery_orders')->update(['status' => 'out']),
+            'allocation' => DB::table('delivery_order_inventory_allocations')->update(['status' => 'out']),
+            'po' => DB::table('purchase_orders')->insert(['invoice_id' => $invoice->id]),
+            'settlement' => $invoice->replicate()->forceFill(['invoice_number' => 'INV-SETTLEMENT', 'dp_invoice_id' => $invoice->id, 'billing_type' => 'settlement'])->save(),
+            'proforma' => ProformaInvoice::create(['proforma_number' => 'PF-SETTLEMENT', 'quote_id' => $invoice->quote_id, 'dp_invoice_id' => $invoice->id, 'billing_type' => 'settlement', 'billing_method' => 'nominal', 'billing_percentage' => 50, 'issued_at' => '2026-10-10', 'due_at' => '2026-10-12', 'amount' => 3750000, 'status' => 'issued', 'quote_snapshot' => []]),
+            'period' => DB::table('financial_period_locks')->insert(['period' => '2026-10', 'starts_at' => '2026-10-01', 'ends_at' => '2026-10-31', 'notes' => 'Closed']),
+            'replacement' => DB::table('invoices')->where('id', $invoice->id)->update(['replaces_invoice_id' => Invoice::create(['invoice_number' => 'INV-SOURCE', 'status' => 'void'])->id]),
+        };
+        $service = app(InvoiceCancellationService::class);
+        expect($service->preview($invoice->id)['blockers'])->not->toBeEmpty();
+        expect(fn () => $service->cancel($invoice->id, invoiceCancellationInput($invoice), 7))->toThrow(ValidationException::class);
+        expect($invoice->fresh()->status)->toBe('unpaid')->and(DB::table('crm_data_corrections')->count())->toBe(0);
+    })->with(['spk', 'do', 'allocation', 'po', 'settlement', 'proforma', 'period', 'replacement']);
+
+    it('rejects stale previews and repeated cancellation without changing reports a second time', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $service = app(InvoiceCancellationService::class);
+        $old = invoiceCancellationInput($invoice);
+        DB::table('expenses')->insert(['invoice_id' => $invoice->id, 'amount' => 100000, 'expense_date' => '2026-10-12']);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.cancel']);
+        $this->post(route('admin.invoices.cancel.store', $invoice->id), $old)
+            ->assertRedirect(route('admin.invoices.cancel.preview', $invoice->id))->assertSessionHasErrors('expected');
+        expect($invoice->fresh()->status)->toBe('unpaid');
+        $service->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        expect(fn () => $service->cancel($invoice->id, invoiceCancellationInput($invoice), 7))->toThrow(ValidationException::class);
+        expect(DB::table('crm_data_corrections')->count())->toBe(1)
+            ->and(proformaFinancialData()['financialSummary']['expense'])->toBe(100000.0);
+    });
+
+    it('detects a payment added after preview before allowing cancellation', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $input = invoiceCancellationInput($invoice);
+        app(PaymentService::class)->addPayment($invoice, ['amount' => 1000000, 'paid_at' => '2026-10-12']);
+        expect(fn () => app(InvoiceCancellationService::class)->cancel($invoice->id, $input, 7))->toThrow(ValidationException::class);
+        expect($invoice->fresh()->status)->toBe('partial')->and(Payment::notVoided()->sum('amount'))->toEqual(1000000)
+            ->and(DB::table('crm_data_corrections')->count())->toBe(0);
+    });
+
+    it('preserves corrected payment history and allows cancellation after the wrong receipt is voided', function () {
+        $invoice = invoiceVoidFixture($this);
+        $payments = app(PaymentVoidService::class);
+        $payments->apply($invoice->id, 6, $payments->preview($invoice->id, 6)['fingerprint'], 'Transfer salah dicatat dua kali', 7, true);
+        $before = invoiceVoidProtectedHistory();
+        app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        expect(invoiceVoidProtectedHistory())->toBe($before)->and(PaymentVoidRecord::count())->toBe(1)
+            ->and($invoice->fresh()->status)->toBe('void')->and(Payment::count())->toBe(1)
+            ->and(proformaFinancialData(['month' => 9])['financialSummary']['received'])->toBe(0.0);
+    });
+
+    it('allows an unpaid settlement to be cancelled before its DP and keeps converted proformas as history', function () {
+        $invoice = invoiceCancellationFixture($this);
+        $settlement = $invoice->replicate()->forceFill(['invoice_number' => 'INV-SETTLEMENT', 'dp_invoice_id' => $invoice->id, 'billing_type' => 'settlement']);
+        $settlement->save();
+        $proforma = ProformaInvoice::create(['proforma_number' => 'PF-CONVERTED', 'quote_id' => $invoice->quote_id, 'invoice_id' => $settlement->id, 'dp_invoice_id' => $invoice->id, 'billing_type' => 'settlement', 'billing_method' => 'nominal', 'billing_percentage' => 50, 'issued_at' => '2026-10-10', 'due_at' => '2026-10-12', 'amount' => 3750000, 'status' => 'converted', 'quote_snapshot' => []]);
+        $source = $proforma->fresh()->getAttributes();
+        $service = app(InvoiceCancellationService::class);
+        $service->cancel($settlement->id, invoiceCancellationInput($settlement), 7);
+        expect($invoice->fresh()->status)->toBe('unpaid')->and($service->preview($invoice->id)['blockers'])->toBeEmpty();
+        $service->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        expect($proforma->fresh()->getAttributes())->toBe($source)->and(Invoice::count())->toBe(2)
+            ->and(Invoice::notVoided()->count())->toBe(0)->and(DB::table('crm_data_corrections')->count())->toBe(2);
+    });
+
+    it('also cancels a standalone legacy invoice whose event was already cancelled', function () {
+        $invoice = invoiceCancellationFixture($this);
+        DB::table('invoices')->where('id', $invoice->id)->update(['quote_id' => null, 'event_status' => 'cancel']);
+        $invoice->refresh();
+        $service = app(InvoiceCancellationService::class);
+        expect($service->preview($invoice->id)['blockers'])->toBeEmpty();
+        $service->cancel($invoice->id, invoiceCancellationInput($invoice), 7);
+        expect($invoice->fresh()->status)->toBe('void')->and($invoice->fresh()->event_status)->toBe('cancel')
+            ->and((float) $invoice->fresh()->balance_due)->toBe(0.0)->and($invoice->fresh()->voidCorrection->kind)->toBe('invoice_cancel');
+    });
+
+    it('rolls back the cancellation and its audit together on a database failure', function (string $trigger) {
+        $invoice = invoiceCancellationFixture($this);
+        DB::unprepared($trigger);
+        expect(fn () => app(InvoiceCancellationService::class)->cancel($invoice->id, invoiceCancellationInput($invoice), 7))->toThrow(QueryException::class);
+        expect($invoice->fresh()->status)->toBe('unpaid')->and((float) $invoice->fresh()->balance_due)->toBe(3750000.0)
+            ->and(DB::table('crm_data_corrections')->count())->toBe(0);
+    })->with([
+        'invoice' => "CREATE TRIGGER fail_cancel BEFORE UPDATE ON invoices WHEN NEW.status = 'void' BEGIN SELECT RAISE(ABORT, 'fail cancel'); END",
+        'audit' => "CREATE TRIGGER fail_cancel BEFORE INSERT ON crm_data_corrections BEGIN SELECT RAISE(ABORT, 'fail audit'); END",
+    ]);
+});
 
 describe('individual payment void', function () {
     it('reopens the receipt balance and preserves all documents including active operations', function () {

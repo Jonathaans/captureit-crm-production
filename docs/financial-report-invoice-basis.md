@@ -16,6 +16,7 @@ CSV terbaru mengikuti [format ringkas tim finance](financial-export-finance-colu
 
 ## Pembatalan invoice
 
+- Untuk invoice duplikat, gunakan **Batalkan Invoice** pada halaman detail. Aksi ini memberi status VOID tanpa mengubah status event; alasan dan riwayatnya tersimpan. Lihat [panduan pembatalan invoice](invoice-cancellation.md) untuk izin, syarat, dan langkah deploy.
 - Invoice VOID, termasuk DP yang diganti ke Full Payment, tidak ikut nilai tagihan, piutang, jumlah invoice, rincian invoice, maupun export. Dalam penggantian DP Rp3 juta menjadi Full Payment Rp10 juta, hanya invoice baru Rp10 juta yang dihitung.
 - Bila status event diubah menjadi **Cancel**, tagihan dan piutangnya keluar dari laporan. Rincian dan export juga mengecualikannya meskipun filter **Semua status event** dipilih. Ejaan legacy `cancelled` dan `canceled` mengikuti aturan yang sama.
 - Dokumen asli dan nominalnya tetap disimpan untuk riwayat; perubahan laporan tidak menghapus invoice. Status Cancel tetap berarti pembatalan event. Gunakan **Ganti ke Full Payment** jika event berlangsung dan hanya jenis tagihannya yang berubah.

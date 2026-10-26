@@ -127,6 +127,11 @@ return [
         'route' => ['admin.invoices.payments.void.preview', 'admin.invoices.payments.void.store'],
         'sort' => 3,
     ], [
+        'key' => 'invoices.cancel',
+        'name' => 'Batalkan Invoice',
+        'route' => ['admin.invoices.cancel.preview', 'admin.invoices.cancel.store'],
+        'sort' => 4,
+    ], [
         /**
          * Update Event Status.
          *
