@@ -63,12 +63,28 @@
         .totals .total td { padding:13px 14px; border-top:2px solid #d5aa2a; border-bottom:1px solid #e5e7eb; font-weight:bold; font-size:15px; }
         .terms-heading { margin:0 0 8px; font-size:11px; font-weight:bold; break-after:avoid; }
         .terms { white-space:pre-line; overflow-wrap:anywhere; margin:0 0 20px; font-size:10px; line-height:1.8; }
+        .bottom-table { margin-top:30px; page-break-inside:avoid; break-inside:avoid; }
+        .bottom-table td { width:50%; vertical-align:top; }
+        .payment-box { padding-right:25px; }
+        .signature-box { padding-left:25px; text-align:center; }
+        .signature-space { height:110px; }
+        .signature-line { width:180px; margin:0 auto 5px; border-top:1px solid #111827; }
+        .signature-name { font-weight:bold; color:#111827; line-height:1.45; }
         .note { margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:9px; line-height:1.7; }
         @media screen and (max-width:820px) { .paper { width:100%; min-height:auto; padding:32px 20px; } .print-toolbar { flex-wrap:wrap; } .company-cell { padding-left:12px; } .logo { max-width:140px; } h1 { font-size:21px; } }
         @media print {
             body { background:#fff; }
             .print-toolbar, #crm-comm-floating, #crm-comm-toasts { display:none !important; }
             .paper { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
+            /* Reserve room for the quote-style signature on ordinary A4 proformas. */
+            .document-title { padding:18px 0 20px; }
+            .meta-table { margin-bottom:16px; }
+            .project { padding:10px 0; margin-bottom:16px; }
+            .billing td { padding:12px 14px; }
+            .totals { margin:12px 0 18px; }
+            .totals td { padding:5px 14px; }
+            .bottom-table { margin-top:18px; }
+            .note { margin-top:18px; padding-top:10px; }
             .top-table, .document-title, .project, tr { break-inside:avoid; }
             thead { display:table-header-group; }
         }
@@ -146,10 +162,22 @@
         </table>
         <h2 class="terms-heading">TOP / Ketentuan pembayaran</h2>
         <p class="terms">{{ $snapshot['payment_term'] ?? '-' }}</p>
-        @if (config('company.payment_info'))
-            <h2 class="terms-heading">Informasi pembayaran</h2>
-            <p class="terms">{{ config('company.payment_info') }}</p>
-        @endif
+        <table class="bottom-table">
+            <tr>
+                <td class="payment-box">
+                    @if (config('company.payment_info'))
+                        <h2 class="terms-heading">Informasi pembayaran</h2>
+                        <p class="terms">{{ config('company.payment_info') }}</p>
+                    @endif
+                </td>
+                <td class="signature-box">
+                    <h2 class="terms-heading">Prepared By</h2>
+                    <div class="signature-space"></div>
+                    <div class="signature-line"></div>
+                    <div class="signature-name">PT. Varbel Anvaya Bersaudara</div>
+                </td>
+            </tr>
+        </table>
         <p class="note">Proforma ini merupakan permintaan pembayaran dan belum menjadi invoice aktual. Invoice diterbitkan setelah event disetujui atau pembayaran diterima. Mohon cantumkan nomor proforma pada konfirmasi pembayaran.</p>
     </main>
 </body>
