@@ -10,6 +10,14 @@ Gunakan **Revisi Transaksi** untuk mengubah kesepakatan yang sudah mempunyai pro
 4. Periksa nilai sebelum/sesudah dan sisa tagihan setiap dokumen, isi alasan, lalu simpan.
 5. Cetak ulang PDF dokumen yang direvisi. File PDF yang pernah diunduh tidak berubah otomatis. Buka ulang Financial Report/ekspor untuk melihat angka terbaru.
 
+## Revisi Proforma DP menjadi Full
+
+Buka **Proforma DP → Revisi Transaksi / DP ke Full → Jenis tagihan proforma → Full — 100% nilai transaksi**. Periksa pratinjau nilai, isi alasan, lalu simpan. Contoh: penawaran Rp10 juta dengan Proforma DP Rp4 juta berubah menjadi Proforma Full Rp10 juta pada nomor proforma yang sama. Bila rincian transaksi juga direvisi menjadi Rp12 juta, nominal Full mengikuti Rp12 juta. PPh/gross-up, diskon, pajak, produk, dan TOP mengikuti perhitungan revisi yang sama.
+
+Pilihan Full mengabaikan pembagian DP dan menampilkan 100% total transaksi. Jenis, nominal, dan PDF proforma ikut berubah; nomor, tanggal terbit, jatuh tempo, serta status menunggu konversi dipertahankan. Riwayat memperlihatkan DP → Penuh beserta nilai sebelum/sesudah dan petugasnya. Revisi ini belum menerbitkan invoice atau mencatat penerimaan. Saat kemudian dikonversi, invoice mengikuti jenis Full dan nominal terbaru; tidak ada tagihan DP atau pelunasan tambahan untuk nilai yang sama.
+
+Perubahan jenis ini hanya tersedia untuk Proforma DP yang masih issued, belum menjadi invoice, dan menjadi satu-satunya dokumen tagihan aktif pada quotation tersebut. Proforma yang sudah dikonversi mengikuti alur **Ganti Invoice DP ke Tagihan Penuh** dari invoice terkait, dengan seluruh syaratnya tetap berlaku. Proforma pelunasan dan perubahan Full kembali menjadi DP tidak memakai pilihan ini. Revisi nominal biasa dengan pilihan DP tetap mempertahankan jenis DP. Hak revisi, pemeriksaan periode terkunci, versi formulir, dan penyimpanan audit tetap berlaku.
+
 ## TOP dan alamat
 
 - **TOP / Ketentuan pembayaran** pada form revisi mengambil nilai dari dokumen yang dibuka. Contoh: jika Quote berisi `7 Days` dan Proforma berisi `After Event`, revisi dari Proforma menampilkan `After Event`. Setelah disimpan, TOP baru diterapkan ke Quote, semua Proforma aktif, dan Invoice aktif terkait, termasuk hasil cetaknya.

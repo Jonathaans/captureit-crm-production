@@ -20,6 +20,12 @@
                         <tr><td>{{ $label }}</td><td style="white-space:pre-wrap">{{ $displayValue($field, $beforeRevision['quote'][$field] ?? null) }}</td><td style="white-space:pre-wrap">{{ $displayValue($field, $afterRevision['quote'][$field] ?? null) }}</td></tr>
                     @endif
                 @endforeach
+                @foreach ($afterRevision['proformas'] ?? [] as $afterProforma)
+                    @php $beforeProforma = collect($beforeRevision['proformas'] ?? [])->firstWhere('id', $afterProforma['id']); @endphp
+                    @if ($beforeProforma && ($beforeProforma['billing_type'] !== $afterProforma['billing_type'] || (float) $beforeProforma['amount'] !== (float) $afterProforma['amount']))
+                        <tr><td>{{ $afterProforma['proforma_number'] }} · Jenis / nilai proforma</td><td>{{ $kindLabel($beforeProforma['billing_type']) }} · {{ $money($beforeProforma['amount']) }}</td><td>{{ $kindLabel($afterProforma['billing_type']) }} · {{ $money($afterProforma['amount']) }}</td></tr>
+                    @endif
+                @endforeach
                 <tr><td>Produk</td>@foreach ([$beforeRevision, $afterRevision] as $snapshot)<td>@foreach ($snapshot['quote_items'] as $line)<p>{{ $line['name'] }} · {{ $line['quantity'] }} × {{ $money($line['price']) }}</p>@endforeach</td>@endforeach</tr>
                 @foreach ($afterRevision['invoices'] as $afterInvoice)
                     @php $beforeInvoice = collect($beforeRevision['invoices'])->firstWhere('id', $afterInvoice['id']); @endphp
