@@ -49,8 +49,15 @@ class CommercialRevisionService
         $form['document_discount_amount'] = $this->money((float) $quote['discount_amount'] - array_sum(array_column($state['quote_items'], 'discount_amount')));
         $form['document_tax_amount'] = $this->money((float) $quote['tax_amount'] - array_sum(array_column($state['quote_items'], 'tax_amount')));
         $form['dp_amount'] = $dp ? $this->money(($dp['grand_total'] ?? $dp['amount']) - (float) ($dp['pph_amount'] ?? 0)) : null;
+        $sourceProforma = $type === 'proforma' ? collect($proformas)->firstWhere('id', $id) : null;
+        $canChangeProformaBilling = $sourceProforma && $sourceProforma['status'] === 'issued'
+            && $sourceProforma['billing_type'] === 'down_payment' && empty($sourceProforma['invoice_id'])
+            && $invoices === [] && count($proformas) === 1;
+        $form['proforma_billing_type'] = $canChangeProformaBilling ? 'down_payment' : null;
 
         return compact('state', 'form', 'invoices', 'proformas') + [
+            'source_proforma' => $sourceProforma,
+            'can_change_proforma_billing' => $canChangeProformaBilling,
             'fingerprint' => $this->fingerprint($state),
             'history' => DB::table('commercial_document_revisions')->where('quote_id', $quote['id'])->orderByDesc('version')->limit(20)->get(),
             'has_work_orders' => DB::table('work_orders')->where('quote_id', $quote['id'])->exists(),
@@ -71,6 +78,13 @@ class CommercialRevisionService
             $this->ensure(hash_equals($this->fingerprint($before), $data['fingerprint']), 'fingerprint', 'Data berubah sejak form dibuka. Periksa data terbaru lalu ulangi revisi.');
             [$invoices, $proformas] = $this->activeDocuments($before);
             $this->assertOpenPeriods($before, $invoices);
+            $proformaBillingChange = $this->proformaBillingChange($type, $id, $invoices, $proformas, $data);
+            if ($proformaBillingChange !== null) {
+                $proformas = array_map(fn ($proforma) => (int) $proforma['id'] === $id
+                    ? array_replace($proforma, $proformaBillingChange) : $proforma, $proformas);
+                // Full billing replaces the DP split; an old DP field is not a second charge.
+                $data['dp_amount'] = null;
+            }
             [$header, $items] = $this->commercialData($before, $data);
             [$amounts, $dpAmount] = $this->billingAmounts($before, $invoices, $proformas, $data, $header);
 
@@ -119,6 +133,9 @@ class CommercialRevisionService
                 if ($proforma['billing_type'] === 'down_payment' && $this->money($proforma['amount']) !== $amount) {
                     $values['billing_method'] = 'nominal';
                 }
+                if ($proformaBillingChange !== null && (int) $proforma['id'] === $id) {
+                    $values = array_replace($values, $proformaBillingChange);
+                }
                 $this->documents->update('proforma_invoices', $proforma['id'], $values);
             }
 
@@ -159,6 +176,7 @@ class CommercialRevisionService
             'adjustment_amount' => ['required', 'numeric', 'between:-999999999999.99,999999999999.99'],
             'document_discount_amount' => $money, 'document_tax_amount' => $money,
             'dp_amount' => ['nullable', 'numeric', 'gt:0', 'max:999999999999.99'],
+            'proforma_billing_type' => ['nullable', 'in:down_payment,full_payment'],
             'items' => ['required', 'array', 'min:1', 'max:100'],
             'items.*.id' => ['nullable', 'integer', 'min:1', 'distinct'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
@@ -169,6 +187,33 @@ class CommercialRevisionService
             'items.*.price' => $money,
             'items.*.discount_amount' => $money, 'items.*.tax_amount' => $money,
         ])->validate();
+    }
+
+    /** An issued DP request may become a full request; issued invoices keep their own workflow. */
+    private function proformaBillingChange(string $type, int $id, array $invoices, array $proformas, array $data): ?array
+    {
+        $requested = $data['proforma_billing_type'] ?? null;
+        if ($requested === null) {
+            return null;
+        }
+
+        $this->ensure($type === 'proforma', 'proforma_billing_type', 'Ubah jenis tagihan melalui Revisi Transaksi pada proforma yang dipilih.');
+        $source = collect($proformas)->firstWhere('id', $id);
+        $this->ensure($source !== null, 'proforma_billing_type', 'Proforma aktif tidak ditemukan.');
+        if ($requested === $source['billing_type']) {
+            return null;
+        }
+
+        $this->ensure($source['status'] === 'issued' && empty($source['invoice_id']), 'proforma_billing_type',
+            'Proforma sudah menjadi invoice. Gunakan alur Ganti Invoice DP ke Tagihan Penuh dari invoice terkait.');
+        $this->ensure($source['billing_type'] === 'down_payment' && $requested === 'full_payment', 'proforma_billing_type',
+            'Perubahan jenis tagihan hanya tersedia dari Proforma DP menjadi Proforma Full.');
+        $this->ensure($invoices === [] && count($proformas) === 1, 'proforma_billing_type',
+            'Sudah ada invoice atau proforma aktif lain pada quotation ini. Tinjau rangkaian tagihan sebelum mengubah DP menjadi Full.');
+        $this->ensure(! $this->periods->isLocked($source['issued_at']), 'period',
+            'Periode proforma sudah ditutup. Jenis tagihan tidak dapat diubah.');
+
+        return ['billing_type' => 'full_payment', 'billing_method' => 'nominal', 'dp_invoice_id' => null];
     }
 
     private function commercialData(array $before, array $data): array

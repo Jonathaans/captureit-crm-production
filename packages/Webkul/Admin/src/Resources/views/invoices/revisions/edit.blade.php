@@ -10,7 +10,7 @@
         $paidDp = $dpInvoice && $dpInvoice['status'] === 'paid';
         $documents = [['name' => $state['quote']['quote_number'], 'kind' => 'quote', 'amount' => $state['quote']['grand_total'], 'paid' => null, 'url' => bouncer()->hasPermission('quotes.print') ? route('admin.quotes.print', $state['quote']['id']) : null]];
         foreach ($proformas as $p) {
-            $documents[] = ['name' => $p['proforma_number'].' · '.$kindLabel($p['billing_type']), 'kind' => $p['billing_type'], 'amount' => $p['amount'], 'paid' => null, 'url' => bouncer()->hasPermission('invoices.view') ? route('admin.proformas.show', $p['id']) : null];
+            $documents[] = ['name' => $p['proforma_number'].' · '.$kindLabel($p['billing_type']), 'proforma_id' => $p['id'], 'kind' => $p['billing_type'], 'amount' => $p['amount'], 'paid' => null, 'url' => bouncer()->hasPermission('invoices.view') ? route('admin.proformas.show', $p['id']) : null];
         }
         foreach ($invoices as $i) {
             $documents[] = ['name' => $i['invoice_number'].' · '.$kindLabel($i['billing_type']), 'kind' => $i['billing_type'] ?: 'full_payment', 'amount' => $i['grand_total'], 'paid' => $i['paid_amount'], 'url' => bouncer()->hasPermission('invoices.view') ? route('admin.invoices.show', $i['id']) : null];
@@ -80,8 +80,27 @@
                         <div class="fw-metric fw-highlight"><p class="fw-metric-label">Total transaksi setelah revisi</p><p class="fw-value" data-grand-total aria-live="polite"></p><p data-pph-summary class="fw-muted"></p></div>
                     </div>
                 </section>
+                @if ($can_change_proforma_billing)
+                    <section class="fw-card fw-pad">
+                        <h2 class="fw-title">Jenis tagihan proforma</h2>
+                        <label class="fw-field" style="margin-top:16px">Pilih DP atau Full
+                            <select name="proforma_billing_type" data-proforma-billing-type aria-describedby="proforma-billing-help">
+                                <option value="down_payment" @selected($draft['proforma_billing_type'] === 'down_payment')>DP — sebagian nilai transaksi</option>
+                                <option value="full_payment" @selected($draft['proforma_billing_type'] === 'full_payment')>Full — 100% nilai transaksi</option>
+                            </select>
+                        </label>
+                        <p id="proforma-billing-help" class="fw-note">Full menagihkan seluruh nilai transaksi setelah revisi. Pembagian DP diabaikan. Nomor proforma tetap, status tetap menunggu konversi, dan perubahan tersimpan dalam riwayat revisi.</p>
+                    </section>
+                @elseif ($source_proforma && $source_proforma['billing_type'] === 'down_payment')
+                    <p class="fw-note">
+                        {{ $source_proforma['status'] === 'converted' ? 'Proforma ini sudah menjadi invoice. Untuk mengubah DP menjadi tagihan penuh, buka invoice terkait dan gunakan alur Ganti Invoice DP ke Tagihan Penuh sesuai ketentuannya.' : 'Jenis tagihan tidak dapat diubah karena terdapat dokumen aktif lain. Tinjau rangkaian tagihan quotation ini terlebih dahulu.' }}
+                        @if ($source_proforma['status'] === 'converted' && bouncer()->hasPermission('invoices.view'))
+                            <a class="fw-link" href="{{ route('admin.invoices.show', $source_proforma['invoice_id']) }}">Buka invoice terkait</a>
+                        @endif
+                    </p>
+                @endif
                 @if ($form['dp_amount'] !== null)
-                    <section class="fw-card fw-pad"><h2 class="fw-title">Pembagian tagihan</h2><div class="fw-form-grid" style="margin-top:18px">
+                    <section class="fw-card fw-pad" data-dp-split><h2 class="fw-title">Pembagian tagihan</h2><div class="fw-form-grid" style="margin-top:18px">
                         <label class="fw-field">Transfer netto DP (Rp)<input name="dp_amount" data-dp type="number" min="0.01" step="0.01" required value="{{ $draft['dp_amount'] }}" @readonly($paidDp)></label>
                         <div><p class="fw-muted">Nilai pelunasan</p><p class="fw-value" data-settlement></p></div>
                     </div><p class="fw-note">{{ $paidDp ? 'Transfer netto DP sudah lunas dan tetap. Jika gross-up berubah, bruto DP mengikuti potongan PPh; uang masuk tetap.' : 'Mengubah nominal DP hanya mengubah pembagian DP dan pelunasan. Total transaksi tetap mengikuti rincian produk.' }}</p></section>
@@ -90,9 +109,9 @@
                     <h2 class="fw-title fw-card-heading">Periksa perubahan dokumen</h2>
                     <div class="fw-scroll"><table class="fw-table"><thead><tr><th>Dokumen terkait</th><th class="text-right">Nilai saat ini</th><th class="text-right">Nilai setelah revisi</th><th class="text-right">PPh baru</th><th class="text-right">Sudah dibayar</th><th class="text-right">Sisa tagihan baru</th></tr></thead><tbody>
                         @foreach ($documents as $doc)
-                            <tr data-document-kind="{{ $doc['kind'] }}" data-paid="{{ $doc['paid'] ?? '' }}">
+                            <tr data-document-kind="{{ $doc['kind'] }}" data-paid="{{ $doc['paid'] ?? '' }}" @if ($can_change_proforma_billing && (int) ($doc['proforma_id'] ?? 0) === $sourceId) data-proforma-billing-target="1" @endif>
                                 <td>@if ($doc['url'])<a href="{{ $doc['url'] }}" class="fw-link" target="_blank" rel="noopener">{{ $doc['name'] }}</a>@else{{ $doc['name'] }}@endif</td>
-                                <td class="fw-number">{{ $money($doc['amount']) }}</td><td class="fw-number" data-new-amount></td><td class="fw-number" data-new-pph></td><td class="fw-number">{{ $doc['paid'] === null ? '—' : $money($doc['paid']) }}</td><td class="fw-number" data-new-balance></td>
+                                <td class="fw-number">{{ $money($doc['amount']) }}</td><td class="fw-number"><span data-new-amount></span>@if ($can_change_proforma_billing && (int) ($doc['proforma_id'] ?? 0) === $sourceId)<span class="fw-muted block" data-new-billing-label></span>@endif</td><td class="fw-number" data-new-pph></td><td class="fw-number">{{ $doc['paid'] === null ? '—' : $money($doc['paid']) }}</td><td class="fw-number" data-new-balance></td>
                             </tr>
                         @endforeach
                     </tbody></table></div>
@@ -120,6 +139,11 @@
                     const amount = (root, selector) => Number(root.querySelector(selector)?.value || 0);
                     const round = v => Math.round((v + Number.EPSILON) * 100) / 100;
                     function recalculate() {
+                        const fullProforma = form.querySelector('[data-proforma-billing-type]')?.value === 'full_payment';
+                        const dpInput = form.querySelector('[data-dp]');
+                        const dpSplit = form.querySelector('[data-dp-split]');
+                        if (dpSplit) dpSplit.hidden = fullProforma;
+                        if (dpInput) { dpInput.disabled = fullProforma; dpInput.required = !fullProforma; }
                         let total = 0;
                         let otherTax = amount(form, '[data-document-tax]');
                         let valid = true;
@@ -141,13 +165,16 @@
                         total = round(total + pph);
                         form.querySelector('[data-grand-total]').textContent = money(total);
                         form.querySelector('[data-pph-summary]').textContent = enabled ? 'PPh: ' + money(pph) + ' · Transfer netto: ' + money(net) : '';
-                        const dpCash = amount(form, '[data-dp]');
+                        const dpCash = fullProforma ? 0 : amount(form, '[data-dp]');
                         const dp = round(dpCash + (net > 0 ? round(pph * dpCash / net) : 0));
                         const dpPph = total > 0 ? round(pph * dp / total) : 0;
                         if (form.querySelector('[data-settlement]')) form.querySelector('[data-settlement]').textContent = money(round(total - dp));
-                        valid = valid && total > 0 && (!form.querySelector('[data-dp]') || (dp > 0 && dp < total));
+                        valid = valid && total > 0 && (!dpInput || fullProforma || (dp > 0 && dp < total));
                         form.querySelectorAll('[data-document-kind]').forEach(row => {
-                            const kind = row.dataset.documentKind;
+                            const changingProforma = row.dataset.proformaBillingTarget === '1';
+                            const kind = changingProforma && fullProforma ? 'full_payment' : row.dataset.documentKind;
+                            const billingLabel = row.querySelector('[data-new-billing-label]');
+                            if (billingLabel) billingLabel.textContent = kind === 'full_payment' ? 'Full — 100%' : 'DP';
                             const value = kind === 'down_payment' ? dp : kind === 'settlement' ? round(total - dp) : total;
                             const paid = row.dataset.paid;
                             const tax = kind === 'settlement' ? round(pph - dpPph) : (kind === 'down_payment' ? dpPph : pph);
