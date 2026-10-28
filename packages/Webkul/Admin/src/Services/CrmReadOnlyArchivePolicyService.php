@@ -80,10 +80,18 @@ class CrmReadOnlyArchivePolicyService
             return false;
         }
         $invoice = DB::table('invoices')->where('id', $this->raw($model, 'invoice_id'))->first();
-        $replacement = $invoice->replaced_by_invoice_id ?? null;
+        $visited = [];
+        while ($invoice && ($invoice->replaced_by_invoice_id ?? null) && ! isset($visited[$invoice->id])) {
+            $visited[$invoice->id] = true;
+            $next = DB::table('invoices')->where('id', $invoice->replaced_by_invoice_id)
+                ->where('quote_id', $invoice->quote_id)->where('replaces_invoice_id', $invoice->id)->first();
+            if ($next && $next->status !== 'void') {
+                return true;
+            }
+            $invoice = $next;
+        }
 
-        return $replacement && DB::table('invoices')->where('id', $replacement)
-            ->where('replaces_invoice_id', $invoice->id)->where('status', '!=', 'void')->exists();
+        return false;
     }
 
     /**

@@ -51,9 +51,9 @@ class CommercialRevisionService
         $form['dp_amount'] = $dp ? $this->money(($dp['grand_total'] ?? $dp['amount']) - (float) ($dp['pph_amount'] ?? 0)) : null;
         $sourceProforma = $type === 'proforma' ? collect($proformas)->firstWhere('id', $id) : null;
         $canChangeProformaBilling = $sourceProforma && $sourceProforma['status'] === 'issued'
-            && $sourceProforma['billing_type'] === 'down_payment' && empty($sourceProforma['invoice_id'])
+            && in_array($sourceProforma['billing_type'], ['down_payment', 'full_payment'], true) && empty($sourceProforma['invoice_id'])
             && $invoices === [] && count($proformas) === 1;
-        $form['proforma_billing_type'] = $canChangeProformaBilling ? 'down_payment' : null;
+        $form['proforma_billing_type'] = $canChangeProformaBilling ? $sourceProforma['billing_type'] : null;
 
         return compact('state', 'form', 'invoices', 'proformas') + [
             'source_proforma' => $sourceProforma,
@@ -82,8 +82,12 @@ class CommercialRevisionService
             if ($proformaBillingChange !== null) {
                 $proformas = array_map(fn ($proforma) => (int) $proforma['id'] === $id
                     ? array_replace($proforma, $proformaBillingChange) : $proforma, $proformas);
-                // Full billing replaces the DP split; an old DP field is not a second charge.
-                $data['dp_amount'] = null;
+                if ($proformaBillingChange['billing_type'] === 'full_payment') {
+                    // Full billing replaces the DP split; an old DP field is not a second charge.
+                    $data['dp_amount'] = null;
+                } else {
+                    $this->ensure(isset($data['dp_amount']), 'dp_amount', 'Isi nominal transfer netto DP untuk mengubah Proforma Full menjadi DP.');
+                }
             }
             [$header, $items] = $this->commercialData($before, $data);
             [$amounts, $dpAmount] = $this->billingAmounts($before, $invoices, $proformas, $data, $header);
@@ -189,7 +193,7 @@ class CommercialRevisionService
         ])->validate();
     }
 
-    /** An issued DP request may become a full request; issued invoices keep their own workflow. */
+    /** Issued requests can switch between DP and full; invoices keep their own replacement workflow. */
     private function proformaBillingChange(string $type, int $id, array $invoices, array $proformas, array $data): ?array
     {
         $requested = $data['proforma_billing_type'] ?? null;
@@ -205,15 +209,15 @@ class CommercialRevisionService
         }
 
         $this->ensure($source['status'] === 'issued' && empty($source['invoice_id']), 'proforma_billing_type',
-            'Proforma sudah menjadi invoice. Gunakan alur Ganti Invoice DP ke Tagihan Penuh dari invoice terkait.');
-        $this->ensure($source['billing_type'] === 'down_payment' && $requested === 'full_payment', 'proforma_billing_type',
-            'Perubahan jenis tagihan hanya tersedia dari Proforma DP menjadi Proforma Full.');
+            'Proforma sudah menjadi invoice. Gunakan alur penggantian DP / Full dari invoice terkait.');
+        $this->ensure(in_array($source['billing_type'], ['down_payment', 'full_payment'], true), 'proforma_billing_type',
+            'Perubahan jenis tagihan hanya tersedia antara Proforma DP dan Proforma Full.');
         $this->ensure($invoices === [] && count($proformas) === 1, 'proforma_billing_type',
-            'Sudah ada invoice atau proforma aktif lain pada quotation ini. Tinjau rangkaian tagihan sebelum mengubah DP menjadi Full.');
+            'Sudah ada invoice atau proforma aktif lain pada quotation ini. Tinjau rangkaian tagihan sebelum mengubah jenis proforma.');
         $this->ensure(! $this->periods->isLocked($source['issued_at']), 'period',
             'Periode proforma sudah ditutup. Jenis tagihan tidak dapat diubah.');
 
-        return ['billing_type' => 'full_payment', 'billing_method' => 'nominal', 'dp_invoice_id' => null];
+        return ['billing_type' => $requested, 'billing_method' => 'nominal', 'dp_invoice_id' => null];
     }
 
     private function commercialData(array $before, array $data): array

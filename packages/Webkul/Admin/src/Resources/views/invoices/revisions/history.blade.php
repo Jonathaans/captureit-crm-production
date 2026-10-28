@@ -29,8 +29,8 @@
                 <tr><td>Produk</td>@foreach ([$beforeRevision, $afterRevision] as $snapshot)<td>@foreach ($snapshot['quote_items'] as $line)<p>{{ $line['name'] }} · {{ $line['quantity'] }} × {{ $money($line['price']) }}</p>@endforeach</td>@endforeach</tr>
                 @foreach ($afterRevision['invoices'] as $afterInvoice)
                     @php $beforeInvoice = collect($beforeRevision['invoices'])->firstWhere('id', $afterInvoice['id']); @endphp
-                    @if ($beforeInvoice && ((float) $beforeInvoice['grand_total'] !== (float) $afterInvoice['grand_total'] || $beforeInvoice['status'] !== $afterInvoice['status']))
-                        <tr><td>{{ $afterInvoice['invoice_number'] }}</td><td>{{ $money($beforeInvoice['grand_total']) }} · {{ strtoupper($beforeInvoice['status']) }}</td><td>{{ $money($afterInvoice['grand_total']) }} · {{ strtoupper($afterInvoice['status']) }}</td></tr>
+                    @if (! $beforeInvoice || (float) $beforeInvoice['grand_total'] !== (float) $afterInvoice['grand_total'] || $beforeInvoice['status'] !== $afterInvoice['status'] || $beforeInvoice['billing_type'] !== $afterInvoice['billing_type'])
+                        <tr><td>{{ $afterInvoice['invoice_number'] }}</td><td>{{ $beforeInvoice ? $kindLabel($beforeInvoice['billing_type']).' · '.$money($beforeInvoice['grand_total']).' · '.strtoupper($beforeInvoice['status']) : 'Belum diterbitkan' }}</td><td>{{ $kindLabel($afterInvoice['billing_type']) }} · {{ $money($afterInvoice['grand_total']) }} · {{ strtoupper($afterInvoice['status']) }}</td></tr>
                     @endif
                 @endforeach
             </tbody></table></div>

@@ -9,11 +9,13 @@ use Webkul\Admin\Services\InvoiceReplacementService;
 
 class InvoiceReplacementController extends Controller
 {
-    public function preview(int $id, InvoiceReplacementService $service)
+    public function preview(Request $request, int $id, InvoiceReplacementService $service)
     {
         $this->authorizeReplacement();
 
-        return view('admin::invoices.replacements.preview', ['preview' => $service->preview($id)]);
+        $data = $request->validate(['dp_amount' => ['nullable', 'numeric', 'gt:0', 'max:999999999999.99', 'decimal:0,2']]);
+
+        return view('admin::invoices.replacements.preview', ['preview' => $service->preview($id, isset($data['dp_amount']) ? (float) $data['dp_amount'] : null)]);
     }
 
     public function store(Request $request, int $id, InvoiceReplacementService $service)

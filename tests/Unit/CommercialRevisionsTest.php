@@ -14,6 +14,7 @@ use Webkul\Admin\Services\FinanceSalesDashboardService;
 use Webkul\Admin\Services\FlexibleQuoteBillingService;
 use Webkul\Admin\Services\ProformaInvoiceService;
 use Webkul\Admin\Services\SalesCommissionExportService;
+use Webkul\Core\Support\PphGrossUp;
 use Webkul\Installer\Http\Middleware\CanInstall;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\Payment;
@@ -133,7 +134,7 @@ it('revises an issued DP proforma to full in place with an explicit choice and v
         ->and(json_decode($audit->after, true)['proformas'][0]['billing_type'])->toBe('full_payment')
         ->and($audit->actor_name)->toBe('Administrator')->and($audit->reason)->toBe($input['reason']);
     $this->get(route('admin.commercial-revisions.edit', ['proforma', $pf->id]))->assertOk()
-        ->assertSee('Jenis / nilai proforma')->assertDontSee('name="proforma_billing_type"', false);
+        ->assertSee('Jenis / nilai proforma')->assertSee('name="proforma_billing_type"', false);
     expect(view('admin::invoices.proformas.print', ['proforma' => $pf])->render())
         ->toContain('Penuh / Tanpa DP', '10.000.000,00')->not->toContain('>DP<');
 });
@@ -238,8 +239,8 @@ it('rejects full proforma changes submitted through a quote or invoice revision'
     expect($this->service->preview($source, $id)['state'])->toBe($before);
 })->with(['quote', 'invoice']);
 
-it('rejects reverse changes settlement relabeling and conflicting active billing documents', function (string $case) {
-    $pf = revisionProforma($this->quote, $case === 'reverse' ? 'full_payment' : 'down_payment');
+it('rejects settlement relabeling and conflicting active billing documents', function (string $case) {
+    $pf = revisionProforma($this->quote, 'down_payment');
     if ($case === 'settlement') {
         revisionInvoice($pf, 4000000);
         $pf = revisionProforma($this->quote, 'settlement');
@@ -253,10 +254,10 @@ it('rejects reverse changes settlement relabeling and conflicting active billing
     }
     $before = $this->service->preview('proforma', $pf->id)['state'];
     $input = revisionPayload('proforma', $pf->id, 10000000);
-    $input['proforma_billing_type'] = $case === 'reverse' ? 'down_payment' : 'full_payment';
+    $input['proforma_billing_type'] = 'full_payment';
     $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)->assertSessionHasErrors('proforma_billing_type');
     expect($this->service->preview('proforma', $pf->id)['state'])->toBe($before);
-})->with(['reverse', 'settlement', 'duplicate', 'invoice_exists']);
+})->with(['settlement', 'duplicate', 'invoice_exists']);
 
 it('rolls back a DP to full change when the audit cannot be stored', function () {
     $pf = revisionProforma($this->quote, 'down_payment');
@@ -807,3 +808,134 @@ it('prints only subtotal discount and the stored grand total for all billing typ
         ->and((float) $quote->adjustment_amount)->toBe(100000.0)
         ->and((float) $quote->pph_amount > 0)->toBe($grossUp);
 })->with(['full_payment', 'down_payment', 'settlement'])->with([false, true]);
+
+it('revises Full proforma to DP with an explicit netto amount and complete before after audit', function (bool $grossUp) {
+    $this->quote->forceFill(PphGrossUp::calculate(10000000, 0, $grossUp))->save();
+    $pf = revisionProforma($this->quote);
+    $original = $pf->getAttributes();
+    $financial = revisionReport()['financialSummary'];
+    $preview = $this->service->preview('proforma', $pf->id);
+    expect($preview['can_change_proforma_billing'])->toBeTrue()
+        ->and($preview['form']['proforma_billing_type'])->toBe('full_payment')
+        ->and($preview['form']['dp_amount'])->toBeNull();
+    $this->get(route('admin.proformas.show', $pf->id))->assertOk()->assertSee('Full ke DP');
+    $form = $this->get(route('admin.commercial-revisions.edit', ['proforma', $pf->id]))->assertOk();
+    $dom = new DOMDocument;
+    @$dom->loadHTML($form->getContent());
+    $xpath = new DOMXPath($dom);
+    expect($xpath->query('//select[@name="proforma_billing_type"]/option[@value="full_payment"][@selected]')->length)->toBe(1)
+        ->and($xpath->query('//input[@name="dp_amount"]')->length)->toBe(1)
+        ->and($xpath->query('//input[@name="dp_amount"][@required]')->length)->toBe(0);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['proforma_billing_type'] = 'down_payment';
+    $input['dp_amount'] = 3000000;
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $pf->refresh();
+    $quote = $this->quote->fresh();
+    $amount = PphGrossUp::grossFromCash(3000000, $quote->pph_amount, $quote->grand_total);
+    expect($pf->billing_type)->toBe('down_payment')->and($pf->billing_method)->toBe('nominal')
+        ->and((float) $pf->amount)->toBe($amount)->and($pf->cashPayable())->toBe(3000000.0)
+        ->and((float) $pf->billing_percentage)->toBe(30.0)
+        ->and($pf->invoice_id)->toBeNull()->and($pf->dp_invoice_id)->toBeNull()->and($pf->status)->toBe('issued')
+        ->and(Invoice::count())->toBe(0)->and(Payment::count())->toBe(0)
+        ->and(revisionReport()['financialSummary'])->toBe($financial)
+        ->and((float) $quote->grand_total)->toBe((float) $original['amount']);
+    foreach (['id', 'proforma_number', 'quote_id', 'issued_at', 'due_at', 'created_by', 'created_at'] as $field) {
+        expect($pf->getRawOriginal($field))->toBe($original[$field]);
+    }
+    $audit = DB::table('commercial_document_revisions')->sole();
+    $before = json_decode($audit->before, true);
+    $after = json_decode($audit->after, true);
+    expect($before['proformas'][0]['billing_type'])->toBe('full_payment')
+        ->and($after['proformas'][0]['billing_type'])->toBe('down_payment')
+        ->and((float) $after['proformas'][0]['amount'])->toBe($amount)
+        ->and($audit->actor_id)->toBe(1)->and($audit->actor_name)->toBe('Administrator')
+        ->and($audit->reason)->toBe($input['reason'])->and($audit->created_at)->not->toBeNull();
+    $this->get(route('admin.commercial-revisions.edit', ['proforma', $pf->id]))->assertOk()
+        ->assertSee('Jenis / nilai proforma')->assertSee('Penuh')->assertSee('DP');
+    expect(view('admin::invoices.proformas.print', ['proforma' => $pf])->render())->toContain('>DP<');
+})->with([false, true]);
+
+it('converts revised DP proforma and completes normal settlement with consistent financial reports', function (bool $grossUp, string $conversion) {
+    $pf = revisionProforma($this->quote);
+    $input = revisionPayload('proforma', $pf->id, 12000000);
+    $input['proforma_billing_type'] = 'down_payment';
+    $input['dp_amount'] = 3000000;
+    $input['pph_gross_up'] = $grossUp;
+    $input['payment_term'] = 'DP tiga juta, sisanya setelah event';
+    $this->service->apply('proforma', $pf->id, $input, 1);
+    $billing = app(FlexibleQuoteBillingService::class);
+    $convert = fn () => $conversion === 'payment'
+        ? $billing->confirmProformaPayment($pf, ['amount' => 3000000, 'paid_at' => '2026-10-15 09:30:00', 'payment_method' => 'Transfer'], 1)
+        : $billing->approveProforma($pf, 1);
+    $invoice = $convert();
+    $current = $pf->fresh();
+    $quote = $this->quote->fresh();
+    expect($invoice->billing_type)->toBe('down_payment')->and((float) $invoice->grand_total)->toBe((float) $current->amount)
+        ->and($invoice->payment_term)->toBe($input['payment_term'])
+        ->and((float) $invoice->remaining_amount_snapshot)->toBe(round($quote->grand_total - $current->amount, 2))
+        ->and($convert()->id)->toBe($invoice->id)->and(Invoice::count())->toBe(1)
+        ->and(revisionReport()['financialSummary']['invoiced'])->toBe((float) $current->amount)
+        ->and(revisionReport()['financialSummary']['outstanding'])->toBe($conversion === 'payment' ? 0.0 : 3000000.0);
+    if ($conversion === 'approve') {
+        app(PaymentService::class)->addPayment($invoice, ['amount' => 3000000, 'paid_at' => '2026-10-15 09:30:00']);
+    }
+    expect($billing->summarize($quote)['eligibility']['settlement'])->toBeTrue();
+    $settlementPf = $billing->createFromQuote($quote, [
+        'billing_type' => 'settlement', 'issued_at' => '2026-10-15', 'due_at' => '2026-10-30',
+        'payment_term' => 'Pelunasan setelah event',
+    ], 1);
+    $settlement = $billing->approveProforma($settlementPf, 1);
+    expect(round($invoice->grand_total + $settlement->grand_total, 2))->toBe((float) $quote->grand_total)
+        ->and(round($invoice->pph_amount + $settlement->pph_amount, 2))->toBe((float) $quote->pph_amount)
+        ->and((float) $settlement->balance_due)->toBe(9000000.0)
+        ->and(round(revisionReport()['financialSummary']['invoiced'], 2))->toBe((float) $quote->grand_total)
+        ->and(revisionReport()['financialSummary']['received'])->toBe(3000000.0)
+        ->and(revisionReport()['financialSummary']['outstanding'])->toBe(9000000.0);
+})->with([false, true])->with(['approve', 'payment']);
+
+it('rejects missing or invalid DP amounts without changing a Full proforma or its report', function ($amount) {
+    $pf = revisionProforma($this->quote);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['proforma_billing_type'] = 'down_payment';
+    $input['dp_amount'] = $amount;
+    $before = $this->service->preview('proforma', $pf->id)['state'];
+    $financial = revisionReport()['financialSummary'];
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)->assertSessionHasErrors('dp_amount');
+    expect($this->service->preview('proforma', $pf->id)['state'])->toBe($before)
+        ->and(revisionReport()['financialSummary'])->toBe($financial);
+})->with([null, 0, -1, 10000000, 10000001]);
+
+it('blocks Full proforma type changes after conversion and during a closed period', function (string $case) {
+    $pf = revisionProforma($this->quote);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['proforma_billing_type'] = 'down_payment';
+    $input['dp_amount'] = 3000000;
+    if ($case === 'converted') {
+        revisionInvoice($pf);
+        $input['fingerprint'] = $this->service->preview('proforma', $pf->id)['fingerprint'];
+    } else {
+        DB::table('financial_period_locks')->insert(['period' => '2026-10', 'starts_at' => '2026-10-01', 'ends_at' => '2026-10-31', 'locked_at' => now()]);
+    }
+    $before = $this->service->preview('proforma', $pf->id)['state'];
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)
+        ->assertSessionHasErrors($case === 'converted' ? 'proforma_billing_type' : 'period');
+    expect($this->service->preview('proforma', $pf->id)['state'])->toBe($before);
+})->with(['converted', 'locked']);
+
+it('rolls back Full to DP when its revision audit fails and rejects a stale retry', function () {
+    $pf = revisionProforma($this->quote);
+    $input = revisionPayload('proforma', $pf->id, 10000000);
+    $input['proforma_billing_type'] = 'down_payment';
+    $input['dp_amount'] = 3000000;
+    $before = $this->service->preview('proforma', $pf->id)['state'];
+    DB::statement("CREATE TRIGGER reject_dp_revision BEFORE INSERT ON commercial_document_revisions BEGIN SELECT RAISE(ABORT, 'Audit unavailable'); END");
+    expect(fn () => $this->service->apply('proforma', $pf->id, $input, 1))->toThrow(QueryException::class);
+    expect($this->service->preview('proforma', $pf->id)['state'])->toBe($before);
+    DB::statement('DROP TRIGGER reject_dp_revision');
+    $this->service->apply('proforma', $pf->id, $input, 1);
+    $after = $this->service->preview('proforma', $pf->id)['state'];
+    $this->put(route('admin.commercial-revisions.update', ['proforma', $pf->id]), $input)->assertSessionHasErrors('fingerprint');
+    expect($this->service->preview('proforma', $pf->id)['state'])->toBe($after);
+});

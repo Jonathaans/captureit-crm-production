@@ -19,7 +19,7 @@
             </div>
             <div class="fw-actions">
                 @if (bouncer()->hasPermission('invoices.revise') && ($proforma->status === 'issued' || ($proforma->status === 'converted' && in_array($proforma->invoice?->status, ['unpaid', 'partial', 'paid']) && ! in_array($proforma->invoice?->event_status, ['cancel', 'cancelled', 'canceled']))))
-                    <a class="secondary-button" href="{{ route('admin.commercial-revisions.edit', ['proforma', $proforma->id]) }}">{{ $proforma->status === 'issued' && $proforma->billing_type === 'down_payment' ? 'Revisi Transaksi / DP ke Full' : 'Revisi Transaksi' }}</a>
+                    <a class="secondary-button" href="{{ route('admin.commercial-revisions.edit', ['proforma', $proforma->id]) }}">{{ $proforma->status === 'issued' && in_array($proforma->billing_type, ['down_payment', 'full_payment']) ? 'Revisi Transaksi / '.($proforma->billing_type === 'down_payment' ? 'DP ke Full' : 'Full ke DP') : 'Revisi Transaksi' }}</a>
                 @endif
                 <span class="fw-badge fw-badge-{{ $proforma->status }}">{{ ['issued' => 'Menunggu Admin Sales', 'converted' => 'Sudah menjadi Invoice', 'cancelled' => 'Dibatalkan'][$proforma->status] ?? $proforma->status }}</span>
                 @if (bouncer()->hasPermission('invoices.print'))
@@ -48,7 +48,7 @@
                         <p style="margin:16px 0;font-weight:600">{{ $proforma->invoice->invoice_number }} · {{ $proforma->billingLabel() }}</p>
                         @if ($proforma->invoice->status === 'void')
                             @if ($proforma->invoice->replaced_by_invoice_id)
-                                <p class="fw-note">Invoice DP hasil konversi telah diganti dengan <a class="underline" href="{{ route('admin.invoices.show', $proforma->invoice->replaced_by_invoice_id) }}">{{ $proforma->invoice->replacementInvoice->invoice_number }}</a>. Proforma ini disimpan sebagai riwayat.</p>
+                                <p class="fw-note">Invoice hasil konversi telah diganti dengan <a class="underline" href="{{ route('admin.invoices.show', $proforma->invoice->replaced_by_invoice_id) }}">{{ $proforma->invoice->replacementInvoice->invoice_number }}</a>. Proforma ini disimpan sebagai riwayat.</p>
                             @elseif ($proforma->invoice->voidCorrection?->kind === 'invoice_cancel')
                                 <p class="fw-note">Invoice hasil konversi telah dibatalkan dan tidak lagi menjadi tagihan aktif. Proforma ini disimpan sebagai riwayat.</p>
                             @else

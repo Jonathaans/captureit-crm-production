@@ -1,9 +1,22 @@
-# Ganti Invoice DP ke Full Payment
+# Ganti jenis invoice: DP dan Full Payment
 
 Gunakan **Ganti ke Full Payment** pada detail invoice DP ketika pelanggan meminta
 satu tagihan penuh dan belum ada pembayaran sah diterima. Invoice pengganti tetap
 mengacu **quotation yang sama**. Tidak ada quotation, SPK, Surat Jalan, pembayaran,
 atau movement stok baru yang dibuat oleh aksi penggantian.
+
+Alur sebaliknya tersedia lewat **Ganti ke DP** pada Invoice Full UNPAID. Isi
+**Transfer netto DP (Rp)** lalu klik **Hitung / Perbarui Pratinjau DP**. Halaman
+menampilkan bruto DP, potongan PPh, transfer netto, dan sisa kesepakatan sebelum
+konfirmasi. Setelah TOP, jatuh tempo, alasan, dan persetujuan diisi, invoice Full
+menjadi VOID dan invoice DP pengganti terbit melalui proforma. Contoh tanpa PPh:
+Full Rp10 juta → DP Rp3 juta menghasilkan invoice/piutang aktif Rp3 juta,
+penerimaan Rp0, serta sisa belum ditagihkan Rp7 juta. Setelah DP lunas,
+proforma/invoice pelunasan tersedia melalui alur biasa. Nominal DP wajib lebih
+dari nol dan lebih kecil dari nilai transfer penuh; nilai penuh Quote tetap.
+
+Tombol perhitungan memakai formulir GET dan konfirmasi memakai POST, sehingga
+tidak bergantung pada JavaScript. Semua nominal diperiksa ulang saat konfirmasi.
 
 ## Alur pengguna
 
@@ -33,8 +46,10 @@ status event, yang tetap berarti pembatalan event.
 - Wajib memiliki izin `invoices.view`, `invoices.revise`, dan `invoices.generate`.
   Tidak ada bypass berdasarkan nama role; izin payment tidak diperlukan karena
   penggantian tidak mencatat pembayaran.
-- Hanya invoice jenis `down_payment`, status `unpaid`, event `confirm`, belum
-  pernah diganti, serta memiliki saldo konsisten dengan nominal DP yang diterbitkan.
+- Hanya invoice jenis DP atau Full, status `unpaid`, event `confirm`, belum
+  mempunyai pengganti, serta memiliki saldo konsisten dengan tagihan yang terbit.
+  Invoice aktif hasil penggantian sebelumnya dapat diganti kembali jika rantai
+  referensi dan log penggantian valid; misalnya DP → Full → DP.
 - Tidak boleh ada pembayaran aktif, `paid_amount` bukan nol, invoice aktif lain,
   atau proforma issued lain pada quotation yang sama. Pembayaran yang masuk
   sesudah pratinjau menyebabkan konfirmasi ditolak tanpa membatalkan DP.
@@ -44,6 +59,9 @@ status event, yang tetap berarti pembatalan event.
   Bill To, dan pajak. Untuk DP legacy tanpa proforma, quotation arsip hanya boleh
   digunakan bila totalnya cocok dengan `quote_total_snapshot`. Ketidakcocokan atau
   snapshot total yang hilang ditolak untuk ditinjau melalui Revisi Transaksi.
+  Invoice Full legacy tanpa proforma dapat memakai quotation yang total dan
+  PPh-nya cocok dengan dokumen Full; nominal Full menjadi rujukan bila snapshot
+  total legacy belum terisi.
 - Konfirmasi memeriksa ulang seluruh posisi billing dan penguncian periode.
   Perubahan setelah pratinjau mengharuskan pengguna meninjau data terbaru.
 
@@ -68,7 +86,28 @@ Rp0, piutang Rp10 juta, biaya Rp6 juta, margin Rp4 juta sebelum potongan PPh.
 Biaya tetap memakai tanggal transaksi aslinya, termasuk bila penggantian terjadi
 pada bulan berbeda.
 
+Aturan yang sama berlaku untuk Full → DP. Full VOID keluar dari laporan dan
+CSV, DP aktif dihitung sesuai tanggal penerbitan barunya. Jika penggantian
+terjadi pada bulan berbeda, nilai Full keluar dari bulan terbit asal dan DP
+masuk pada bulan pengganti; biaya tetap pada tanggal transaksi aslinya. SPK,
+Surat Jalan, dan biaya historis tetap ditemukan sepanjang rantai penggantian,
+termasuk dari invoice pelunasan DP baru. Invoice lain yang tidak tersambung
+dalam rantai tetap terpisah.
+
+Setiap penggantian menyimpan `invoice_replacements` dan satu versi
+`commercial_document_revisions` dalam transaksi yang sama. **Riwayat revisi**
+pada dokumen aktif menunjukkan kondisi sebelum/sesudah, termasuk Full/DP lama
+menjadi VOID dan nomor, jenis, nominal, serta status invoice pengganti.
+Detail invoice menampilkan tautan kedua dokumen, alasan, petugas, waktu, dan
+nominal perubahan. Klik ulang tidak menambah invoice atau log kedua. Kegagalan
+penyimpanan salah satu log membatalkan seluruh penggantian.
+
 ## Deploy dan pengujian
+
+Tambahan Full → DP memakai schema revisi/penggantian yang sudah ada. Jika fitur
+DP → Full sudah terpasang, pembaruan ini cukup `git pull --ff-only origin main`,
+`php artisan optimize:clear`, dan reload PHP-FPM; tidak ada migration, dependency,
+atau build frontend baru untuk revisi ini.
 
 Setelah merge, ikuti prosedur backup dan maintenance VPS pada README. Deploy kode
 bersama migration `2026_10_22_120000_create_invoice_replacements`, jalankan
@@ -93,9 +132,9 @@ php vendor/bin/pint --test --dirty
 git diff --check
 ```
 
-Verifikasi pengembangan: 458 unit test lulus (termasuk 33 kasus penggantian),
-Pint, kompilasi Blade, dan pemeriksaan whitespace lulus. Empat feature test
-Authentication/Help gagal dengan hasil identik pada baseline karena fixture
-instalasi/user belum disiapkan; tidak ada kegagalan baru. Validator skills juga
-masih gagal pada baseline karena `.github/skills` tidak tersedia. Pengujian memakai
-SQLite in-memory; belum ada uji interaktif pada VPS atau uji konkurensi MySQL live.
+Verifikasi revisi Full → DP: seluruh 599 unit test (5.554 assertion) dan 9 test
+JavaScript pratinjau lulus. Unit test dijalankan dengan application key khusus
+pengujian dan batas memori 2 GB untuk rendering PDF. Pint, kompilasi Blade, dan
+pemeriksaan whitespace lulus. Validator skills masih gagal pada baseline karena
+`.github/skills` tidak tersedia. Pengujian memakai SQLite in-memory; belum ada
+uji interaktif pada VPS atau uji konkurensi MySQL live.

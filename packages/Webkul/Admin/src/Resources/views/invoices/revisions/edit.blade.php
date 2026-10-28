@@ -89,19 +89,19 @@
                                 <option value="full_payment" @selected($draft['proforma_billing_type'] === 'full_payment')>Full — 100% nilai transaksi</option>
                             </select>
                         </label>
-                        <p id="proforma-billing-help" class="fw-note">Full menagihkan seluruh nilai transaksi setelah revisi. Pembagian DP diabaikan. Nomor proforma tetap, status tetap menunggu konversi, dan perubahan tersimpan dalam riwayat revisi.</p>
+                        <p id="proforma-billing-help" class="fw-note">DP memakai nominal transfer netto pada pembagian tagihan di bawah, dengan nilai lebih kecil dari total transaksi. Full menagihkan seluruh nilai transaksi dan mengabaikan pembagian DP. Nomor proforma tetap, status tetap menunggu konversi, dan perubahan tersimpan dalam riwayat revisi.</p>
                     </section>
-                @elseif ($source_proforma && $source_proforma['billing_type'] === 'down_payment')
+                @elseif ($source_proforma && in_array($source_proforma['billing_type'], ['down_payment', 'full_payment']))
                     <p class="fw-note">
-                        {{ $source_proforma['status'] === 'converted' ? 'Proforma ini sudah menjadi invoice. Untuk mengubah DP menjadi tagihan penuh, buka invoice terkait dan gunakan alur Ganti Invoice DP ke Tagihan Penuh sesuai ketentuannya.' : 'Jenis tagihan tidak dapat diubah karena terdapat dokumen aktif lain. Tinjau rangkaian tagihan quotation ini terlebih dahulu.' }}
+                        {{ $source_proforma['status'] === 'converted' ? ($source_proforma['billing_type'] === 'down_payment' ? 'Proforma ini sudah menjadi invoice. Untuk mengubah DP menjadi tagihan penuh, buka invoice terkait dan gunakan alur Ganti Invoice DP ke Tagihan Penuh sesuai ketentuannya.' : 'Proforma ini sudah menjadi invoice. Untuk mengubah Full menjadi DP, buka invoice terkait dan gunakan Ganti ke DP sesuai ketentuannya.') : 'Jenis tagihan tidak dapat diubah karena terdapat dokumen aktif lain. Tinjau rangkaian tagihan quotation ini terlebih dahulu.' }}
                         @if ($source_proforma['status'] === 'converted' && bouncer()->hasPermission('invoices.view'))
                             <a class="fw-link" href="{{ route('admin.invoices.show', $source_proforma['invoice_id']) }}">Buka invoice terkait</a>
                         @endif
                     </p>
                 @endif
-                @if ($form['dp_amount'] !== null)
+                @if ($form['dp_amount'] !== null || $can_change_proforma_billing)
                     <section class="fw-card fw-pad" data-dp-split><h2 class="fw-title">Pembagian tagihan</h2><div class="fw-form-grid" style="margin-top:18px">
-                        <label class="fw-field">Transfer netto DP (Rp)<input name="dp_amount" data-dp type="number" min="0.01" step="0.01" required value="{{ $draft['dp_amount'] }}" @readonly($paidDp)></label>
+                        <label class="fw-field">Transfer netto DP (Rp)<input name="dp_amount" data-dp type="number" min="0.01" step="0.01" @required(! $can_change_proforma_billing || $draft['proforma_billing_type'] === 'down_payment') value="{{ $draft['dp_amount'] }}" @readonly($paidDp)></label>
                         <div><p class="fw-muted">Nilai pelunasan</p><p class="fw-value" data-settlement></p></div>
                     </div><p class="fw-note">{{ $paidDp ? 'Transfer netto DP sudah lunas dan tetap. Jika gross-up berubah, bruto DP mengikuti potongan PPh; uang masuk tetap.' : 'Mengubah nominal DP hanya mengubah pembagian DP dan pelunasan. Total transaksi tetap mengikuti rincian produk.' }}</p></section>
                 @endif
@@ -172,7 +172,7 @@
                         valid = valid && total > 0 && (!dpInput || fullProforma || (dp > 0 && dp < total));
                         form.querySelectorAll('[data-document-kind]').forEach(row => {
                             const changingProforma = row.dataset.proformaBillingTarget === '1';
-                            const kind = changingProforma && fullProforma ? 'full_payment' : row.dataset.documentKind;
+                            const kind = changingProforma ? form.querySelector('[data-proforma-billing-type]').value : row.dataset.documentKind;
                             const billingLabel = row.querySelector('[data-new-billing-label]');
                             if (billingLabel) billingLabel.textContent = kind === 'full_payment' ? 'Full — 100%' : 'DP';
                             const value = kind === 'down_payment' ? dp : kind === 'settlement' ? round(total - dp) : total;
