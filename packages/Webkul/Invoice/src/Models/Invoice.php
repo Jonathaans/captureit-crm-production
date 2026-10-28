@@ -213,8 +213,33 @@ class Invoice extends Model implements InvoiceContract
     public function projectInvoiceIds(): array
     {
         $parentId = (int) ($this->replaces_invoice_id ?: $this->operationalInvoiceId());
+        if (! $this->quote_id) {
+            return static::where('dp_invoice_id', $parentId)->where('billing_type', 'settlement')->whereNull('quote_id')
+                ->pluck('id')->push($parentId)->push($this->id)->filter()->unique()->all();
+        }
 
-        return static::where('dp_invoice_id', $parentId)->where('billing_type', 'settlement')->where('quote_id', $this->quote_id)
-            ->pluck('id')->push($parentId)->push($this->id)->push($this->replaced_by_invoice_id)->filter()->unique()->all();
+        // Follow the connected billing chain, including Full → DP → settlement
+        // and repeated replacements, without borrowing unrelated quotation invoices.
+        $documents = static::where('quote_id', $this->quote_id)
+            ->get(['id', 'billing_type', 'dp_invoice_id', 'replaces_invoice_id', 'replaced_by_invoice_id'])->keyBy('id');
+        $ids = [(int) $this->id => true];
+        do {
+            $previousCount = count($ids);
+            foreach ($documents as $document) {
+                $related = array_filter([$document->id, $document->replaces_invoice_id, $document->replaced_by_invoice_id,
+                    $document->billing_type === 'settlement' ? $document->dp_invoice_id : null]);
+                if (array_intersect($related, array_keys($ids)) !== []) {
+                    foreach ($related as $id) {
+                        if ($documents->has($id)) {
+                            $ids[(int) $id] = true;
+                        }
+                    }
+                }
+            }
+        } while (count($ids) !== $previousCount);
+        $result = array_keys($ids);
+        sort($result);
+
+        return $result;
     }
 }

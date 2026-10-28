@@ -2074,3 +2074,252 @@ describe('visual financial audit dashboard', function () {
         'Administrator without operations ACL' => ['Administrator', ['invoices.financial-report'], false],
     ]);
 });
+
+function fullReplacementFixture($test, bool $grossUp = false): Invoice
+{
+    $test->input['billing_type'] = 'full_payment';
+    $test->quote->forceFill(PphGrossUp::calculate(10000000, 0, $grossUp))->save();
+
+    return invoiceReplacementFixture($test);
+}
+
+function fullReplacementInput(Invoice $invoice, float $dp = 3000000): array
+{
+    return array_replace(invoiceReplacementInput($invoice), [
+        'dp_amount' => $dp, 'reason' => 'Pelanggan meminta DP tiga juta dan sisanya ditagihkan setelah event.',
+        'payment_term' => 'DP tiga juta, pelunasan setelah event',
+    ]);
+}
+
+describe('Full invoice replacement with DP', function () {
+    it('replaces Full with an unpaid DP and updates every report while retaining original documents and complete logs', function (bool $grossUp) {
+        $full = fullReplacementFixture($this, $grossUp);
+        $sourcePf = ProformaInvoice::first()->getAttributes();
+        $originalLines = DB::table('invoice_items')->where('invoice_id', $full->id)->get()->toJson();
+        $tables = ['quotes', 'quote_items', 'payments', 'expenses', 'work_orders', 'work_order_items', 'delivery_orders', 'purchase_orders'];
+        $history = fn () => collect($tables)->mapWithKeys(fn ($table) => [$table => DB::table($table)->orderBy('id')->get()->toJson()])->all();
+        $before = $history();
+        $service = app(InvoiceReplacementService::class);
+        $preview = $service->preview($full->id, 3000000);
+        expect($preview['blockers'])->toBe([])->and($preview['target_type'])->toBe('down_payment')
+            ->and($preview['dp_error'])->toBeNull();
+        $input = fullReplacementInput($full);
+        // Caller-supplied accounting fields cannot turn this into another Full or paid invoice.
+        $input += ['billing_type' => 'full_payment', 'billing_amount' => 1, 'status' => 'paid', 'event_status' => 'cancel'];
+        $dp = $service->replace($full->id, $input, 7);
+        expect($history())->toBe($before)
+            ->and($full->fresh()->status)->toBe('void')->and((float) $full->fresh()->balance_due)->toBe(0.0)
+            ->and((float) $full->fresh()->grand_total)->toBe((float) $full->grand_total)
+            ->and(DB::table('invoice_items')->where('invoice_id', $full->id)->get()->toJson())->toBe($originalLines)
+            ->and(ProformaInvoice::find($sourcePf['id'])->getAttributes())->toBe($sourcePf)
+            ->and($dp->billing_type)->toBe('down_payment')->and($dp->status)->toBe('unpaid')
+            ->and((float) $dp->grand_total)->toBe($preview['amount'])->and((float) $dp->pph_amount)->toBe($preview['pph'])
+            ->and((float) $dp->balance_due)->toBe(3000000.0)->and((float) $dp->paid_amount)->toBe(0.0)
+            ->and($dp->dp_invoice_id)->toBeNull()->and($dp->replaces_invoice_id)->toBe($full->id)
+            ->and((float) $dp->quote_total_snapshot)->toBe((float) $full->grand_total)
+            ->and($dp->payment_term)->toBe($input['payment_term'])->and($dp->quote_id)->toBe($full->quote_id)
+            ->and($service->replace($full->id, $input, 7)->id)->toBe($dp->id)
+            ->and(Invoice::count())->toBe(2)->and(ProformaInvoice::count())->toBe(2)->and(Payment::count())->toBe(0)
+            ->and(InvoiceReplacement::count())->toBe(1)->and(DB::table('commercial_document_revisions')->count())->toBe(1);
+        $record = InvoiceReplacement::first();
+        $log = DB::table('commercial_document_revisions')->sole();
+        $logBefore = json_decode($log->before, true);
+        $logAfter = json_decode($log->after, true);
+        expect($record->before['invoices'][0]['status'])->toBe('unpaid')->and($record->actor_id)->toBe(7)
+            ->and($record->reason)->toBe($input['reason'])->and($record->created_at)->not->toBeNull()
+            ->and($log->actor_name)->toBe('Finance penggantian')->and($log->reason)->toBe($input['reason'])
+            ->and($logBefore['invoices'][0]['billing_type'])->toBe('full_payment')
+            ->and($logAfter['invoices'][0]['status'])->toBe('void')
+            ->and($logAfter['invoices'][1]['billing_type'])->toBe('down_payment')
+            ->and((float) $logAfter['invoices'][1]['grand_total'])->toBe((float) $dp->grand_total);
+        foreach ([['month' => 10], ['month' => 'all'], ['event_status' => 'confirm'], ['business_unit' => 'capture_it', 'product' => 'Photobooth']] as $filters) {
+            $report = proformaFinancialData($filters);
+            expect($report['financialSummary']['invoiced'])->toBe((float) $dp->grand_total)
+                ->and($report['financialSummary']['outstanding'])->toBe(3000000.0)
+                ->and($report['financialSummary']['received'])->toBe(0.0)
+                ->and($report['financialSummary']['expense'])->toBe(6000000.0)
+                ->and($report['invoiceStats']['total'])->toBe(1)
+                ->and($report['invoicePerformance']->pluck('id')->all())->toBe([$dp->id])
+                ->and($report['projectPerformance'][0]['expense'])->toBe(6000000.0)
+                ->and($report['topProducts']->sum('sales_value'))->toBe((float) $dp->grand_total)
+                ->and(proformaFinancialCsv($filters))->toContain($dp->invoice_number)->not->toContain($full->invoice_number);
+        }
+        (require base_path('database/migrations/2026_10_07_000000_create_crm_data_corrections_table.php'))->up();
+        $audit = app(FinancialReportAuditService::class)->audit(['year' => 2026, 'month' => 'all'], $full->invoice_number);
+        expect($audit['ok'])->toBeTrue()->and($audit['invoice']['included_in_invoice_report'])->toBeFalse()
+            ->and(app(FinanceSalesDashboardService::class)->exportRows([])->pluck('id')->all())->toBe([$dp->id]);
+        expect(app(WorkOrderService::class)->findForInvoice($dp)->id)->toBe(WorkOrder::first()->id);
+    })->with([false, true]);
+
+    it('uses a native calculate then confirm form and displays Full to DP audit history and PDF', function () {
+        $full = fullReplacementFixture($this);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.revise', 'invoices.generate', 'work-orders.view']);
+        $this->get(route('admin.invoices.show', $full->id))->assertOk()->assertSee('Ganti ke DP');
+        $url = route('admin.invoices.replacements.preview', $full->id);
+        $initial = $this->get($url)->assertOk()->assertSee('Full Payment → DP');
+        $dom = new DOMDocument;
+        @$dom->loadHTML($initial->getContent());
+        $xpath = new DOMXPath($dom);
+        expect($xpath->query('//form[@method="GET"]//input[@name="dp_amount"]')->length)->toBe(1)
+            ->and($xpath->query('//form[@method="POST"]//input[@name="expected"]')->length)->toBe(0);
+        $this->get($url.'?dp_amount=10000000')->assertOk()->assertSee('Transfer netto DP harus lebih dari nol')
+            ->assertDontSee('Konfirmasi Ganti ke DP');
+        $calculated = $this->get($url.'?dp_amount=3000000')->assertOk()->assertSee('3.000.000,00')
+            ->assertSee('7.000.000,00')->assertSee('Konfirmasi Ganti ke DP');
+        @$dom->loadHTML($calculated->getContent());
+        $xpath = new DOMXPath($dom);
+        expect($xpath->query('//form[@method="POST"]//input[@name="dp_amount"][@value="3000000"]')->length)->toBe(1);
+        $input = fullReplacementInput($full) + ['acknowledge' => 1];
+        $this->post(route('admin.invoices.replacements.store', $full->id), $input)->assertRedirect()->assertSessionHasNoErrors();
+        $dp = $full->fresh()->replacementInvoice;
+        foreach ([$full, $dp] as $invoice) {
+            $this->get(route('admin.invoices.show', $invoice->id))->assertOk()
+                ->assertSee($full->invoice_number)->assertSee($dp->invoice_number)->assertSee($input['reason'])
+                ->assertSee('Finance penggantian')->assertSee('3.000.000,00')->assertSee('10.000.000,00');
+        }
+        expect(view('admin::invoices.pdf', ['invoice' => $full->fresh()])->render())->toContain('VOID / DIBATALKAN', $dp->invoice_number);
+        expect(view('admin::invoices.pdf', ['invoice' => $dp])->render())->toContain('DOWN PAYMENT')->not->toContain('VOID / DIBATALKAN');
+        $pf = ProformaInvoice::where('invoice_id', $full->id)->first();
+        $this->get(route('admin.proformas.show', $pf->id))->assertOk()->assertSee('Invoice hasil konversi telah diganti');
+        // Supply a contact/product to the revision view fixture, as production documents have.
+        DB::table('persons')->insert(['id' => 1, 'name' => 'Customer']);
+        DB::table('invoices')->where('id', $dp->id)->update(['person_id' => 1]);
+        Schema::create('products', function (Blueprint $table) {
+            $table->increments('id');
+            $table->string('name');
+            $table->string('sku');
+        });
+        $this->get(route('admin.commercial-revisions.edit', ['invoice', $dp->id]))->assertOk()
+            ->assertSee($input['reason'])->assertSee('Belum diterbitkan')->assertSee('VOID');
+    });
+
+    it('keeps original operations connected through DP to Full to DP and the normal settlement flow', function () {
+        $firstDp = invoiceReplacementFixture($this);
+        $service = app(InvoiceReplacementService::class);
+        $full = $service->replace($firstDp->id, invoiceReplacementInput($firstDp), 7);
+        $dp = $service->replace($full->id, fullReplacementInput($full), 7);
+        $unrelated = Invoice::create(['invoice_number' => 'UNRELATED-VOID', 'quote_id' => $dp->quote_id, 'status' => 'void']);
+        expect($dp->projectInvoiceIds())->toBe([$firstDp->id, $full->id, $dp->id])
+            ->and($firstDp->fresh()->projectInvoiceIds())->toBe($dp->projectInvoiceIds());
+        $spk = app(WorkOrderService::class)->createFromInvoice($dp, 7);
+        expect(WorkOrder::count())->toBe(1)->and($spk->invoice_id)->toBe($firstDp->id);
+        $spk->update(['status' => 'completed']);
+        DeliveryOrder::first()->update(['status' => 'returned']);
+        expect($spk->fresh()->status)->toBe('completed')->and(DeliveryOrder::first()->status)->toBe('returned');
+        app(PaymentService::class)->addPayment($dp, ['amount' => 3000000, 'paid_at' => '2026-10-22 11:00:00']);
+        expect($this->billing->summarize($this->quote)['eligibility']['settlement'])->toBeTrue();
+        $pf = $this->billing->createFromQuote($this->quote, array_replace($this->input, ['billing_type' => 'settlement', 'issued_at' => '2026-10-22', 'due_at' => '2026-10-29']));
+        $settlement = $this->billing->approveProforma($pf, 7);
+        expect($settlement->dp_invoice_id)->toBe($dp->id)->and((float) $settlement->grand_total)->toBe(7000000.0)
+            ->and($settlement->projectInvoiceIds())->toContain($firstDp->id, $full->id, $dp->id, $settlement->id)
+            ->not->toContain($unrelated->id)
+            ->and(app(WorkOrderService::class)->findForInvoice($settlement)->id)->toBe($spk->id)
+            ->and(proformaFinancialData()['financialSummary']['invoiced'])->toBe(10000000.0)
+            ->and(proformaFinancialData()['financialSummary']['outstanding'])->toBe(7000000.0)
+            ->and(proformaFinancialData()['financialSummary']['received'])->toBe(3000000.0)
+            ->and(InvoiceReplacement::count())->toBe(2)->and(DB::table('commercial_document_revisions')->count())->toBe(2);
+    });
+
+    it('preserves agreed snapshots and expense dates when a Full invoice is replaced in another month', function () {
+        $full = fullReplacementFixture($this);
+        DB::table('quotes')->where('id', $full->quote_id)->update(['grand_total' => 20000000]);
+        DB::table('quote_items')->update(['name' => 'Current changed product', 'total' => 20000000]);
+        $this->travelTo(now()->parse('2026-11-02 12:00:00'));
+        $input = array_replace(fullReplacementInput($full), ['due_at' => '2026-11-09']);
+        $dp = app(InvoiceReplacementService::class)->replace($full->id, $input, 7);
+        expect((float) $dp->quote_total_snapshot)->toBe(10000000.0)->and((float) $dp->remaining_amount_snapshot)->toBe(7000000.0)
+            ->and($dp->items->first()->name)->toBe('Photobooth')
+            ->and(proformaFinancialData(['month' => 10])['financialSummary']['invoiced'])->toBe(0.0)
+            ->and(proformaFinancialData(['month' => 10])['financialSummary']['expense'])->toBe(6000000.0)
+            ->and(proformaFinancialData(['month' => 11])['financialSummary']['invoiced'])->toBe(3000000.0)
+            ->and(proformaFinancialData(['month' => 11])['financialSummary']['expense'])->toBe(0.0)
+            ->and(proformaFinancialData(['month' => 11])['projectPerformance'][0]['expense'])->toBe(6000000.0);
+    });
+
+    it('rejects invalid DP amounts before changing any Full invoice or creating any audit', function ($amount) {
+        $full = fullReplacementFixture($this);
+        $input = fullReplacementInput($full);
+        $input['dp_amount'] = $amount;
+        expect(fn () => app(InvoiceReplacementService::class)->replace($full->id, $input, 7))->toThrow(ValidationException::class)
+            ->and($full->fresh()->status)->toBe('unpaid')->and(Invoice::count())->toBe(1)
+            ->and(InvoiceReplacement::count())->toBe(0)->and(DB::table('commercial_document_revisions')->count())->toBe(0);
+    })->with([null, 0, -1, 10000000, 10000001, 3000000.001]);
+
+    it('rejects payment status conflicts and period locks at preview and confirmation', function (string $case) {
+        $full = fullReplacementFixture($this);
+        match ($case) {
+            'partial' => app(PaymentService::class)->addPayment($full, ['amount' => 1000000]),
+            'paid' => app(PaymentService::class)->addPayment($full, ['amount' => 10000000]),
+            'locked' => DB::table('financial_period_locks')->insert(['period' => '2026-10', 'starts_at' => '2026-10-01', 'ends_at' => '2026-10-31']),
+            'cancel' => DB::table('invoices')->where('id', $full->id)->update(['event_status' => 'cancel']),
+            'conflict' => Invoice::create(['invoice_number' => 'OTHER-ACTIVE', 'quote_id' => $full->quote_id, 'billing_type' => 'down_payment', 'status' => 'unpaid']),
+        };
+        $service = app(InvoiceReplacementService::class);
+        $before = DB::table('invoices')->orderBy('id')->get()->toJson();
+        expect($service->preview($full->id, 3000000)['blockers'])->not->toBeEmpty();
+        expect(fn () => $service->replace($full->id, fullReplacementInput($full), 7))->toThrow(ValidationException::class)
+            ->and(DB::table('invoices')->orderBy('id')->get()->toJson())->toBe($before)
+            ->and(InvoiceReplacement::count())->toBe(0);
+    })->with(['partial', 'paid', 'locked', 'cancel', 'conflict']);
+
+    it('rejects a stale Full to DP form and requires existing invoice permissions and confirmation', function () {
+        $full = fullReplacementFixture($this);
+        $input = fullReplacementInput($full);
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.generate']);
+        $this->getJson(route('admin.invoices.replacements.preview', $full->id))->assertUnauthorized();
+        $this->postJson(route('admin.invoices.replacements.store', $full->id), $input + ['acknowledge' => 1])->assertUnauthorized();
+        paymentVoidLogin($this, ['invoices', 'invoices.view', 'invoices.revise', 'invoices.generate']);
+        $this->postJson(route('admin.invoices.replacements.store', $full->id), $input)->assertUnprocessable()->assertJsonValidationErrors('acknowledge');
+        app(PaymentService::class)->addPayment($full, ['amount' => 1000000]);
+        $this->post(route('admin.invoices.replacements.store', $full->id), $input + ['acknowledge' => 1])
+            ->assertRedirect(route('admin.invoices.replacements.preview', $full->id))->assertSessionHasErrors('expected');
+        expect($full->fresh()->status)->toBe('partial')->and(Payment::count())->toBe(1)->and(InvoiceReplacement::count())->toBe(0);
+    });
+
+    it('rolls back Full to DP when either audit log fails', function (string $table) {
+        $full = fullReplacementFixture($this);
+        $input = fullReplacementInput($full);
+        $tables = ['invoices', 'invoice_items', 'proforma_invoices', 'invoice_replacements', 'commercial_document_revisions', 'payments'];
+        $before = collect($tables)->mapWithKeys(fn ($name) => [$name => DB::table($name)->orderBy('id')->get()->toJson()])->all();
+        DB::statement("CREATE TRIGGER reject_dp_replacement BEFORE INSERT ON {$table} BEGIN SELECT RAISE(ABORT, 'Audit unavailable'); END");
+        expect(fn () => app(InvoiceReplacementService::class)->replace($full->id, $input, 7))->toThrow(QueryException::class);
+        foreach ($before as $name => $rows) {
+            expect(DB::table($name)->orderBy('id')->get()->toJson())->toBe($rows);
+        }
+    })->with(['invoice_replacements', 'commercial_document_revisions']);
+});
+
+it('replaces matching legacy Full invoices without a proforma while preserving normal DP amounts', function ($type) {
+    $full = fullReplacementFixture($this);
+    DB::table('proforma_invoices')->delete();
+    DB::table('invoices')->where('id', $full->id)->update(['billing_type' => $type, 'quote_total_snapshot' => null]);
+    $service = app(InvoiceReplacementService::class);
+    expect($service->preview($full->id, 3000000)['blockers'])->toBe([]);
+    $dp = $service->replace($full->id, fullReplacementInput($full), 7);
+    expect($dp->billing_type)->toBe('down_payment')->and((float) $dp->grand_total)->toBe(3000000.0)
+        ->and((float) $dp->quote_total_snapshot)->toBe(10000000.0)
+        ->and($full->fresh()->status)->toBe('void')->and(Payment::count())->toBe(0);
+})->with([null, '', 'full', 'full_payment']);
+
+it('rejects corrupted Full snapshots and replacement chains without issuing DP', function (string $case) {
+    if ($case === 'chain') {
+        $first = invoiceReplacementFixture($this);
+        $full = app(InvoiceReplacementService::class)->replace($first->id, invoiceReplacementInput($first), 7);
+        DB::table('invoices')->where('id', $first->id)->update(['replaced_by_invoice_id' => null]);
+    } else {
+        $full = fullReplacementFixture($this);
+        if ($case === 'pph') {
+            DB::table('invoices')->where('id', $full->id)->update(['pph_amount' => 50000, 'balance_due' => 9950000]);
+        } else {
+            $pf = ProformaInvoice::first();
+            $snapshot = $pf->quote_snapshot;
+            $snapshot['attributes']['id'] = 999;
+            DB::table('proforma_invoices')->where('id', $pf->id)->update(['quote_snapshot' => json_encode($snapshot)]);
+        }
+    }
+    $before = DB::table('invoices')->orderBy('id')->get()->toJson();
+    $service = app(InvoiceReplacementService::class);
+    expect($service->preview($full->id, 3000000)['blockers'])->not->toBeEmpty();
+    expect(fn () => $service->replace($full->id, fullReplacementInput($full), 7))->toThrow(ValidationException::class)
+        ->and(DB::table('invoices')->orderBy('id')->get()->toJson())->toBe($before);
+})->with(['pph', 'quotation', 'chain']);

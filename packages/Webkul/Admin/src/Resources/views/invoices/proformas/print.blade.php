@@ -119,7 +119,7 @@
         @if ($proforma->invoice?->status === 'void')
             <div class="void-note"><strong>INVOICE HASIL KONVERSI SUDAH VOID.</strong> Proforma ini merupakan riwayat.
                 @if ($proforma->invoice->replaced_by_invoice_id)
-                    Invoice DP telah diganti dengan {{ $proforma->invoice->replacementInvoice->invoice_number }}.
+                    Invoice telah diganti dengan {{ $proforma->invoice->replacementInvoice->invoice_number }}.
                 @elseif ($proforma->invoice->voidCorrection?->kind === 'invoice_cancel')
                     Tagihan pada invoice tersebut telah dibatalkan.
                 @else

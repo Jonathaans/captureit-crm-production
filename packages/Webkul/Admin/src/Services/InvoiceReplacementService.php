@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Webkul\Admin\Repositories\CommercialRevisionRepository;
+use Webkul\Core\Support\PphGrossUp;
 use Webkul\Invoice\Models\Invoice;
 use Webkul\Invoice\Models\InvoiceReplacement;
 use Webkul\Invoice\Models\ProformaInvoice;
@@ -20,16 +21,30 @@ class InvoiceReplacementService
         private FinancialPeriodLockService $periods
     ) {}
 
-    public function preview(int $id): array
+    public function preview(int $id, ?float $dpCash = null): array
     {
         $state = $this->snapshot($id);
         $invoice = collect($state['invoices'])->firstWhere('id', $id);
         [$agreement, $errors] = $this->agreement($state, $invoice);
+        $targetType = $this->targetType($invoice);
+        $amount = $targetType === 'full_payment' ? (float) ($agreement?->grand_total ?? 0) : null;
+        $dpError = null;
+        if ($targetType === 'down_payment' && $dpCash !== null && $agreement) {
+            try {
+                $amount = $this->downPaymentAmount($dpCash, $agreement);
+            } catch (ValidationException $e) {
+                $dpError = $e->errors()['dp_amount'][0];
+            }
+        }
 
         return [
             'invoice' => $invoice,
-            'amount' => (float) ($agreement?->grand_total ?? 0),
-            'pph' => (float) ($agreement?->pph_amount ?? 0),
+            'amount' => $amount,
+            'pph' => $amount !== null && $agreement ? PphGrossUp::allocate((float) $agreement->pph_amount, (float) $agreement->grand_total, $amount) : 0.0,
+            'quote_total' => (float) ($agreement?->grand_total ?? 0),
+            'target_type' => $targetType,
+            'dp_amount' => $dpCash,
+            'dp_error' => $dpError,
             'payment_term' => $agreement?->payment_term,
             'blockers' => array_merge($errors, $this->blockers($state, $invoice)),
             'fingerprint' => $this->fingerprint($state),
@@ -46,6 +61,7 @@ class InvoiceReplacementService
             'reason' => ['required', 'string', 'min:8', 'max:2000'],
             'payment_term' => ['required', 'string', 'max:2000'],
             'due_at' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
+            'dp_amount' => ['nullable', 'numeric', 'gt:0', 'max:999999999999.99', 'decimal:0,2'],
         ])->validate();
         $actorName = DB::table('users')->where('id', $actor)->value('name');
         $this->ensure($actorName !== null, 'actor', 'Pengguna penggantian invoice tidak ditemukan.');
@@ -64,13 +80,18 @@ class InvoiceReplacementService
             [$agreement, $errors] = $this->agreement($state, $source);
             $errors = array_merge($errors, $this->blockers($state, $source));
             $this->ensure($errors === [], 'replacement', implode(' ', $errors));
+            $targetType = $this->targetType($source);
+            $amount = $targetType === 'down_payment'
+                ? $this->downPaymentAmount(isset($data['dp_amount']) ? (float) $data['dp_amount'] : null, $agreement)
+                : (float) $agreement->grand_total;
 
             $this->documents->update('invoices', $id, ['status' => 'void', 'balance_due' => 0]);
             $proforma = $this->proformas->createFromSnapshot($agreement, [
-                'billing_type' => 'full_payment', 'issued_at' => now()->toDateString(),
+                'billing_type' => $targetType, 'billing_method' => 'nominal', 'billing_amount' => $amount,
+                'issued_at' => now()->toDateString(),
                 'due_at' => $data['due_at'], 'payment_term' => $data['payment_term'],
             ], $actor);
-            $replacement = $this->billing->approveProforma($proforma, $actor, 'Pengganti '.$source['invoice_number'].': '.$data['reason']);
+            $replacement = $this->billing->approveProforma($proforma, $actor, mb_substr('Pengganti '.$source['invoice_number'].': '.$data['reason'], 0, 2000));
             $this->documents->update('invoices', $id, ['replaced_by_invoice_id' => $replacement->id]);
             $this->documents->update('invoices', $replacement->id, [
                 'replaces_invoice_id' => $id, 'event_status' => $source['event_status'],
@@ -80,6 +101,10 @@ class InvoiceReplacementService
                 'proforma_invoice_id' => $proforma->id, 'actor_id' => $actor, 'actor_name' => $actorName,
                 'reason' => $data['reason'], 'preview_fingerprint' => $data['expected'], 'before' => $state, 'created_at' => now(),
             ]);
+            // Keep the ordinary revision log as a complete before/after record too.
+            $after = $this->documents->snapshot((int) $source['quote_id']);
+            $after['version'] = $state['version'] + 1;
+            $this->documents->record($state, $after, 'invoice', $id, $actor, $data['reason']);
 
             return $replacement->fresh();
         }, 3));
@@ -94,6 +119,10 @@ class InvoiceReplacementService
         $query = DB::table('financial_period_locks')->orderBy('id');
         $state['period_locks'] = ($lock ? $query->lockForUpdate() : $query)->get()->map(fn ($row) => (array) $row)->all();
         $state['replacement_date'] = now()->toDateString();
+        $replacements = DB::table('invoice_replacements')->whereIn('source_invoice_id', array_column($state['invoices'], 'id'))->orderBy('id');
+        $state['replacements'] = ($lock ? $replacements->lockForUpdate() : $replacements)
+            ->get(['id', 'source_invoice_id', 'replacement_invoice_id', 'proforma_invoice_id', 'preview_fingerprint'])
+            ->map(fn ($row) => (array) $row)->all();
 
         return $state;
     }
@@ -105,20 +134,26 @@ class InvoiceReplacementService
             $snapshot = json_decode($proforma['quote_snapshot'], true);
             if (! is_array($snapshot['attributes'] ?? null) || ! is_array($snapshot['items'] ?? null)
                 || (int) ($snapshot['attributes']['id'] ?? 0) !== (int) $invoice['quote_id']
-                || $proforma['billing_type'] !== 'down_payment'
+                || $proforma['billing_type'] !== ($invoice['billing_type'] === 'down_payment' ? 'down_payment' : 'full_payment')
                 || round((float) $proforma['amount'], 2) !== round((float) $invoice['grand_total'], 2)) {
-                return [null, ['Snapshot proforma DP tidak sesuai invoice dan quotation asal. Tinjau data sebelum mengganti tagihan.']];
+                return [null, ['Snapshot proforma tidak sesuai invoice dan quotation asal. Tinjau data sebelum mengganti tagihan.']];
             }
             $model = new ProformaInvoice;
             $model->setRawAttributes($proforma, true);
             $agreement = $model->snapshotQuote();
         } else {
-            // Legacy DP: quotation is archive-protected; only accept a matching agreed total.
+            // Legacy documents: only accept a quotation matching the original agreed total.
             $agreement = Quote::with(['items', 'person.organization'])->findOrFail($state['quote']['id']);
         }
         $total = round((float) $agreement->grand_total, 2);
-        if ($total <= 0 || round((float) ($invoice['quote_total_snapshot'] ?? 0), 2) !== $total) {
-            return [null, ['Nilai kesepakatan DP dan snapshot quotation tidak cocok. Tinjau Revisi Transaksi terlebih dahulu.']];
+        $snapshotTotal = (float) ($invoice['quote_total_snapshot'] ?? 0);
+        if ($snapshotTotal <= 0 && $this->isFull($invoice)) {
+            $snapshotTotal = (float) $invoice['grand_total'];
+        }
+        if ($total <= 0 || round($snapshotTotal, 2) !== $total
+            || ($this->isFull($invoice) && (round((float) $invoice['grand_total'], 2) !== $total
+                || round((float) $invoice['pph_amount'], 2) !== round((float) $agreement->pph_amount, 2)))) {
+            return [null, ['Nilai kesepakatan dan snapshot invoice tidak cocok. Tinjau Revisi Transaksi terlebih dahulu.']];
         }
 
         return [$agreement, []];
@@ -127,9 +162,17 @@ class InvoiceReplacementService
     private function blockers(array $state, array $invoice): array
     {
         $errors = [];
-        if ($invoice['billing_type'] !== 'down_payment' || $invoice['status'] !== 'unpaid' || $invoice['event_status'] !== 'confirm'
-            || ! empty($invoice['dp_invoice_id']) || ! empty($invoice['replaced_by_invoice_id']) || ! empty($invoice['replaces_invoice_id'])) {
-            $errors[] = 'Hanya invoice DP UNPAID pada event Confirm yang dapat diganti.';
+        if ((! $this->isFull($invoice) && $invoice['billing_type'] !== 'down_payment') || $invoice['status'] !== 'unpaid' || $invoice['event_status'] !== 'confirm'
+            || ! empty($invoice['dp_invoice_id']) || ! empty($invoice['replaced_by_invoice_id'])) {
+            $errors[] = 'Hanya invoice DP atau Full UNPAID pada event Confirm yang dapat diganti.';
+        }
+        if (! empty($invoice['replaces_invoice_id'])) {
+            $parent = collect($state['invoices'])->firstWhere('id', $invoice['replaces_invoice_id']);
+            $audit = collect($state['replacements'])->firstWhere('replacement_invoice_id', $invoice['id']);
+            if (! $parent || $parent['status'] !== 'void' || (int) $parent['replaced_by_invoice_id'] !== (int) $invoice['id']
+                || ! $audit || (int) $audit['source_invoice_id'] !== (int) $parent['id']) {
+                $errors[] = 'Rantai invoice pengganti tidak sesuai riwayat audit. Tinjau data sebelum mengganti tagihan.';
+            }
         }
         $voided = array_column($state['payment_voids'], 'payment_id');
         $payments = collect($state['payments'])->where('invoice_id', $invoice['id'])->whereNotIn('id', $voided);
@@ -138,7 +181,7 @@ class InvoiceReplacementService
         }
         $cash = max(0, (float) $invoice['grand_total'] - (float) ($invoice['pph_amount'] ?? 0));
         if ($cash <= 0 || abs($cash - (float) $invoice['balance_due']) > 0.0001) {
-            $errors[] = 'Saldo invoice tidak sesuai nilai tagihan DP. Tinjau pencatatan terlebih dahulu.';
+            $errors[] = 'Saldo invoice tidak sesuai nilai tagihan. Tinjau pencatatan terlebih dahulu.';
         }
         $others = collect($state['invoices'])->filter(fn ($i) => (int) $i['id'] !== (int) $invoice['id'] && $i['status'] !== 'void'
             && ! in_array($i['event_status'], ['cancel', 'cancelled', 'canceled'], true));
@@ -148,11 +191,34 @@ class InvoiceReplacementService
         if (! $invoice['issued_at'] || $this->periods->isLocked($invoice['issued_at']) || $this->periods->isLocked(now())) {
             $errors[] = 'Tanggal terbit invoice tidak tersedia atau periode invoice lama/pengganti sudah ditutup.';
         }
-        if ((float) $invoice['grand_total'] <= 0 || (float) $invoice['grand_total'] >= (float) ($invoice['quote_total_snapshot'] ?? 0)) {
+        if ($invoice['billing_type'] === 'down_payment' && ((float) $invoice['grand_total'] <= 0 || (float) $invoice['grand_total'] >= (float) ($invoice['quote_total_snapshot'] ?? 0))) {
             $errors[] = 'Nilai DP harus lebih kecil dari nilai penuh kesepakatan.';
         }
 
         return $errors;
+    }
+
+    private function isFull(array $invoice): bool
+    {
+        return in_array($invoice['billing_type'] ?: 'full_payment', ['full', 'full_payment'], true);
+    }
+
+    private function targetType(array $invoice): string
+    {
+        return $invoice['billing_type'] === 'down_payment' ? 'full_payment' : 'down_payment';
+    }
+
+    private function downPaymentAmount(?float $cash, Quote $agreement): float
+    {
+        $total = (float) $agreement->grand_total;
+        $pph = (float) $agreement->pph_amount;
+        $amount = PphGrossUp::grossFromCash($cash ?? 0, $pph, $total);
+        $this->ensure($cash !== null && $cash > 0 && $amount > 0 && $amount < $total, 'dp_amount',
+            'Transfer netto DP harus lebih dari nol dan lebih kecil dari nilai transfer penuh kesepakatan.');
+        $this->ensure(abs($amount - PphGrossUp::allocate($pph, $total, $amount) - $cash) < 0.0001, 'dp_amount',
+            'Pembulatan PPh tidak sesuai transfer netto DP. Periksa nominal DP.');
+
+        return $amount;
     }
 
     private function fingerprint(array $state): string
